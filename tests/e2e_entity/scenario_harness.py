@@ -3,9 +3,9 @@ from __future__ import annotations
 import copy
 import sys
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from datetime import datetime
 
 from ems_adapter.entity_map import ENT
 
@@ -37,19 +37,17 @@ class FakeEntityStore:
             return attrs
         return attrs.get(key, default)
 
-    def touch(self, entity_id):
-        self.last_update_ts[entity_id] = self.now
-
 
 class QuarterScenarioHarness:
     """
-    Data-driven, entity-map-level simulator for one quarter of NET_ZERO behavior.
+    Entity-map-level quarter simulator for the current three-loop production chain:
 
-    Design goal:
-    - use ENT (entity_map) as the external contract
-    - run real top-level loops (policy + writer) with fake adapters
-    - simulate external side-effects for surplus activation latches and freeze storage
-      after each policy/writer cycle
+        policy loop -> internal surplus latch loop -> writer loop
+
+    This harness intentionally exercises the library the same way production does now:
+    - dispatcher decisions are written by ems_net_zero_shadow.py
+    - ems_surplus_latches.py converts dispatch decisions to active latches/freeze state
+    - ems_shadow_writers.py consumes policy outputs and updates actuator/shadow entities
     """
 
     def __init__(self, project_root: Path, start_ts: float = 0.0, step_s: int = 30):
@@ -60,12 +58,9 @@ class QuarterScenarioHarness:
         self.history = []
 
         self.policy_mod = self._load_module(self.project_root / 'ems_net_zero_shadow.py', kind='policy')
+        self.latch_mod = self._load_module(self.project_root / 'ems_surplus_latches.py', kind='latch')
         self.writer_mod = self._load_module(self.project_root / 'ems_shadow_writers.py', kind='writer')
         self._seed_defaults()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def set_entities(self, mapping: dict):
         self.store.set_now(self.now)
@@ -91,22 +86,13 @@ class QuarterScenarioHarness:
         }
 
     def step(self, set_values: dict | None = None, note: str = ''):
-        """
-        Run one 30s simulation step:
-        1) apply provided entity updates
-        2) run policy loop
-        3) run writer loop
-        4) emulate external latches/freeze persistence from dispatch decision
-        5) record snapshot
-        6) advance simulated clock by step_s
-        """
         self.store.set_now(self.now)
         if set_values:
             self.set_entities(set_values)
 
         self._run_policy_loop()
+        self._run_latch_loop()
         self._run_writer_loop()
-        self._apply_external_side_effects_from_dispatch()
 
         snap = self.snapshot(note=note)
         self.history.append(snap)
@@ -114,19 +100,13 @@ class QuarterScenarioHarness:
         self.store.set_now(self.now)
         return snap
 
-    # ------------------------------------------------------------------
-    # Internal loading / execution
-    # ------------------------------------------------------------------
-
     def _seed_defaults(self):
         self.store.set_now(self.now)
-
         defaults = {
             ENT['control_profile']: 'AUTOMATIC',
             ENT['goal_profile']: 'NET_ZERO',
             ENT['forecast_profile']: 'NONE',
             ENT['guard_profile']: 'NORMAL_LIMITS',
-
             ENT['battery_protect_soc']: 2,
             ENT['battery_protect_soc_recovery_margin']: 1,
             ENT['battery_protect_min_cell_voltage_v']: 3.03,
@@ -144,19 +124,16 @@ class QuarterScenarioHarness:
             ENT['relay1_priority']: 3,
             ENT['relay2_priority']: 1,
             ENT['ev_priority']: 2,
-
             ENT['soc']: 50.0,
             ENT['min_cell_voltage_v']: 3.20,
             ENT['victron_heartbeat']: 0.0,
             ENT['grid_power_w']: 0.0,
             ENT['current_battery_sp']: 100.0,
             ENT['hourly_energy_balance']: 0.0,
-
             ENT['charger_control']: False,
             ENT['charger_current']: 4,
             ENT['relay1']: False,
             ENT['relay2']: False,
-
             ENT['required_power_consumption_kw']: 0.0,
             ENT['rpnz_w']: 500.0,
             ENT['surplus_freeze_until']: None,
@@ -167,14 +144,12 @@ class QuarterScenarioHarness:
             ENT['relay2_enabled_import_zero']: True,
             ENT['relay1_force_on']: False,
             ENT['relay2_force_on']: False,
-
             ENT['shadow_victron_setpoint_w']: 0.0,
             ENT['shadow_ev_current_a']: 4,
             ENT['shadow_ev_enabled']: False,
             ENT['shadow_relay1']: False,
             ENT['shadow_relay2']: False,
         }
-
         for k, v in defaults.items():
             self.store.set_value(k, v)
 
@@ -207,7 +182,13 @@ class QuarterScenarioHarness:
                 return fn
             return deco
 
-        # Adapter API
+        def _domain(entity_id):
+            try:
+                return str(entity_id).split('.', 1)[0]
+            except Exception:
+                return ''
+
+        # Adapter-like API -------------------------------------------------
         def get_bool(entity_id):
             val = self.store.get_value(entity_id, False)
             if isinstance(val, str):
@@ -247,16 +228,24 @@ class QuarterScenarioHarness:
             self.store.set_attr(entity_id, attrs or {})
 
         def set_number(entity_id, value):
-            self.store.set_value(entity_id, value)
+            domain = _domain(entity_id)
+            if domain in ('input_number', 'number'):
+                self.store.set_value(entity_id, value)
+                return
+            raise ValueError(f'unsupported numeric domain for {entity_id}')
 
         def set_boolean(entity_id, on):
-            self.store.set_value(entity_id, bool(on))
+            domain = _domain(entity_id)
+            if domain in ('input_boolean', 'switch'):
+                self.store.set_value(entity_id, bool(on))
+                return
+            raise ValueError(f'unsupported boolean domain for {entity_id}')
 
         def parse_input_datetime_ts(entity_id):
             raw = self.store.get_value(entity_id, None)
             if raw in (None, 'unknown', 'unavailable', 'none', ''):
                 return None
-            if isinstance(raw, (int, float)):
+            if isinstance(raw, (float, int)):
                 return float(raw)
             try:
                 return float(raw)
@@ -265,7 +254,17 @@ class QuarterScenarioHarness:
             try:
                 return datetime.fromisoformat(str(raw)).timestamp()
             except Exception:
-                return None
+                try:
+                    return datetime.strptime(str(raw), '%Y-%m-%d %H:%M:%S').timestamp()
+                except Exception:
+                    return None
+
+        def _set_datetime(entity_id=None, date=None, time=None, **kwargs):
+            if entity_id is None:
+                raise ValueError('entity_id required')
+            if not date or not time:
+                raise ValueError('date and time required')
+            self.store.set_value(entity_id, f'{date} {time}')
 
         ns = {
             '__name__': f'e2e_{kind}_module',
@@ -282,6 +281,7 @@ class QuarterScenarioHarness:
             'set_number': set_number,
             'set_boolean': set_boolean,
             'parse_input_datetime_ts': parse_input_datetime_ts,
+            'input_datetime': SimpleNamespace(set_datetime=_set_datetime),
         }
         exec(src, ns)
         return ns
@@ -299,37 +299,11 @@ class QuarterScenarioHarness:
                 del sys.modules['time']
 
     def _run_policy_loop(self):
-        fn = self.policy_mod['ems_net_zero_shadow_loop']
         with self._fake_time_module():
-            fn()
+            self.policy_mod['ems_net_zero_shadow_loop']()
+
+    def _run_latch_loop(self):
+        self.latch_mod['ems_surplus_latches_loop']()
 
     def _run_writer_loop(self):
-        fn = self.writer_mod['ems_shadow_writers_loop']
-        fn()
-
-    # ------------------------------------------------------------------
-    # External system emulation
-    # ------------------------------------------------------------------
-
-    def _apply_external_side_effects_from_dispatch(self):
-        dispatch = self.store.get_value(ENT['surplus_dispatch_decision_pys'], None)
-        trace_attrs = self.store.get_attr(ENT['policy_decision_trace'])
-        freeze_until = trace_attrs.get('surplus_freeze_until_ts')
-        self.store.set_value(ENT['surplus_freeze_until'], freeze_until)
-
-        if dispatch == 'ACTIVATE_RELAY1':
-            self.store.set_value(ENT['surplus_r1_active'], True)
-        elif dispatch == 'ACTIVATE_EV':
-            self.store.set_value(ENT['surplus_ev_active'], True)
-        elif dispatch == 'ACTIVATE_RELAY2':
-            self.store.set_value(ENT['surplus_r2_active'], True)
-        elif dispatch == 'RELEASE_RELAY1':
-            self.store.set_value(ENT['surplus_r1_active'], False)
-        elif dispatch == 'RELEASE_EV':
-            self.store.set_value(ENT['surplus_ev_active'], False)
-        elif dispatch == 'RELEASE_RELAY2':
-            self.store.set_value(ENT['surplus_r2_active'], False)
-        elif dispatch == 'CLEAR_ALL':
-            self.store.set_value(ENT['surplus_r1_active'], False)
-            self.store.set_value(ENT['surplus_ev_active'], False)
-            self.store.set_value(ENT['surplus_r2_active'], False)
+        self.writer_mod['ems_shadow_writers_loop']()
