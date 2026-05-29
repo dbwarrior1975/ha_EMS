@@ -20,10 +20,10 @@ def test_net_zero_one_quarter_datadriven(project_root):
 
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
-    # EV initial real shadow state: charger already on and able to restore current later
+    # EV initial real actuator state: charger already on and able to restore current later
     h.set_entities({
-        ENT['shadow_ev_enabled']: True,
-        ENT['shadow_ev_current_a']: 4,
+        ENT['actuator_ev_enabled']: True,
+        ENT['actuator_ev_current_a']: 4,
     })
 
     steps = [
@@ -48,7 +48,7 @@ def test_net_zero_one_quarter_datadriven(project_root):
             'expect_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
                 ENT['policy_relay1_command']: 1,
-                ENT['shadow_relay1']: True,
+                ENT['actuator_relay1']: True,
             },
         },
         {
@@ -60,7 +60,7 @@ def test_net_zero_one_quarter_datadriven(project_root):
             'expect_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
                 ENT['policy_ev_current_a']: 28,
-                ENT['shadow_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
             },
         },
         {
@@ -73,7 +73,7 @@ def test_net_zero_one_quarter_datadriven(project_root):
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY2',
                 # relay2 is still active entering this step; release is applied after the loop
                 ENT['policy_relay2_command']: 1,
-                ENT['shadow_relay2']: True,
+                ENT['actuator_relay2']: True,
             },
         },
         {
@@ -86,7 +86,7 @@ def test_net_zero_one_quarter_datadriven(project_root):
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV',
                 # EV is still active entering this step; release applies after the loop
                 ENT['policy_ev_current_a']: 28,
-                ENT['shadow_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
             },
         },
         {
@@ -98,11 +98,11 @@ def test_net_zero_one_quarter_datadriven(project_root):
             'expect_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
                 ENT['policy_ev_current_a']: 0,
-                ENT['shadow_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 4,
             },
             'expect_trace': {
-                ('sensor.ems_shadow_writer_trace', 'ev', 'reason'): 'restore_min_current',
-                ('sensor.ems_shadow_writer_trace', 'ev', 'new_current_a'): 4,
+                ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'restore_min_current',
+                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
             },
         },
         {
@@ -112,7 +112,7 @@ def test_net_zero_one_quarter_datadriven(project_root):
                 ENT['rpnz_w']: 0.0,
             },
             'expect_values': {
-                ENT['shadow_relay1']: False,
+                ENT['actuator_relay1']: False,
             },
         },
     ]

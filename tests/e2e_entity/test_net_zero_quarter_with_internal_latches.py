@@ -11,7 +11,7 @@ def test_net_zero_quarter_with_internal_latches(project_root):
 
         ems_net_zero_shadow.py
             -> ems_surplus_latches.py
-            -> ems_shadow_writers.py
+            -> ems_actuator_writers.py
 
     Goal story:
     - start AUTOMATIC + NET_ZERO with no surplus loads active
@@ -23,8 +23,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
 
     # EV starts already enabled so restore-to-min has a realistic path later
     h.set_entities({
-        ENT['shadow_ev_enabled']: True,
-        ENT['shadow_ev_current_a']: 4,
+        ENT['actuator_ev_enabled']: True,
+        ENT['actuator_ev_current_a']: 4,
     })
 
     steps = [
@@ -54,7 +54,7 @@ def test_net_zero_quarter_with_internal_latches(project_root):
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
                 ENT['surplus_ev_active']: True,
                 ENT['policy_relay1_command']: 1,
-                ENT['shadow_relay1']: True,
+                ENT['actuator_relay1']: True,
             },
             'expect_trace': {
                 ('sensor.ems_surplus_latch_trace', 'decision'): 'ACTIVATE_EV',
@@ -71,7 +71,7 @@ def test_net_zero_quarter_with_internal_latches(project_root):
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
                 ENT['surplus_r2_active']: True,
                 ENT['policy_ev_current_a']: 28,
-                ENT['shadow_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
             },
             'expect_trace': {
                 ('sensor.ems_surplus_latch_trace', 'decision'): 'ACTIVATE_RELAY2',
@@ -118,13 +118,13 @@ def test_net_zero_quarter_with_internal_latches(project_root):
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
                 ENT['surplus_r1_active']: False,
                 ENT['policy_ev_current_a']: 0,
-                ENT['shadow_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 4,
             },
             'expect_trace': {
                 ('sensor.ems_surplus_latch_trace', 'decision'): 'RELEASE_RELAY1',
                 ('sensor.ems_surplus_latch_trace', 'relay1_active'): False,
-                ('sensor.ems_shadow_writer_trace', 'ev', 'reason'): 'restore_min_current',
-                ('sensor.ems_shadow_writer_trace', 'ev', 'new_current_a'): 4,
+                ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'restore_min_current',
+                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
             },
         },
         {
@@ -137,8 +137,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_ev_active']: False,
                 ENT['surplus_r2_active']: False,
-                ENT['shadow_relay1']: False,
-                ENT['shadow_relay2']: False,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: False,
             },
         },
     ]

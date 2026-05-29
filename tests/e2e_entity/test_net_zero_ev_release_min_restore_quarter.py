@@ -11,13 +11,13 @@ def test_net_zero_ev_release_restores_min_current_in_quarter(project_root):
     - EV gets activated to high current during NET_ZERO burn
     - later EV is released
     - on the following step policy current becomes 0
-    - writer loop restores EV shadow current to min current
+    - writer loop restores EV actuator current to min current
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
     h.set_entities({
-        ENT['shadow_ev_enabled']: True,
-        ENT['shadow_ev_current_a']: 4,
+        ENT['actuator_ev_enabled']: True,
+        ENT['actuator_ev_current_a']: 4,
     })
 
     steps = [
@@ -36,7 +36,7 @@ def test_net_zero_ev_release_restores_min_current_in_quarter(project_root):
             'set': {ENT['required_power_consumption_kw']: 6.0, ENT['rpnz_w']: 500},
             'expect': {
                 ENT['policy_ev_current_a']: 28,
-                ENT['shadow_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
             },
         },
         {
@@ -58,11 +58,11 @@ def test_net_zero_ev_release_restores_min_current_in_quarter(project_root):
             },
             'expect': {
                 ENT['policy_ev_current_a']: 0,
-                ENT['shadow_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 4,
             },
             'trace': {
-                ('sensor.ems_shadow_writer_trace', 'ev', 'reason'): 'restore_min_current',
-                ('sensor.ems_shadow_writer_trace', 'ev', 'new_current_a'): 4,
+                ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'restore_min_current',
+                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
             },
         },
     ]

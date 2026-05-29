@@ -47,7 +47,7 @@ class QuarterScenarioHarness:
     This harness intentionally exercises the library the same way production does now:
     - dispatcher decisions are written by ems_net_zero_shadow.py
     - ems_surplus_latches.py converts dispatch decisions to active latches/freeze state
-    - ems_shadow_writers.py consumes policy outputs and updates actuator/shadow entities
+    - ems_actuator_writers.py consumes policy outputs and updates actuator/shadow entities
     """
 
     def __init__(self, project_root: Path, start_ts: float = 0.0, step_s: int = 30):
@@ -59,7 +59,7 @@ class QuarterScenarioHarness:
 
         self.policy_mod = self._load_module(self.project_root / 'ems_net_zero_shadow.py', kind='policy')
         self.latch_mod = self._load_module(self.project_root / 'ems_surplus_latches.py', kind='latch')
-        self.writer_mod = self._load_module(self.project_root / 'ems_shadow_writers.py', kind='writer')
+        self.writer_mod = self._load_module(self.project_root / 'ems_actuator_writers.py', kind='writer')
         self._seed_defaults()
 
     def set_entities(self, mapping: dict):
@@ -144,11 +144,11 @@ class QuarterScenarioHarness:
             ENT['relay2_enabled_import_zero']: True,
             ENT['relay1_force_on']: False,
             ENT['relay2_force_on']: False,
-            ENT['shadow_victron_setpoint_w']: 0.0,
-            ENT['shadow_ev_current_a']: 4,
-            ENT['shadow_ev_enabled']: False,
-            ENT['shadow_relay1']: False,
-            ENT['shadow_relay2']: False,
+            ENT['actuator_victron_setpoint_w']: 0.0,
+            ENT['actuator_ev_current_a']: 4,
+            ENT['actuator_ev_enabled']: False,
+            ENT['actuator_relay1']: False,
+            ENT['actuator_relay2']: False,
         }
         for k, v in defaults.items():
             self.store.set_value(k, v)
@@ -306,4 +306,4 @@ class QuarterScenarioHarness:
         self.latch_mod['ems_surplus_latches_loop']()
 
     def _run_writer_loop(self):
-        self.writer_mod['ems_shadow_writers_loop']()
+        self.writer_mod['ems_actuator_writers_loop']()

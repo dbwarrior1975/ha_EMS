@@ -51,13 +51,13 @@ def _nz_targets(*, r1_active=False, ev_active=False, r2_active=False):
 
 def _load_writer_module(project_root):
     """
-    Lataa ems_shadow_writers.py testattavaksi ilman Pyscript-runtimea.
+    Lataa ems_actuator_writers.py testattavaksi ilman Pyscript-runtimea.
     Käytetään samoja periaatteita kuin unit-writer-semantiikkatesteissä:
     - poistetaan adapter-importit
     - injektoidaan fake get_/set_/publish-funktiot
     - palautetaan namespace + state + ENT
     """
-    path = project_root / 'ems_shadow_writers.py'
+    path = project_root / 'ems_actuator_writers.py'
     src = path.read_text(encoding='utf-8')
 
     filtered = []
@@ -104,14 +104,14 @@ def _load_writer_module(project_root):
 
     ENT = {
         'policy_battery_target_w': 'sensor.policy_battery',
-        'shadow_victron_setpoint_w': 'input_number.shadow_victron',
+        'actuator_victron_setpoint_w': 'input_number.shadow_victron',
         'policy_ev_current_a': 'sensor.policy_ev',
-        'shadow_ev_enabled': 'input_boolean.shadow_ev_enabled',
-        'shadow_ev_current_a': 'input_number.shadow_ev_current',
+        'actuator_ev_enabled': 'input_boolean.actuator_ev_enabled',
+        'actuator_ev_current_a': 'input_number.shadow_ev_current',
         'policy_relay1_command': 'sensor.policy_relay1',
         'policy_relay2_command': 'sensor.policy_relay2',
-        'shadow_relay1': 'input_boolean.shadow_relay1',
-        'shadow_relay2': 'input_boolean.shadow_relay2',
+        'actuator_relay1': 'input_boolean.actuator_relay1',
+        'actuator_relay2': 'input_boolean.actuator_relay2',
     }
 
     ns = {
@@ -282,17 +282,17 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
     # Writer must interpret strategy 0 as restore-to-min-current
     writer_mod, writer_state, ENT = _load_writer_module(project_root)
 
-    writer_state[ENT['shadow_ev_enabled']] = True
-    writer_state[ENT['shadow_ev_current_a']] = 16
+    writer_state[ENT['actuator_ev_enabled']] = True
+    writer_state[ENT['actuator_ev_current_a']] = 16
     writer_state[ENT['policy_ev_current_a']] = ev_cmd_off
     writer_state['input_number.ems_ev_min_current_a'] = cfg.ev_min_current_a
 
-    ev_result = writer_mod['_write_ev_shadow']()
+    ev_result = writer_mod['_write_ev_actuator']()
 
     assert ev_result['written'] is True
     assert ev_result['reason'] == 'restore_min_current'
     assert ev_result['new_current_a'] == cfg.ev_min_current_a
-    assert writer_state[ENT['shadow_ev_current_a']] == cfg.ev_min_current_a
+    assert writer_state[ENT['actuator_ev_current_a']] == cfg.ev_min_current_a
 
     # After EV released, last one should be RELAY1
     inp5 = SurplusDispatchInput(

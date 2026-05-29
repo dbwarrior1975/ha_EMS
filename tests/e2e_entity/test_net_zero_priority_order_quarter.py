@@ -17,8 +17,8 @@ def test_net_zero_priority_order_one_quarter(project_root):
 
     # Keep EV already enabled so later EV activation is visible on current level
     h.set_entities({
-        ENT['shadow_ev_enabled']: True,
-        ENT['shadow_ev_current_a']: 4,
+        ENT['actuator_ev_enabled']: True,
+        ENT['actuator_ev_current_a']: 4,
     })
 
     steps = [
@@ -39,7 +39,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             'expect': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
                 ENT['policy_relay1_command']: 1,
-                ENT['shadow_relay1']: True,
+                ENT['actuator_relay1']: True,
             },
         },
         {
@@ -51,7 +51,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             'expect': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
                 ENT['policy_ev_current_a']: 28,
-                ENT['shadow_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
             },
         },
         {
@@ -88,8 +88,8 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['rpnz_w']: 0.0,
             },
             'expect': {
-                ENT['shadow_relay1']: False,
-                ENT['shadow_relay2']: False,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: False,
             },
         },
     ]

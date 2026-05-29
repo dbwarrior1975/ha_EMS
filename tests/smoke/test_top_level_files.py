@@ -11,8 +11,8 @@ def test_ems_net_zero_shadow_reads_max_solar_charge(project_root):
 
 
 @pytest.mark.smoke
-def test_ems_shadow_writers_contains_manual_skip_logic(project_root):
-    path = project_root / 'ems_shadow_writers.py'
+def test_ems_actuator_writers_contains_manual_skip_logic(project_root):
+    path = project_root / 'ems_actuator_writers.py'
     assert path.exists(), f'Missing: {path}'
     src = path.read_text(encoding='utf-8')
     assert 'manual_skip' in src
