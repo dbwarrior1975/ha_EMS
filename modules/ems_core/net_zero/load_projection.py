@@ -27,18 +27,22 @@ def ev_strategy_current_a(profiles, cfg, haeo, burn_active):
             return int(min(cfg.ev_max_current_a, max(cfg.ev_force_current_a, base)))
         return base
 
-    # Existing force-current behavior remains for CHEAP_GRID_CHARGE / MAX_EXPORT
-    if cfg.ev_force_current_a > 0 and profiles.goal in (GoalProfile.CHEAP_GRID_CHARGE, GoalProfile.MAX_EXPORT):
+    # MAX_EXPORT means export-first: flexible EV charging must be off.
+    # Manual / Manual-safe overrides have already returned above, so this applies
+    # to automatic policy control and intentionally ignores EV force-current and
+    # HAEO EV target while MAX_EXPORT is active.
+    if profiles.goal == GoalProfile.MAX_EXPORT:
+        return 0
+
+    # Force-current and HAEO EV target remain valid for CHEAP_GRID_CHARGE.
+    if cfg.ev_force_current_a > 0 and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
         return int(min(cfg.ev_force_current_a, cfg.ev_max_current_a))
 
-    if haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal in (GoalProfile.CHEAP_GRID_CHARGE, GoalProfile.MAX_EXPORT):
+    if haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
         return ev_kw_to_selector_current_a(haeo.ev_target_kw, cfg.ev_charger_phases, cfg.ev_max_current_a)
 
     if profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
         return int(cfg.ev_max_current_a)
-
-    if profiles.goal == GoalProfile.MAX_EXPORT:
-        return int(cfg.ev_min_current_a)
 
     return -1
 
