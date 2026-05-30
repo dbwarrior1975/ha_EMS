@@ -157,3 +157,30 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
     assert trace['attrs']['ev']['written'] is True
     assert trace['attrs']['ev']['reason'] == 'restore_min_current'
     assert trace['attrs']['ev']['new_current_a'] == 4
+
+
+@pytest.mark.unit
+def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    state[ENT['actuator_ev_enabled']] = True
+    state[ENT['actuator_ev_current_a']] = 16
+    state[ENT['policy_ev_current_a']] = 0
+    state['input_number.ems_ev_min_current_a'] = 4
+
+    # Simulate policy attrs carried by the HA sensor entity.
+    policy_sensor = ENT['policy_ev_current_a']
+    state[policy_sensor] = 0
+
+    def get_attr(entity_id, attr, default=None):
+        if entity_id == policy_sensor and attr == 'ev_policy_mode':
+            return 'hard_off'
+        return default
+
+    mod['get_attr'] = get_attr
+
+    result = mod['_write_ev_actuator']()
+    assert result['written'] is True
+    assert result['reason'] == 'hard_off'
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 0

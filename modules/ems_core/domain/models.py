@@ -56,6 +56,8 @@ class EmsConfig:
     ev_max_current_a: int = 28
     ev_charger_phases: int = 1
     ev_force_current_a: int = 0
+    ev_hard_off_pv_threshold_kw: float = 1.6
+    ev_hard_off_low_pv_cycles: int = 2
     relay1_power_kw: float = 2.5
     relay2_power_kw: float = 5.0
     relay1_priority: int = 2

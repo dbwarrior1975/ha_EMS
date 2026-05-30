@@ -86,6 +86,15 @@ def _write_ev_actuator():
     current_on = get_bool(ENT['actuator_ev_enabled'])
     current_level = get_int(ENT['actuator_ev_current_a'], 0)
     min_a = get_int(_ent('ev_min_current_a', 'input_number.ems_ev_min_current_a'), 4)
+    get_attr_fn = globals().get('get_attr')
+    if get_attr_fn is None:
+        ev_policy_mode = ''
+    else:
+        ev_policy_mode = get_attr_fn(
+            _ent('policy_ev_current_a', 'sensor.ems_policy_ev_current_a_pyscript'),
+            'ev_policy_mode',
+            '',
+        )
 
     if strategy_a < 0:
         return {
@@ -111,6 +120,26 @@ def _write_ev_actuator():
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
             'new_current_a': strategy_a,
+            'enabled_changed': enabled_changed,
+            'current_changed': current_changed,
+        }
+
+    if ev_policy_mode == 'hard_off':
+        enabled_changed = False
+        current_changed = False
+        if current_on:
+            set_boolean(ENT['actuator_ev_enabled'], False)
+            enabled_changed = True
+        if current_level != 0:
+            set_number(ENT['actuator_ev_current_a'], 0)
+            current_changed = True
+        return {
+            'target': 'ev',
+            'action': 'hard_off',
+            'reason': 'hard_off',
+            'written': enabled_changed or current_changed,
+            'policy_current_a': strategy_a,
+            'new_current_a': 0,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
         }

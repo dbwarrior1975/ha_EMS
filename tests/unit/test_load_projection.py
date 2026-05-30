@@ -62,19 +62,19 @@ def test_cheap_charge_default_ev_is_max_current():
 
 
 @pytest.mark.unit
-def test_max_export_default_ev_is_min_current():
+def test_max_export_default_ev_is_off():
     profiles = make_profiles(goal=GoalProfile.MAX_EXPORT)
     cfg = make_cfg(ev_force_current_a=0, ev_min_current_a=4, ev_max_current_a=28)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 4
+    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 0
 
 
 @pytest.mark.unit
-def test_max_export_force_current_respected():
+def test_max_export_force_current_ignored_and_ev_is_off():
     profiles = make_profiles(goal=GoalProfile.MAX_EXPORT)
     cfg = make_cfg(ev_force_current_a=9, ev_max_current_a=16, ev_min_current_a=4)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 9
+    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 0
 
 
 @pytest.mark.unit

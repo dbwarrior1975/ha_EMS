@@ -17,6 +17,9 @@ ENT = {
     'ev_max_current_a': 'input_number.ems_ev_max_current_a',
     'ev_charger_phases': 'input_number.ems_ev_charger_phases',
     'ev_force_current_a': 'input_number.ems_ev_force_current_a',
+    'ev_hard_off_pv_threshold_kw': 'input_number.ems_ev_hard_off_pv_threshold_kw',
+    'ev_hard_off_low_pv_cycles': 'input_number.ems_ev_hard_off_low_pv_cycles',
+    'pv_power_kw': 'sensor.pv_instant_power_2',
 
     'haeo_stale_timeout_s': 'input_number.ems_haeo_stale_timeout_s',
 

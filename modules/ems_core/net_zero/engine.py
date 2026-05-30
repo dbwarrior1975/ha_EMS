@@ -126,6 +126,52 @@ def net_zero_surplus_policy_active(profiles, effective_fc):
     )
 
 
+def _ev_policy_mode_and_current(
+    profiles, cfg, haeo, *,
+    burn_active,
+    pv_power_kw,
+    ev_hard_off_active,
+    ev_low_pv_cycles,
+    rpc_kw,
+):
+    current_a = ev_strategy_current_a(profiles, cfg, haeo, burn_active)
+
+    if profiles.goal == GoalProfile.MAX_EXPORT and current_a == 0:
+        return 'hard_off', 0, 0, False
+
+    if current_a < 0:
+        return 'skip', current_a, 0, False
+
+    if current_a > 0:
+        return 'burn', current_a, 0, False
+
+    low_pv_threshold = float(cfg.ev_hard_off_pv_threshold_kw)
+    low_pv = pv_power_kw is not None and float(pv_power_kw) < low_pv_threshold
+    next_low_pv_cycles = int(ev_low_pv_cycles) + 1 if low_pv else 0
+
+    hard_off_allowed = (
+        profiles.control == ControlProfile.AUTOMATIC
+        and profiles.goal == GoalProfile.NET_ZERO
+        and profiles.guard == GuardProfile.NORMAL_LIMITS
+        and not burn_active
+        and cfg.ev_force_current_a <= 0
+    )
+
+    if hard_off_allowed and ev_hard_off_active:
+        ev_threshold_kw = max(
+            ((cfg.ev_max_current_a - cfg.ev_min_current_a) * max(cfg.ev_charger_phases, 1) * 230) / 1000.0,
+            0,
+        )
+        if rpc_kw >= ev_threshold_kw:
+            return 'burn', int(cfg.ev_max_current_a), next_low_pv_cycles, False
+        return 'hard_off', 0, next_low_pv_cycles, True
+
+    if hard_off_allowed and next_low_pv_cycles >= int(cfg.ev_hard_off_low_pv_cycles):
+        return 'hard_off', 0, next_low_pv_cycles, True
+
+    return 'restore_min', 0, next_low_pv_cycles, False
+
+
 def compute_net_zero_engine_outputs(
     profiles, cfg, m, haeo, nz, now_ts, *,
     freeze_until_ts,
@@ -136,6 +182,9 @@ def compute_net_zero_engine_outputs(
     relay2_force_on,
     relay1_net_zero_active,
     relay2_net_zero_active,
+    pv_power_kw=None,
+    ev_hard_off_active=False,
+    ev_low_pv_cycles=0,
 ):
     conf_fc = configured_forecast(profiles.control, profiles.forecast)
     eff_fc = effective_forecast(conf_fc, haeo.fresh)
@@ -208,11 +257,21 @@ def compute_net_zero_engine_outputs(
     battery_target_w, battery_write_enabled = _battery_target_and_authority(
         profiles, cfg, m, normalized_haeo, nz
     )
+    ev_policy_mode, ev_current_a, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_current(
+        profiles,
+        cfg,
+        normalized_haeo,
+        burn_active=ev_burn_active,
+        pv_power_kw=pv_power_kw,
+        ev_hard_off_active=ev_hard_off_active,
+        ev_low_pv_cycles=ev_low_pv_cycles,
+        rpc_kw=nz.required_power_consumption_kw,
+    )
 
     return NetZeroOutputs(
         battery_target_w=battery_target_w,
         battery_write_enabled=battery_write_enabled,
-        ev_current_a=ev_strategy_current_a(profiles, cfg, normalized_haeo, ev_burn_active),
+        ev_current_a=ev_current_a,
         relay1_command=relay_strategy_command(profiles, relay1_enabled_import_zero, relay1_force_on, relay1_net_zero_active),
         relay2_command=relay_strategy_command(profiles, relay2_enabled_import_zero, relay2_force_on, relay2_net_zero_active),
         surplus_policy_active=surplus_active,
@@ -231,5 +290,10 @@ def compute_net_zero_engine_outputs(
             'surplus_rpc_kw': nz.required_power_consumption_kw,
             'surplus_rpnz_w': nz.rpnz_w,
             'battery_write_enabled': battery_write_enabled,
+            'ev_policy_mode': ev_policy_mode,
+            'ev_low_pv_cycles': next_low_pv_cycles,
+            'ev_hard_off_active': ev_hard_off_active_next,
+            'pv_power_kw': pv_power_kw,
+            'ev_hard_off_pv_threshold_kw': cfg.ev_hard_off_pv_threshold_kw,
         },
     )

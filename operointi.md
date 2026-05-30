@@ -1,0 +1,349 @@
+# EMS-operointi
+
+## Tarkoitus
+
+Tama dokumentti kuvaa projektin kayttoa, valvontaa ja vianetsintaa nykyisen koodin ja testien perusteella. Kuvaus ei oleta erillisia Home Assistant -automaatioita, joita ei loytynyt taman repon sisalta.
+
+## Operoinnin ohjauspisteet
+
+Keskeiset profiilientiteetit:
+
+1. `input_select.ems_control_profile`
+2. `input_select.ems_goal_profile`
+3. `input_select.ems_forecast_profile`
+4. `input_select.ems_guard_profile`
+
+Keskeiset konfiguraatioentiteetit:
+
+1. `input_number.ems_deadband_w`
+2. `input_number.ems_ramp_max_w`
+3. `input_number.ems_strict_limits_max_w`
+4. `input_number.victron_maksimi_auringon_latausteho`
+5. `input_number.ems_battery_protect_soc`
+6. `input_number.ems_battery_protect_soc_recovery_margin`
+7. `input_number.ems_battery_protect_min_cell_voltage_v`
+8. `input_number.ems_ev_min_current_a`
+9. `input_number.ems_ev_max_current_a`
+10. `input_number.ems_ev_charger_phases`
+11. `input_number.ems_ev_force_current_a`
+12. `input_number.ems_haeo_stale_timeout_s`
+13. `input_number.ems_relay1_power_kw`
+14. `input_number.ems_relay2_power_kw`
+15. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+
+## Kaytossa olevat looppit
+
+Nykyisen tuotantoketjun jarjestys on:
+
+1. `ems_net_zero_shadow.py`
+2. `ems_surplus_latches.py`
+3. `ems_actuator_writers.py`
+
+Kaikki kolme loopia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksista.
+
+## Goal-profile-valinta
+
+Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
+
+Tasta repossa ei loytynyt:
+
+1. `configuration.yaml`
+2. `automations.yaml`
+3. muita YAML-konfiguraatioita
+4. Pyscript-toteutusta, joka tekisi automaattisen goal-switchin
+
+Johtopaatos operoinnin kannalta:
+
+1. goal-profile oletetaan tulevan valmiiksi asetettuna Home Assistantin puolelta
+2. jos automaattinen switcher on olemassa, sita ei voitu todentaa taman projektin sisalta
+
+## Tarkeimmat seurattavat entiteetit
+
+### Mittaukset
+
+1. `sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc`
+2. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage`
+3. `sensor.average_active_power_2`
+4. `sensor.hourly_energy_balance`
+5. `sensor.required_power_consumption`
+6. `sensor.ems_calculated_required_power_for_net_zero`
+
+### Policy-ulostulot
+
+1. `sensor.ems_policy_battery_target_w_pyscript`
+2. `sensor.ems_policy_ev_current_a_pyscript`
+3. `sensor.ems_policy_relay1_command_pyscript`
+4. `sensor.ems_policy_relay2_command_pyscript`
+5. `sensor.ems_policy_decision_trace_pyscript`
+
+### Surplus-tilat
+
+1. `input_datetime.ems_surplus_freeze_until`
+2. `input_boolean.ems_surplus_ev_active`
+3. `input_boolean.ems_surplus_relay1_active`
+4. `input_boolean.ems_surplus_relay2_active`
+
+### Aktuaattorit
+
+1. `number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point`
+2. `switch.charger_control`
+3. `number.charger_current_level`
+4. `switch.relay_1_2`
+5. `switch.relay_2_2`
+
+### Diagnostiikka
+
+1. `sensor.ems_policy_decision_trace_pyscript`
+2. `sensor.ems_actuator_writer_trace`
+3. `sensor.ems_surplus_latch_trace`
+
+## Operatiivinen kayttaytyminen profiileittain
+
+### `AUTOMATIC + NET_ZERO`
+
+Tama on koodin perusteella varsinainen paikallinen neljannesbalanssin optimointitila.
+
+Kayttaytyminen:
+
+1. akun setpoint lasketaan `candidate_sp_net_zero()`-funktion kautta
+2. surplus policy voi aktivoitua vain, jos guard on `NORMAL_LIMITS` ja effective forecast on `NONE`
+3. surplus-kohteiden aktivointi noudattaa prioriteetteja
+4. surplus-kohteiden vapautus tapahtuu kanteisjarjestyksessa
+
+### `MAX_EXPORT`
+
+Nykyisen tuotantokoodin policy-tason semantiikka:
+
+1. akun paikallinen fallback-target on `-4000` W, ellei HAEO syota muuta targetia
+2. EV policy current on `0`
+3. relekomennot ovat `0`
+
+Yllapitajan kannalta taman tilan nykyinen tavoitesemantiikka on dokumentoitava muodossa:
+
+1. EV policy current `0`
+2. charger disabled
+3. current `0`
+4. relays off
+
+Tarkeaa: nykyinen writer-koodi ei ole tahan nahden taysin yhtenainen. Jos EV-laturi on jo paalla, writerin yleinen `0`-polku voi palauttaa currentin minimiin release-semantiiikalla. E2E-goal transition -testi odottaa kuitenkin EV off -lopputulosta `MAX_EXPORT`-tilassa.
+
+### `CHEAP_GRID_CHARGE`
+
+Nykyinen kayttaytyminen:
+
+1. akun paikallinen fallback-target on `100` W
+2. EV oletuksena `ev_max_current_a`
+3. jos `ev_force_current_a > 0`, sita kunnioitetaan
+4. jos HAEO on voimassa, EV-current voidaan johtaa HAEO-targetista
+5. releet pysyvat pois paalta
+
+### `MANUAL`
+
+Nykyinen kayttaytyminen:
+
+1. akkuun ei kirjoiteta writerissa
+2. moottori raportoi `battery_write_enabled=False`
+3. EV-virta tulee `ev_force_current_a`:sta, jos se on yli nollan
+4. muuten EV skipataan
+5. releet seuraavat vain `force_on`-tilaa
+
+### `MANUAL_SAFE`
+
+Nykyinen kayttaytyminen:
+
+1. akkua ei normaalisti muuteta automaattisesti
+2. guard voi kuitenkin clampata akun targetia turvalliseen suuntaan
+3. writerissa on fallback-logiikka, joka sallii kirjoituksen guard-clamp-testausta varten, jos policy-attribuutti ei ole saatavilla
+4. EV kayttaytyy kayttajan nakokulmasta kuten `MANUAL`
+5. releet seuraavat `force_on`-tilaa
+
+## Guard-tilojen operatiivinen merkitys
+
+### `BATTERY_PROTECT`
+
+Aktivoituu, jos:
+
+1. SOC alittaa rajan
+2. tai min-cell voltage alittaa rajan
+3. tai molemmat alittavat rajansa
+
+Operatiivinen vaikutus:
+
+1. akun target clampataan ei-negatiiviseksi
+2. purku estetaan kaytannossa
+3. palautuminen vaatii seka SOC recovery marginin etta min-cell thresholdin tayttymisen
+
+### `DEGRADED`
+
+Aktivoituu stale/invalid Victron- tai SOC-datasta.
+
+Operatiivinen vaikutus:
+
+1. akun target menee arvoon `0`
+2. EV strategy palauttaa `-1`
+3. relay strategy palauttaa `-1`
+4. `dominant_limitation` on `SYSTEM_DEGRADED`
+
+### `STRICT_LIMITS`
+
+Tama on kayttajan pakottama guard-tila. EMS ei overridea sita evaluatorissa.
+
+Operatiivinen vaikutus:
+
+1. akun target clampataan `strict_limits_max_w`-rajan sisaan
+
+## HAEO:n nykyinen operatiivinen rooli
+
+HAEO:n nykyinen rooli on rajattu. Koodin perusteella se tekee seuraavaa:
+
+1. tuo akkutargetin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloihin, jos forecast on tuore
+2. tuo EV-targetin `CHEAP_GRID_CHARGE`-tilaan, jos forecast on tuore
+3. `HORIZON_BY_HAEO` voi pakottaa HAEO-ennusteen konfiguroiduksi, vaikka forecast-profile olisi `NONE`
+
+Koodin perusteella ei pidä sanoa, etta HAEO tekisi taytta `NET_ZERO`-optimointia.
+
+## Surplus-kuormien operointi
+
+Nykyinen kohdejoukko on:
+
+1. EV
+2. RELAY1
+3. RELAY2
+
+Aktivointi- ja vapautusjarjestys riippuu prioriteeteista. Quarter-harnessin oletusasetuksissa prioriteetit ovat:
+
+1. `RELAY1 = 3`
+2. `EV = 2`
+3. `RELAY2 = 1`
+
+Talla asetuksella aktivointijarjestys on:
+
+1. RELAY1
+2. EV
+3. RELAY2
+
+Ja vapautusjarjestys on:
+
+1. RELAY2
+2. EV
+3. RELAY1
+
+## Tarkeimmat diagnostiset tarkastukset
+
+Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-attribuutit:
+
+1. `guard`
+2. `guard_reason`
+3. `dominant_limitation`
+4. `effective_forecast`
+5. `battery_write_enabled`
+6. `surplus_policy_active`
+7. `surplus_dispatch_decision`
+8. `surplus_explanation`
+9. `surplus_freeze_until_ts`
+
+Sen jalkeen tarkasta:
+
+1. `sensor.ems_surplus_latch_trace`
+2. `sensor.ems_actuator_writer_trace`
+
+## Vianetsintaohjeet
+
+### EV ei kaynnisty
+
+Tarkista jarjestyksessa:
+
+1. `goal_profile`
+2. `guard`
+3. `policy_ev_current_a`
+4. `surplus_ev_active`
+5. `actuator_writer_trace.ev`
+
+Tulkitse:
+
+1. `policy_ev_current_a = -1` tarkoittaa skip-tilaa
+2. `policy_ev_current_a = 0` voi tarkoittaa joko release-semantiiikkaa tai `MAX_EXPORT`-off-tavoitetta
+3. `policy_ev_current_a > 0` tarkoittaa aktiivista kirjoituspyyntoa
+
+### EV jaa vaaraan virtaan
+
+Tarkista:
+
+1. `ev_force_current_a`
+2. `goal_profile`
+3. `surplus_ev_active`
+4. `actuator_writer_trace.ev.reason`
+
+Tyypillinen selitys nykykoodissa:
+
+1. NET_ZERO release -polussa writer palauttaa currentin minimiin
+2. MAX_EXPORT-semantiiikassa on ristiriitainen toteutus writerin ja policykoodin valilla
+
+### Releet eivat aktivoidu
+
+Tarkista:
+
+1. `relay*_enabled_import_zero`
+2. `relay*_force_on`
+3. `surplus_r*_active`
+4. `policy_relay*_command`
+5. `actuator_writer_trace.relay*`
+
+### Akku ei reagoi
+
+Tarkista:
+
+1. `battery_write_enabled`
+2. `control_profile`
+3. `guard`
+4. `policy_battery_target_w`
+5. `actuator_victron_setpoint_w`
+6. writerin deadband- ja ramp-arvot
+
+Jos `battery_write_enabled=False`, writer ei kirjoita akulle.
+
+### Järjestelma putoaa `DEGRADED`-tilaan
+
+Tarkista:
+
+1. Victron heartbeatin ika
+2. SOC:n saatavuus ja validius
+3. `guard_reason`
+
+Koodin perusteella `DEGRADED` tulee stale/invalid Victron- tai SOC-datasta.
+
+### HAEO ei vaikuta
+
+Tarkista:
+
+1. `forecast_profile`
+2. `control_profile`
+3. `configured_forecast`
+4. `effective_forecast`
+5. HAEO freshness-lahteiden paivitysajat
+
+Jos `effective_forecast=NONE`, EMS on paikallisessa fallbackissa, vaikka HAEO olisi konfiguroitu.
+
+## Tunnetut ristiriidat ja riskit
+
+1. `MAX_EXPORT`-EV-semantiikka on ristiriitainen policy- ja writer-tason valilla.
+2. Osa yksikkotesteista odottaa vanhaa `MAX_EXPORT -> min current` -kayttaytymista, vaikka tuotantokoodi palauttaa `0`.
+3. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
+4. Repossa on vanhoja artefakteja kuten `__pycache__` ja `.pyc`, jotka voivat hammentaa analyysia.
+
+## Vanhoja artefakteja repossa
+
+Loydetyt artefaktit:
+
+1. useita `__pycache__`-hakemistoja
+2. useita `.pyc`-tiedostoja
+3. vanhaa `shadow_*`-terminologiaa testiharnesseissa
+
+Nama eivat ole operoinnin totuuslahde, mutta ne kannattaa huomioida siivoustarpeena.
+
+## Avoimet kysymykset / jatkokehitys
+
+1. Pitaako `MAX_EXPORT`-tilaan lisata writerissa selkea hard-off-polku EV:lle?
+2. Missa mahdollinen automaattinen goal switcher sijaitsee, jos sellainen on tuotannossa kaytossa?
+3. Tarvitaanko erillinen health-check tai dashboard `guard_reason`, `battery_write_enabled` ja HAEO freshness -seurantaan?
+4. Pitaako vanhat `__pycache__`- ja `.pyc`-artefaktit poistaa reposta?

@@ -26,6 +26,8 @@ def read_config():
         ev_max_current_a=get_int(ENT['ev_max_current_a'], 28),
         ev_charger_phases=get_int(ENT['ev_charger_phases'], 1),
         ev_force_current_a=get_int(ENT['ev_force_current_a'], 0),
+        ev_hard_off_pv_threshold_kw=get_float(ENT['ev_hard_off_pv_threshold_kw'], 1.6),
+        ev_hard_off_low_pv_cycles=get_int(ENT['ev_hard_off_low_pv_cycles'], 2),
         haeo_stale_timeout_s=get_float(ENT['haeo_stale_timeout_s'], 300),
         relay1_power_kw=get_float(ENT['relay1_power_kw'], 2.5),
         relay2_power_kw=get_float(ENT['relay2_power_kw'], 5.0),
@@ -106,6 +108,9 @@ def ems_net_zero_shadow_loop():
         relay2_force_on=get_bool(ENT['relay2_force_on']),
         relay1_net_zero_active=get_bool(ENT['surplus_r1_active']),
         relay2_net_zero_active=get_bool(ENT['surplus_r2_active']),
+        pv_power_kw=get_float(ENT['pv_power_kw'], None),
+        ev_hard_off_active=get_attr(ENT['policy_ev_current_a'], 'ev_policy_mode', '') == 'hard_off',
+        ev_low_pv_cycles=get_attr(ENT['policy_ev_current_a'], 'ev_low_pv_cycles', 0),
     )
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     publish_sensor(ENT['policy_battery_target_w'], outputs.battery_target_w, attrs)
