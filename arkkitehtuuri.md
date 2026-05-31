@@ -121,10 +121,9 @@ Projektin keskeiset mallit:
 
 `GoalProfile`:
 
-1. `IDLE`
-2. `NET_ZERO`
-3. `MAX_EXPORT`
-4. `CHEAP_GRID_CHARGE`
+1. `NET_ZERO`
+2. `MAX_EXPORT`
+3. `CHEAP_GRID_CHARGE`
 
 `ForecastProfile`:
 
@@ -485,5 +484,5 @@ Naita ei kayteta arkkitehtuurin totuuslahteena.
 
 1. Pitaako `ems_net_zero_shadow.py` nimetä uudelleen vastaamaan nykyista rooliaan policy-loopina?
 2. Pitaako writeriin lisata erillinen eksplisiittinen EV hard-off -polku `MAX_EXPORT`-semantiikkaa varten?
-3. Mita `IDLE`-tilan operatiivinen kayttotarkoitus on, koska sille ei loytynyt skenaariotesteja eika erillista dokumentoitua polkua?
+3. Tarvitaanko erillinen `SAFE_OFF`- tai `PAUSED`-kayttotila tulevaisuudessa, jos halutaan yksi eksplisiittinen tapa pysayttaa EMS:n vaikutus ilman manuaalista aktuaattorikohtaista asetusta?
 4. Sijaitseeko mahdollinen automaattinen goal switcher toisessa Home Assistant -konfiguraatiorepossa?

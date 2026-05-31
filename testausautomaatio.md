@@ -264,7 +264,7 @@ Testeista on siivottu vanhaa `shadow_*`-terminologiaa, jotta ne vastaavat paremm
 
 ## Suositeltu korjausjarjestys testien kehitykselle
 
-1. Lisaa erilliset testit `IDLE`-tilalle.
+1. Arvioi tarvitaanko erillinen `SAFE_OFF`- tai `PAUSED`-tila ja lisaa sille testit vain jos sellainen otetaan myohemmin kayttoon.
 2. Lisaa writerille eksplisiittinen testi, joka erottaa:
    `NET_ZERO` release-to-min-current
    ja `MAX_EXPORT` hard-off -semantiikan.

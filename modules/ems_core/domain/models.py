@@ -9,7 +9,6 @@ class ControlProfile:
     HORIZON_BY_HAEO = 'HORIZON_BY_HAEO'
 
 class GoalProfile:
-    IDLE = 'IDLE'
     NET_ZERO = 'NET_ZERO'
     MAX_EXPORT = 'MAX_EXPORT'
     CHEAP_GRID_CHARGE = 'CHEAP_GRID_CHARGE'
