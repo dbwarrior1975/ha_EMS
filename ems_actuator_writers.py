@@ -130,8 +130,10 @@ def _write_ev_actuator():
         if current_on:
             set_boolean(ENT['actuator_ev_enabled'], False)
             enabled_changed = True
-        if current_level != 0:
-            set_number(ENT['actuator_ev_current_a'], 0)
+        # Charger selector cannot be written below its hardware minimum. Keep it
+        # at minimum while disabling the charger switch.
+        if current_level != min_a:
+            set_number(ENT['actuator_ev_current_a'], min_a)
             current_changed = True
         return {
             'target': 'ev',
@@ -139,7 +141,7 @@ def _write_ev_actuator():
             'reason': 'hard_off',
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
-            'new_current_a': 0,
+            'new_current_a': min_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
         }

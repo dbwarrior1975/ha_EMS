@@ -183,4 +183,4 @@ def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
     assert result['written'] is True
     assert result['reason'] == 'hard_off'
     assert state[ENT['actuator_ev_enabled']] is False
-    assert state[ENT['actuator_ev_current_a']] == 0
+    assert state[ENT['actuator_ev_current_a']] == 4

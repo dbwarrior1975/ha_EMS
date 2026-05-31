@@ -125,11 +125,11 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 0,
+                ENT['actuator_ev_current_a']: 4,
             },
             'expect_trace': {
                 ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'hard_off',
-                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 0,
+                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
             },
         },
         {
@@ -142,7 +142,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 0,
+                ENT['actuator_ev_current_a']: 4,
             },
         },
         {
@@ -155,7 +155,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 0,
+                ENT['actuator_ev_current_a']: 4,
             },
         }, 
 
@@ -169,7 +169,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 0,
+                ENT['actuator_ev_current_a']: 4,
             },
         },
 
