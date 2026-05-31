@@ -50,10 +50,10 @@ def _load_writer_module(project_root):
 
     ENT = {
         'policy_battery_target_w': 'sensor.policy_battery',
-        'actuator_victron_setpoint_w': 'input_number.shadow_victron',
+        'actuator_victron_setpoint_w': 'input_number.test_actuator_victron_setpoint_w',
         'policy_ev_current_a': 'sensor.policy_ev',
         'actuator_ev_enabled': 'input_boolean.actuator_ev_enabled',
-        'actuator_ev_current_a': 'input_number.shadow_ev_current',
+        'actuator_ev_current_a': 'input_number.test_actuator_ev_current_a',
         'policy_relay1_command': 'sensor.policy_relay1',
         'policy_relay2_command': 'sensor.policy_relay2',
         'actuator_relay1': 'input_boolean.actuator_relay1',

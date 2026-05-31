@@ -71,6 +71,9 @@ class QuarterScenarioHarness:
         self.store.set_now(self.now)
         self.store.set_attr(entity_id, attrs)
 
+    def set_stale(self, entity_id: str, age_s: float):
+        self.store.last_update_ts[entity_id] = float(self.now) - float(age_s)
+
     def get(self, entity_id, default=None):
         return self.store.get_value(entity_id, default)
 

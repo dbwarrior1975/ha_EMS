@@ -26,10 +26,12 @@ Keskeiset konfiguraatioentiteetit:
 9. `input_number.ems_ev_max_current_a`
 10. `input_number.ems_ev_charger_phases`
 11. `input_number.ems_ev_force_current_a`
-12. `input_number.ems_haeo_stale_timeout_s`
-13. `input_number.ems_relay1_power_kw`
-14. `input_number.ems_relay2_power_kw`
-15. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+12. `input_number.ems_ev_hard_off_pv_threshold_kw`
+13. `input_number.ems_ev_hard_off_low_pv_cycles`
+14. `input_number.ems_haeo_stale_timeout_s`
+15. `input_number.ems_relay1_power_kw`
+16. `input_number.ems_relay2_power_kw`
+17. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
 
 ## Kaytossa olevat looppit
 
@@ -125,7 +127,7 @@ Yllapitajan kannalta taman tilan nykyinen tavoitesemantiikka on dokumentoitava m
 3. current `0`
 4. relays off
 
-Tarkeaa: nykyinen writer-koodi ei ole tahan nahden taysin yhtenainen. Jos EV-laturi on jo paalla, writerin yleinen `0`-polku voi palauttaa currentin minimiin release-semantiiikalla. E2E-goal transition -testi odottaa kuitenkin EV off -lopputulosta `MAX_EXPORT`-tilassa.
+Nykyinen writer-koodi tukee tata semantiikkaa `ev_policy_mode=hard_off` -attribuutilla. Tahan liittyva e2e-goal transition -testi odottaa EV off -lopputulosta `MAX_EXPORT`-tilassa.
 
 ### `CHEAP_GRID_CHARGE`
 
@@ -183,6 +185,7 @@ Operatiivinen vaikutus:
 2. EV strategy palauttaa `-1`
 3. relay strategy palauttaa `-1`
 4. `dominant_limitation` on `SYSTEM_DEGRADED`
+5. latch-loop voi clearata aktiiviset surplus-latchit, mutta writer skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
 
 ### `STRICT_LIMITS`
 
@@ -277,7 +280,7 @@ Tarkista:
 Tyypillinen selitys nykykoodissa:
 
 1. NET_ZERO release -polussa writer palauttaa currentin minimiin
-2. MAX_EXPORT-semantiiikassa on ristiriitainen toteutus writerin ja policykoodin valilla
+2. `hard_off`-polussa writer sammuttaa laturin mutta jattaa selectorin minimiin
 
 ### Releet eivat aktivoidu
 
@@ -326,10 +329,9 @@ Jos `effective_forecast=NONE`, EMS on paikallisessa fallbackissa, vaikka HAEO ol
 
 ## Tunnetut ristiriidat ja riskit
 
-1. `MAX_EXPORT`-EV-semantiikka on ristiriitainen policy- ja writer-tason valilla.
-2. Osa yksikkotesteista odottaa vanhaa `MAX_EXPORT -> min current` -kayttaytymista, vaikka tuotantokoodi palauttaa `0`.
-3. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
-4. Repossa on vanhoja artefakteja kuten `__pycache__` ja `.pyc`, jotka voivat hammentaa analyysia.
+1. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
+2. `DEGRADED`-tilassa writer skiptaa rele- ja EV-actuatorien aktiivisen pakottamisen, vaikka latchit clearataan. Tama kannattaa huomioida turvallisuusriskina ja erillisena tuotantopaatoksena.
+3. Repossa on vanhoja artefakteja kuten `__pycache__` ja `.pyc`, jotka voivat hammentaa analyysia.
 
 ## Vanhoja artefakteja repossa
 
@@ -343,7 +345,6 @@ Nama eivat ole operoinnin totuuslahde, mutta ne kannattaa huomioida siivoustarpe
 
 ## Avoimet kysymykset / jatkokehitys
 
-1. Pitaako `MAX_EXPORT`-tilaan lisata writerissa selkea hard-off-polku EV:lle?
-2. Missa mahdollinen automaattinen goal switcher sijaitsee, jos sellainen on tuotannossa kaytossa?
-3. Tarvitaanko erillinen health-check tai dashboard `guard_reason`, `battery_write_enabled` ja HAEO freshness -seurantaan?
-4. Pitaako vanhat `__pycache__`- ja `.pyc`-artefaktit poistaa reposta?
+1. Missa mahdollinen automaattinen goal switcher sijaitsee, jos sellainen on tuotannossa kaytossa?
+2. Tarvitaanko erillinen health-check tai dashboard `guard_reason`, `battery_write_enabled`, `ev_policy_mode` ja HAEO freshness -seurantaan?
+3. Pitaako vanhat `__pycache__`- ja `.pyc`-artefaktit poistaa reposta?

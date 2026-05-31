@@ -7,11 +7,11 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 @pytest.mark.scenario
 def test_cheap_grid_charge_local_quarter(project_root):
     """
-    Quarter scenario for MAX_EXPORT without forecast:
-    - battery target should stay at local export fallback (-4000 W)
-    - EV charging policy should be 0 A
-    - EV actuator should be disabled / kept off
+    Quarter scenario for CHEAP_GRID_CHARGE without forecast:
+    - battery target should stay at local cheap-charge fallback (100 W)
+    - EV charging policy should stay at ev_max_current_a
     - relays should stay off
+    - explanation should stay in local cheap-charge mode
     """
 
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
@@ -36,7 +36,9 @@ def test_max_export_local_quarter(project_root):
     """
     Quarter scenario for MAX_EXPORT without forecast:
     - battery target should stay at local export fallback (-4000 W)
-    - EV current should stay at ev_min_current_a
+    - EV policy should stay at 0 A
+    - relays should stay off
+    - explanation should stay in local export-oriented mode
     - relays should stay off
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)

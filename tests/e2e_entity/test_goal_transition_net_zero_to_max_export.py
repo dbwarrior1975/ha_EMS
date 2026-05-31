@@ -5,25 +5,21 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
 @pytest.mark.scenario
-def test_goal_transition_net_zero_ev_burn_to_max_export_min_current_and_clear_latches(project_root):
+def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latches(project_root):
     """
     Scenario: NET_ZERO surplus EV burn is active, then goal changes to MAX_EXPORT.
 
     Current expected semantics:
     - NET_ZERO surplus policy becomes inactive when goal != NET_ZERO
     - surplus latch loop clears active surplus latches
-    - MAX_EXPORT EV policy is ev_min_current_a, not EV off
-    - EV charger remains enabled if it was already enabled
-    - EV actuator current is reduced from max current to min current
+    - MAX_EXPORT EV policy is 0 A with hard-off semantics
+    - EV charger is disabled if it was already enabled
+    - EV current selector is restored to hardware minimum while charger is off
     - relay actuators are released/off
-
-    If product semantics later change so MAX_EXPORT means EV OFF, this test should
-    be updated together with ems_core.net_zero.load_projection.ev_strategy_current_a().
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
-    # EV starts already enabled so we can distinguish "set current to min" from
-    # "turn charger on" behaviour after the goal transition.
+    # EV starts already enabled so the transition can prove hard-off behaviour.
     h.set_entities({
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 4,

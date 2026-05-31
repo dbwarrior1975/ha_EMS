@@ -28,16 +28,13 @@ pytest -q tests
 
 ## Testiajon tila tassa analyysissa
 
-Testien ajoa yritettiin suorittaa projektin juuressa komennolla `pytest -q`.
+Tassa dokumenttipaivityksessa testejä ei ajettu. Kuvaus perustuu testikoodin ja tuotantokoodin lukemiseen.
 
-Tulos:
+Projektissa on kuitenkin suora testiajon entrypoint `run_pytest.sh`, joka ajaa komennon:
 
-1. `pytest` ei ollut saatavilla PATH:ssa
-2. `python`-komento osoitti Windows Store -aliasiin, ei kaytettavaan Python-asennukseen
-3. `py`-launcheria ei ollut saatavilla
-4. projektissa ei nayttanyt olevan omaa `.venv`- tai `venv`-hakemistoa
-
-Johtopaatos: testejä ei voitu ajaa taman istunnon ymparistossa. Tama dokumentti perustuu testikoodin analyysiin, ei onnistuneeseen testiajoon.
+```bash
+pytest -q tests
+```
 
 ## Testikokonaisuuden rakenne
 
@@ -128,7 +125,7 @@ Tiedosto `test_entity_map_contract.py` on nykytilassa placeholder.
 5. `CHEAP_GRID_CHARGE` EV-polut
 6. relay-komentojen perussemantiikan
 
-Tarkeaa: tiedostossa on myos ristiriitaisia, vanhentuneita `MAX_EXPORT`-odotuksia, ks. erillinen kohta alla.
+Tarkeaa: yksikkotestit on jo paivitetty nykyiseen `MAX_EXPORT -> EV off` -semantiikkaan. Vanhentuneita kuvauksia loytyy edelleen joistakin e2e-testien nimista ja docstringeista, ks. erillinen kohta alla.
 
 ### Writer-semantiiikka
 
@@ -173,55 +170,49 @@ Nama muodostavat projektin todellisen regressiosuojan rungon.
 
 ## Havaitut ristiriidat testien ja koodin valilla
 
-### 1. `MAX_EXPORT`-EV-semantiikka: yksikkotestit vastaan tuotantokoodi
+### 1. `MAX_EXPORT`-EV-semantiikka: yksikkotestit on jo paivitetty
 
 Tiedosto: `tests/unit/test_load_projection.py`
 
-Seuraavat testit ovat ristiriidassa nykyisen tuotantokoodin kanssa:
+Nykyiset yksikkotestit ovat linjassa tuotantokoodin kanssa:
 
-1. `test_max_export_default_ev_is_min_current`
-2. `test_max_export_force_current_respected`
+1. `test_max_export_default_ev_is_off`
+2. `test_max_export_force_current_ignored_and_ev_is_off`
 
-Ristiriidan syy:
+Ne odottavat samaa kuin tuotantokoodi: `MAX_EXPORT` palauttaa EV-policyksi `0`.
 
-1. tuotantokoodi `modules/ems_core/net_zero/load_projection.py` palauttaa `MAX_EXPORT`-tilassa aina `0`
-2. testit odottavat min-currentia tai force-currentin kunnioittamista
-
-Tama on selva nykytilan ristiriita ja tulee kasitella teknisena velkana tai regressiovaarana.
-
-### 2. Goal transition -testin docstring on vanhentunut
+### 2. Goal transition -testi on paivitetty nykyiseen hard-off-semantiiikkaan
 
 Tiedosto: `tests/e2e_entity/test_goal_transition_net_zero_to_max_export.py`
 
-Docstring sanoo, etta `MAX_EXPORT EV policy is ev_min_current_a, not EV off`, mutta testin assertit odottavat nykyista EV off -kayttaytymista:
+Testi odottaa nykyista EV off -kayttaytymista:
 
 1. `policy_ev_current_a == 0`
 2. `actuator_ev_enabled == False`
 3. `actuator_ev_current_a == 0`
 
-Testin varsinainen odotus on siis linjassa nykyisen tavoitesemantiikan kanssa, mutta dokumentoiva teksti on vanhentunut.
+Testin nimi, docstring ja assertit ovat nyt linjassa nykyisen tavoitesemantiikan kanssa.
 
-### 3. Non-net-zero -testin ensimmaisen docstringin virhe
+### 3. Non-net-zero -testin docstringit on paivitetty
 
 Tiedosto: `tests/e2e_entity/test_non_net_zero_modes_quarter.py`
 
-Ensimmainen testi koskee `CHEAP_GRID_CHARGE`-tilaa, mutta docstring alkaa tekstilla `Quarter scenario for MAX_EXPORT without forecast`.
+`CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-skenaarioiden docstringit vastaavat nyt nykyista tuotantosemantiikkaa.
 
-Kyse on dokumentaatiovirheesta testissa.
-
-### 4. Writerin `strategy 0` -semantiikka vastaan `MAX_EXPORT`-off-tavoite
+### 4. Writerin `strategy 0` -semantiikka vastaan `hard_off`-semantiikka
 
 Tiedosto: `ems_actuator_writers.py`
 
-Writer tulkitsee EV-strategian `0` yleisesti "release surplus command" -tapauksena ja palauttaa virran minimiin, jos laturi on paalla.
+Writer tulkitsee EV-strategian `0` kahdella eri tavalla:
 
-Samaan aikaan osa e2e-skenaarioista dokumentoi ja odottaa, etta `MAX_EXPORT` sammuttaa EV-latauksen kokonaan.
+1. ilman attribuuttia kyse on release-semantiiikasta ja virta palautetaan minimiin, jos laturi on paalla
+2. attribuutilla `ev_policy_mode=hard_off` kyse on hard-off -semantiikasta ja laturi sammutetaan
 
-Tama on nykyinen toteutuksellinen ristiriita koodissa, ei pelkka testivirhe.
+Toteutuksellinen ristiriita ei siis ole enaa yleinen `MAX_EXPORT`-ongelma. Jaljella on ennen kaikkea testien nimien ja docstringien vanhentuneisuus.
 
-## Placeholder-testit teknisena velkana
+## Aiemmat placeholder-testit
 
-Seuraavat tiedostot sisaltavat placeholder-testeja, jotka kaytannossa eivat varmista toiminnallisuutta:
+Seuraavat tiedostot olivat aiemmin placeholder-tasolla, mutta niihin on nyt toteutettu oikeat testit:
 
 1. `tests/unit/test_battery_controller_edges.py`
 2. `tests/unit/test_haeo_horizon.py`
@@ -230,13 +221,18 @@ Seuraavat tiedostot sisaltavat placeholder-testeja, jotka kaytannossa eivat varm
 5. `tests/e2e_entity/test_optimizer_degraded_fallback.py`
 6. `tests/e2e_entity/test_system_degraded_safe_mode.py`
 
-Nama tulee kasitella teknisena velkana. Nykytilassa ne vain palauttavat `assert True`.
-
 ## Testikattavuuden puutteet
 
 ### Battery controller
 
-Vaikka `modules/ems_core/net_zero/battery_controller.py` sisaltaa aidon laskentalogiikan, sen varsinainen edge-case-kattavuus puuttuu. Placeholder-tiedosto ei varmista esimerkiksi:
+Vaikka `modules/ems_core/net_zero/battery_controller.py` sisaltaa aidon laskentalogiikan, lisakattavuudelle on yha tarvetta. Nykyiset testit kattavat esimerkiksi:
+
+1. deadbandin raja- ja sisapuolen
+2. ramppiklippauksen
+3. 100 W kvantisoinnin
+4. minimi-floor-kayttaytymisen
+
+Jatkossa lisaarvoa toisi esimerkiksi:
 
 1. deadbandin tarkkoja rajoja
 2. ramppiklippausta
@@ -245,11 +241,11 @@ Vaikka `modules/ems_core/net_zero/battery_controller.py` sisaltaa aidon laskenta
 
 ### HAEO-integraatio
 
-`haeo_horizon.py`-tiedostolle ei ole nykytilassa oikeita toteutettuja testejä forecast-parsinnasta, aikavyohykkeista tai stale-detektiosta.
+`haeo_horizon.py`-tiedostolle on nyt perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
 
 ### Contract-kattavuus
 
-`entity_map`-sopimustestit ovat placeholder-tasolla, joten nykyinen testipaketti ei oikeasti varmista:
+`entity_map`-sopimustesteilla on nyt perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
 
 1. etta kaikki tarvittavat entityt ovat mapissa
 2. ettei ID-konflikteja ole
@@ -257,27 +253,19 @@ Vaikka `modules/ems_core/net_zero/battery_controller.py` sisaltaa aidon laskenta
 
 ### DEGRADED- ja anti-flap-kattavuus
 
-Nimetyt tiedostot ovat olemassa, mutta niiden testit ovat placeholder-tasolla. Talla hetkella puuttuu oikea regressiosuoja esimerkiksi:
+Nimetyt tiedostot eivat ole enaa placeholder-tasolla. Talla hetkella lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 
 1. stale-data safe mode -ketjulle e2e-tasolla
 2. hysteresis- ja anti-flap-kayttaytymiselle
 
 ## Vanha terminologia testeissa
 
-Testeissa on edelleen vanhaa `shadow_*`-terminologiaa, erityisesti writer-testien fake-entiteeteissa:
-
-1. `input_number.shadow_victron`
-2. `input_number.shadow_ev_current`
-
-Tama ei vastaa projektin nykyista paatermistöa, jossa kaytetaan `actuator_*`- ja `surplus_*`-käsitteita.
+Testeista on siivottu vanhaa `shadow_*`-terminologiaa, jotta ne vastaavat paremmin projektin nykyista `actuator_*`- ja `surplus_*`-paatermistoa.
 
 ## Suositeltu korjausjarjestys testien kehitykselle
 
-1. Korjaa `MAX_EXPORT`-EV-semantiikan ristiriita ensin joko koodissa tai vanhentuneissa yksikkotesteissa.
-2. Korvaa placeholder-testit oikeilla testeilla tiedostoissa:
-   `test_battery_controller_edges.py`, `test_haeo_horizon.py`, `test_entity_map_contract.py`, `test_hysteresis_anti_flap.py`, `test_optimizer_degraded_fallback.py`, `test_system_degraded_safe_mode.py`.
-3. Lisaa erilliset testit `IDLE`-tilalle.
-4. Lisaa writerille eksplisiittinen testi, joka erottaa:
+1. Lisaa erilliset testit `IDLE`-tilalle.
+2. Lisaa writerille eksplisiittinen testi, joka erottaa:
    `NET_ZERO` release-to-min-current
    ja `MAX_EXPORT` hard-off -semantiikan.
 
@@ -292,7 +280,6 @@ Naita ei tulisi kayttaa testitulosten tai nykytilan totuuslahteena.
 
 ## Avoimet kysymykset / jatkokehitys
 
-1. Onko tarkoitus, etta `MAX_EXPORT`-tilassa EV sammuu aina kovasti pois, vai saako writerin restore-min -polku edelleen elaa joissain tapauksissa?
-2. Ovatko puuttuvat HAEO- ja Home Assistant -konfiguraatiot toisessa repossa, jolloin osa testikattavuudesta kuuluu sinne?
-3. Pitaako quarter-harnessiin lisata aidot HAEO-skenaariot ja `DEGRADED`-e2e-skenaariot?
-4. Pitaako vanhat `shadow_*`-testitermit siivota, jotta testi- ja tuotantoterminologia vastaavat toisiaan?
+1. Ovatko puuttuvat HAEO- ja Home Assistant -konfiguraatiot toisessa repossa, jolloin osa testikattavuudesta kuuluu sinne?
+2. Pitaako quarter-harnessiin lisata aidot HAEO-skenaariot ja `DEGRADED`-e2e-skenaariot?
+3. Tarvitaanko lisaa contract- tai e2e-kattavuutta ennen ensimmaista releasea?

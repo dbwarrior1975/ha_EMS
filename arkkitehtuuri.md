@@ -89,6 +89,11 @@ Vastuut:
 
 Writer-loop toimii policy-entiteettien perusteella. Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on erityisen tarkea.
 
+EV-writerissa policy-attribuutti `ev_policy_mode` erottaa kaksi eri `0 A`-semantiikkaa:
+
+1. `ev_policy_mode == hard_off` -> laturi kytketaan pois paalta, mutta current-selector pidetaan hardware-minimissa
+2. muu `0 A` -> surplus release -semantiikka, jossa virta palautetaan minimiin vain jos laturi on jo paalla
+
 ## Domain-mallit
 
 Tiedosto: `modules/ems_core/domain/models.py`
@@ -141,7 +146,7 @@ Nykyinen mappaus kayttaa nimenomaan `actuator_*`- ja `surplus_*`-avaimia. Keskei
 
 1. profiilit: `control_profile`, `goal_profile`, `forecast_profile`, `guard_profile`
 2. konfiguraatio: `deadband_w`, `ramp_max_w`, `strict_limits_max_w`, `max_solar_charge_w`, `ev_*`, `relay*_power_kw`, `*_priority`
-3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`
+3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`, `pv_power_kw`
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_*`
 6. surplus-tilat: `surplus_freeze_until`, `surplus_ev_active`, `surplus_r1_active`, `surplus_r2_active`
@@ -294,7 +299,7 @@ Tama on nykyisen tuotantosemantiikan ydin. Yllapidon kannalta tama tarkoittaa ta
 3. current `0`
 4. relays off
 
-Tarkeaa: writerin toteutus ei ole tahan nahden täysin yhtenainen, ks. alla kohta "Tunnettu ristiriita".
+Nykyinen writer-toteutus tukee taman tavoitesemantiikan `hard_off`-attribuutilla.
 
 ### `CHEAP_GRID_CHARGE`
 
@@ -303,6 +308,19 @@ Semantiikka:
 1. jos `ev_force_current_a > 0`, sita kunnioitetaan
 2. muuten HAEO voi syottaa EV-kohdevirran `ev_kw_to_selector_current_a()`-funktion kautta
 3. ilman forcea ja ilman HAEO:ta oletus on `ev_max_current_a`
+
+### EV hard-off low-PV -kayttaytyminen
+
+Tiedosto: `modules/ems_core/net_zero/engine.py` ja writer `ems_actuator_writers.py`.
+
+Nykyinen tuotantoketju tukee EV:lle erillista low-PV hard-off -tilaa.
+
+Semantiikka:
+
+1. policy voi julkaista `policy_ev_current_a = 0`
+2. samalla attribuutti `ev_policy_mode` voi olla `hard_off`
+3. writer sammuttaa silloin laturin, mutta jattaa current-selectorin minimiin
+4. attribuutti `ev_low_pv_cycles` kertoo montako matalan PV:n sykliä on kertynyt
 
 ## Releohjauksen semantiikka
 
@@ -364,6 +382,7 @@ Nykyinen koodista todennettava rooli:
 3. EV HAEO-target voidaan lukea `haeo_ev_battery_power_active`-entiteetin `forecast`-attribuutista
 4. HAEO vaikuttaa akkusetpointiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
 5. HAEO vaikuttaa EV-ohjaukseen `CHEAP_GRID_CHARGE`-tilassa
+6. `HORIZON_BY_HAEO` voi pakottaa forecast-konfiguraation HAEO:on vaikka `forecast_profile` olisi `NONE`
 
 Tarkeaa: koodin perusteella HAEO ei tee taytta `NET_ZERO`-optimointia. `NET_ZERO`-tilassa seliteteksti on nimenomaan paikallisen policylogiikan hallitsema, vaikka HAEO olisi nakyvissa.
 
@@ -432,19 +451,14 @@ Koodista ei loytynyt automaattista goal switcheria:
 
 Johtopaatos: jos automaattinen goal switcher on olemassa, se sijaitsee taman repon ulkopuolella. Taman projektin perusteella voidaan dokumentoida vain se, etta EMS lukee valmiiksi asetetun goal-profiilin Home Assistantin entiteetista.
 
-## Tunnettu ristiriita nykytilassa
+## Nykyinen EV 0 A -semantiikka
 
-`MAX_EXPORT`-EV-semantiikassa on koodin sisainen ristiriita:
+Nykytilassa EV:n `0 A` policy jakautuu kahteen eri writer-polkuun:
 
-1. `modules/ems_core/net_zero/load_projection.py` palauttaa `MAX_EXPORT`-tilassa EV-policyksi `0`
-2. e2e-skenaariot odottavat EV off -kayttaytymista goal-vaihdon yhteydessa
-3. mutta `ems_actuator_writers.py` tulkitsee `strategy_a == 0` -tilan yleisesti "release surplus command" -polkuna
-4. tassa polussa writer palauttaa virran minimiin, jos laturi on paalla, eika sammuta laturia eksplisiittisesti kaikissa tapauksissa
+1. `ev_policy_mode=hard_off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
+2. ilman `hard_off`-attribuuttia -> writer tulkitsee tilanteen surplus release -polkuna ja palauttaa currentin minimiin vain jos laturi on jo paalla
 
-Taman vuoksi arkkitehtuurissa on erotettava toisistaan:
-
-1. policy-tason tavoitesemantiikka
-2. writer-tason nykyinen toteutus
+Tama semantiikka on nyt linjassa nykyisten e2e-skenaarioiden kanssa.
 
 ## Poistettu / vanha terminologia
 
@@ -453,8 +467,7 @@ Repossa on edelleen vanhaa `shadow_*`-terminologiaa, mutta sita ei pideta nykyar
 Havaittuja jalmia:
 
 1. tiedostonimi `ems_net_zero_shadow.py`
-2. testien fake-entiteetit kuten `input_number.shadow_victron` ja `input_number.shadow_ev_current`
-3. joitakin testikommentteja ja smoke-testin tiedostonimia
+2. joitakin testikommentteja ja smoke-testin tiedostonimia
 
 Nykyarkkitehtuurin kuvaus tassa dokumentissa kayttaa nimiä `policy_*`, `actuator_*` ja `surplus_*`.
 
