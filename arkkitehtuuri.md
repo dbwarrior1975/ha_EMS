@@ -2,7 +2,7 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin nykyarkkitehtuurin suoraan lahdekoodeista ja testeista. Kuvaus perustuu erityisesti tiedostoihin `ems_net_zero_shadow.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
+Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_net_zero_shadow.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
 
 Projektin ydin on kolmen loopin ketju:
 
@@ -10,7 +10,7 @@ Projektin ydin on kolmen loopin ketju:
 2. surplus latch -loop paivittaa sisaiset aktiivisuuslukot
 3. actuator writer -loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
-Vaikka tiedostonimi `ems_net_zero_shadow.py` sisaltaa vanhan `shadow`-termin, nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
+Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
 
 ## Kokonaiskuva
 
@@ -441,14 +441,7 @@ Sisaltaa esimerkiksi:
 
 ## Goal-profile-valinta
 
-Tassa repossa goal-profile luetaan entiteetista `input_select.ems_goal_profile`.
-
-Koodista ei loytynyt automaattista goal switcheria:
-
-1. ei Pyscript-tiedostoista
-2. ei projektin sisaisista YAML-tiedostoista, koska YAML-konfiguraatiota ei loytynyt lainkaan
-
-Johtopaatos: jos automaattinen goal switcher on olemassa, se sijaitsee taman repon ulkopuolella. Taman projektin perusteella voidaan dokumentoida vain se, etta EMS lukee valmiiksi asetetun goal-profiilin Home Assistantin entiteetista.
+EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 ## Nykyinen EV 0 A -semantiikka
 
@@ -458,27 +451,6 @@ Nykytilassa EV:n `0 A` policy jakautuu kahteen eri writer-polkuun:
 2. ilman `hard_off`-attribuuttia -> writer tulkitsee tilanteen surplus release -polkuna ja palauttaa currentin minimiin vain jos laturi on jo paalla
 
 Tama semantiikka on nyt linjassa nykyisten e2e-skenaarioiden kanssa.
-
-## Poistettu / vanha terminologia
-
-Repossa on edelleen vanhaa `shadow_*`-terminologiaa, mutta sita ei pideta nykyarkkitehtuurin paatermistona.
-
-Havaittuja jalmia:
-
-1. tiedostonimi `ems_net_zero_shadow.py`
-2. joitakin testikommentteja ja smoke-testin tiedostonimia
-
-Nykyarkkitehtuurin kuvaus tassa dokumentissa kayttaa nimiä `policy_*`, `actuator_*` ja `surplus_*`.
-
-## Vanhoja artefakteja repossa
-
-Analyysissa loytyi seuraavia vanhoja artefakteja:
-
-1. useita `__pycache__`-hakemistoja
-2. useita `.pyc`-tiedostoja Python 3.10- ja 3.12-versioille
-3. `run_pytest.sh`
-
-Naita ei kayteta arkkitehtuurin totuuslahteena.
 
 ## Avoimet kysymykset / jatkokehitys
 

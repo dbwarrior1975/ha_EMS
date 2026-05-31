@@ -2,7 +2,7 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin nykyisen testirakenteen, havaittavat kattavuudet, ristiriidat ja teknisen velan suoraan testikoodista.
+Tama dokumentti kuvaa projektin testirakenteen, kattavuuden painopisteet ja jatkokehitystarpeet.
 
 ## Testien kaynnistys
 
@@ -26,16 +26,6 @@ pytest -q tests
 
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
-## Testiajon tila tassa analyysissa
-
-Tassa dokumenttipaivityksessa testejä ei ajettu. Kuvaus perustuu testikoodin ja tuotantokoodin lukemiseen.
-
-Projektissa on kuitenkin suora testiajon entrypoint `run_pytest.sh`, joka ajaa komennon:
-
-```bash
-pytest -q tests
-```
-
 ## Testikokonaisuuden rakenne
 
 ### Yksikkotestit
@@ -51,7 +41,7 @@ Aidosti toteutettuja kohteita:
 5. `test_surplus_allocator.py`
 6. `test_decision_trace.py`
 
-Placeholder-tyyppisia tiedostoja:
+Keskeisia aidosti toteutettuja kohteita ovat myos:
 
 1. `test_battery_controller_edges.py`
 2. `test_haeo_horizon.py`
@@ -87,7 +77,7 @@ Tiedosto `test_top_level_files.py` varmistaa esimerkiksi:
 
 Hakemisto: `tests/contract/`
 
-Tiedosto `test_entity_map_contract.py` on nykytilassa placeholder.
+Tiedosto `test_entity_map_contract.py` varmistaa perustason entity-map-sopimusta.
 
 ## Mita on oikeasti testattu
 
@@ -124,8 +114,6 @@ Tiedosto `test_entity_map_contract.py` on nykytilassa placeholder.
 4. `NET_ZERO` force-current floor -polun
 5. `CHEAP_GRID_CHARGE` EV-polut
 6. relay-komentojen perussemantiikan
-
-Tarkeaa: yksikkotestit on jo paivitetty nykyiseen `MAX_EXPORT -> EV off` -semantiikkaan. Vanhentuneita kuvauksia loytyy edelleen joistakin e2e-testien nimista ja docstringeista, ks. erillinen kohta alla.
 
 ### Writer-semantiiikka
 
@@ -168,71 +156,11 @@ Aidosti toteutettuja e2e/skenaariotesteja ovat ainakin:
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 
-## Havaitut ristiriidat testien ja koodin valilla
-
-### 1. `MAX_EXPORT`-EV-semantiikka: yksikkotestit on jo paivitetty
-
-Tiedosto: `tests/unit/test_load_projection.py`
-
-Nykyiset yksikkotestit ovat linjassa tuotantokoodin kanssa:
-
-1. `test_max_export_default_ev_is_off`
-2. `test_max_export_force_current_ignored_and_ev_is_off`
-
-Ne odottavat samaa kuin tuotantokoodi: `MAX_EXPORT` palauttaa EV-policyksi `0`.
-
-### 2. Goal transition -testi on paivitetty nykyiseen hard-off-semantiiikkaan
-
-Tiedosto: `tests/e2e_entity/test_goal_transition_net_zero_to_max_export.py`
-
-Testi odottaa nykyista EV off -kayttaytymista:
-
-1. `policy_ev_current_a == 0`
-2. `actuator_ev_enabled == False`
-3. `actuator_ev_current_a == 0`
-
-Testin nimi, docstring ja assertit ovat nyt linjassa nykyisen tavoitesemantiikan kanssa.
-
-### 3. Non-net-zero -testin docstringit on paivitetty
-
-Tiedosto: `tests/e2e_entity/test_non_net_zero_modes_quarter.py`
-
-`CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-skenaarioiden docstringit vastaavat nyt nykyista tuotantosemantiikkaa.
-
-### 4. Writerin `strategy 0` -semantiikka vastaan `hard_off`-semantiikka
-
-Tiedosto: `ems_actuator_writers.py`
-
-Writer tulkitsee EV-strategian `0` kahdella eri tavalla:
-
-1. ilman attribuuttia kyse on release-semantiiikasta ja virta palautetaan minimiin, jos laturi on paalla
-2. attribuutilla `ev_policy_mode=hard_off` kyse on hard-off -semantiikasta ja laturi sammutetaan
-
-Toteutuksellinen ristiriita ei siis ole enaa yleinen `MAX_EXPORT`-ongelma. Jaljella on ennen kaikkea testien nimien ja docstringien vanhentuneisuus.
-
-## Aiemmat placeholder-testit
-
-Seuraavat tiedostot olivat aiemmin placeholder-tasolla, mutta niihin on nyt toteutettu oikeat testit:
-
-1. `tests/unit/test_battery_controller_edges.py`
-2. `tests/unit/test_haeo_horizon.py`
-3. `tests/contract/test_entity_map_contract.py`
-4. `tests/e2e_entity/test_hysteresis_anti_flap.py`
-5. `tests/e2e_entity/test_optimizer_degraded_fallback.py`
-6. `tests/e2e_entity/test_system_degraded_safe_mode.py`
-
 ## Testikattavuuden puutteet
 
 ### Battery controller
 
-Vaikka `modules/ems_core/net_zero/battery_controller.py` sisaltaa aidon laskentalogiikan, lisakattavuudelle on yha tarvetta. Nykyiset testit kattavat esimerkiksi:
-
-1. deadbandin raja- ja sisapuolen
-2. ramppiklippauksen
-3. 100 W kvantisoinnin
-4. minimi-floor-kayttaytymisen
-
-Jatkossa lisaarvoa toisi esimerkiksi:
+Nykyiset testit kattavat esimerkiksi:
 
 1. deadbandin tarkkoja rajoja
 2. ramppiklippausta
@@ -241,11 +169,11 @@ Jatkossa lisaarvoa toisi esimerkiksi:
 
 ### HAEO-integraatio
 
-`haeo_horizon.py`-tiedostolle on nyt perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
+`haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
 
 ### Contract-kattavuus
 
-`entity_map`-sopimustesteilla on nyt perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
+`entity_map`-sopimustesteilla on perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
 
 1. etta kaikki tarvittavat entityt ovat mapissa
 2. ettei ID-konflikteja ole
@@ -253,14 +181,10 @@ Jatkossa lisaarvoa toisi esimerkiksi:
 
 ### DEGRADED- ja anti-flap-kattavuus
 
-Nimetyt tiedostot eivat ole enaa placeholder-tasolla. Talla hetkella lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
+Lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 
 1. stale-data safe mode -ketjulle e2e-tasolla
 2. hysteresis- ja anti-flap-kayttaytymiselle
-
-## Vanha terminologia testeissa
-
-Testeista on siivottu vanhaa `shadow_*`-terminologiaa, jotta ne vastaavat paremmin projektin nykyista `actuator_*`- ja `surplus_*`-paatermistoa.
 
 ## Suositeltu korjausjarjestys testien kehitykselle
 
@@ -268,15 +192,6 @@ Testeista on siivottu vanhaa `shadow_*`-terminologiaa, jotta ne vastaavat paremm
 2. Lisaa writerille eksplisiittinen testi, joka erottaa:
    `NET_ZERO` release-to-min-current
    ja `MAX_EXPORT` hard-off -semantiikan.
-
-## Vanhoja artefakteja repossa
-
-Testauksen nakokulmasta havaittuja vanhoja artefakteja:
-
-1. useita `__pycache__`-hakemistoja
-2. useita `.pyc`-tiedostoja
-
-Naita ei tulisi kayttaa testitulosten tai nykytilan totuuslahteena.
 
 ## Avoimet kysymykset / jatkokehitys
 

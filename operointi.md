@@ -2,7 +2,7 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin kayttoa, valvontaa ja vianetsintaa nykyisen koodin ja testien perusteella. Kuvaus ei oleta erillisia Home Assistant -automaatioita, joita ei loytynyt taman repon sisalta.
+Tama dokumentti kuvaa projektin kayttoa, valvontaa ja vianetsintaa.
 
 ## Operoinnin ohjauspisteet
 
@@ -46,18 +46,6 @@ Kaikki kolme loopia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksi
 ## Goal-profile-valinta
 
 Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
-
-Tasta repossa ei loytynyt:
-
-1. `configuration.yaml`
-2. `automations.yaml`
-3. muita YAML-konfiguraatioita
-4. Pyscript-toteutusta, joka tekisi automaattisen goal-switchin
-
-Johtopaatos operoinnin kannalta:
-
-1. goal-profile oletetaan tulevan valmiiksi asetettuna Home Assistantin puolelta
-2. jos automaattinen switcher on olemassa, sita ei voitu todentaa taman projektin sisalta
 
 ## Tarkeimmat seurattavat entiteetit
 
@@ -332,16 +320,6 @@ Jos `effective_forecast=NONE`, EMS on paikallisessa fallbackissa, vaikka HAEO ol
 1. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
 2. `DEGRADED`-tilassa writer skiptaa rele- ja EV-actuatorien aktiivisen pakottamisen, vaikka latchit clearataan. Tama kannattaa huomioida turvallisuusriskina ja erillisena tuotantopaatoksena.
 3. Repossa on vanhoja artefakteja kuten `__pycache__` ja `.pyc`, jotka voivat hammentaa analyysia.
-
-## Vanhoja artefakteja repossa
-
-Loydetyt artefaktit:
-
-1. useita `__pycache__`-hakemistoja
-2. useita `.pyc`-tiedostoja
-3. vanhaa `shadow_*`-terminologiaa testiharnesseissa
-
-Nama eivat ole operoinnin totuuslahde, mutta ne kannattaa huomioida siivoustarpeena.
 
 ## Avoimet kysymykset / jatkokehitys
 
