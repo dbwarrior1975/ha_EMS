@@ -7,7 +7,7 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 @pytest.mark.scenario
 def test_net_zero_quarter_with_internal_latches(project_root):
     """
-    Data-driven 30s-step quarter scenario for the *current* production chain:
+    Absolute-time NET_ZERO internal-latch scenario for the current production chain:
 
         ems_net_zero_shadow.py
             -> ems_surplus_latches.py
@@ -16,7 +16,7 @@ def test_net_zero_quarter_with_internal_latches(project_root):
     Goal story:
     - start AUTOMATIC + NET_ZERO with no surplus loads active
     - internal latch loop converts ACTIVATE_* and RELEASE_* dispatches to active booleans
-    - next steps consume those booleans so allocator state advances without external automations
+    - later steps consume those booleans so allocator state advances without external automations
     - EV is restored to min current when its surplus burn is released
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
@@ -29,7 +29,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
 
     steps = [
         {
-            'note': 't0 activate relay1 and create freeze/latch',
+            'at_s': 0,
+            'note': 'T0 create RELAY1 activation decision and latch state',
             'set': {
                 ENT['required_power_consumption_kw']: 3.5,
                 ENT['rpnz_w']: 500,
@@ -45,7 +46,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             'expect_freeze_present': True,
         },
         {
-            'note': 't30 relay1 active -> activate ev',
+            'at_s': 30,
+            'note': 'T30 RELAY1 is visible and EV activation decision is created',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
@@ -62,7 +64,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             },
         },
         {
-            'note': 't60 relay1 + ev active -> activate relay2',
+            'at_s': 60,
+            'note': 'T60 RELAY1 and EV are visible and RELAY2 activation decision is created',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
@@ -79,7 +82,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             },
         },
         {
-            'note': 't90 collapse surplus -> release relay2 first',
+            'at_s': 90,
+            'note': 'T90 surplus collapse triggers RELAY2 release first',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -94,7 +98,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             },
         },
         {
-            'note': 't120 next release is ev; latch becomes false',
+            'at_s': 120,
+            'note': 'T120 next release is EV and the EV latch becomes false',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -109,7 +114,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             },
         },
         {
-            'note': 't150 ev no longer active -> policy current 0, writer restores min current, relay1 gets released',
+            'at_s': 150,
+            'note': 'T150 EV policy current drops to zero, writer restores min current, and RELAY1 is released',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -128,7 +134,8 @@ def test_net_zero_quarter_with_internal_latches(project_root):
             },
         },
         {
-            'note': 't180 all latches false and outputs quiet',
+            'at_s': 180,
+            'note': 'T180 all latches are false and outputs are quiet',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -144,7 +151,7 @@ def test_net_zero_quarter_with_internal_latches(project_root):
     ]
 
     for idx, step in enumerate(steps):
-        h.step(set_values=step.get('set', {}), note=step.get('note', f'step-{idx}'))
+        h.step(set_values=step.get('set', {}), note=step.get('note', f'step-{idx}'), at_s=step.get('at_s'))
 
         for entity_id, expected in step.get('expect_values', {}).items():
             actual = h.get(entity_id)
