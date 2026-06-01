@@ -47,6 +47,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
 
     steps = [
         {
+            'at_s': 0,
             'note': 't0 baseline: no surplus loads active and nothing forced',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
@@ -69,6 +70,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': False,
         },
         {
+            'at_s': 30,
             'note': 't30 rpc is 3kw which is still below relay2 threshold 5kw, so nothing triggers',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
@@ -91,6 +93,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': False,
         },
         {
+            'at_s': 60,
             'note': 't60 user forces relay2 on and relay1 must not react immediately',
             'set': {
                 ENT['relay2_force_on']: True,
@@ -115,6 +118,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_freeze_entity_present': True,
         },
         {
+            'at_s': 90,
             'note': 't90 freeze boundary: relay1 may start activating (forced relay2 stays on)',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
@@ -135,6 +139,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': True,
         },
         {
+            'at_s': 120,
             'note': 't120 freeze is over and relay1 can activate with enough rpc',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
@@ -155,6 +160,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': True,
         },
         {
+            'at_s': 150,
             'note': 't150 state is stable while relay1 and forced relay2 stay on',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
@@ -174,6 +180,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': True,
         },
         {
+            'at_s': 180,
             'note': 't180 rpnz collapse wont releases relay1  during freeze time',
             'set': {
                 ENT['required_power_consumption_kw']: -2.0,
@@ -194,6 +201,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
 
         {
+            'at_s': 210,
             'note': 't210 rpnz collapse releases relay1after freeze tie while relay2 remains user-forced',
             'set': {
                 ENT['required_power_consumption_kw']: -2.0,
@@ -214,6 +222,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         
         {
+            'at_s': 240,
             'note': 't240 user change relay2 user-forced to disabled and relay2 changes to off',
             'set': {
                 ENT['relay2_force_on']: False,
@@ -237,6 +246,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
 
         
         {
+            'at_s': 270,
             'note': 't270 RPC is now triggering RELAY2',
             'set': {
                 ENT['required_power_consumption_kw']: 8.0,
@@ -259,6 +269,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
 
         
         {
+            'at_s': 300,
             'note': 't300 freeze is over and also realy1 is triggered',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
@@ -281,6 +292,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay2_force_on': False,
         },
         {
+            'at_s': 330,
             'note': 't330 relay2 activation is now visible after latch update and freeze time preventes relay1',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
@@ -304,7 +316,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
     ]
 
     for idx, step in enumerate(steps):
-        h.step(set_values=step.get('set', {}), note=step['note'])
+        h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
         for entity_id, expected in step.get('expect_values', {}).items():
             actual = h.get(entity_id)

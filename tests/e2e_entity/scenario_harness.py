@@ -89,7 +89,9 @@ class QuarterScenarioHarness:
             'attrs': copy.deepcopy(self.store.attrs),
         }
 
-    def step(self, set_values: dict | None = None, note: str = ''):
+    def step(self, set_values: dict | None = None, note: str = '', at_s: float | None = None):
+        if at_s is not None:
+            self.now = float(at_s)
         self.store.set_now(self.now)
         if set_values:
             self.set_entities(set_values)
@@ -100,7 +102,8 @@ class QuarterScenarioHarness:
 
         snap = self.snapshot(note=note)
         self.history.append(snap)
-        self.now += self.step_s
+        if at_s is None:
+            self.now += self.step_s
         self.store.set_now(self.now)
         return snap
 
