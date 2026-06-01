@@ -50,11 +50,12 @@ class QuarterScenarioHarness:
     - ems_actuator_writers.py consumes policy outputs and updates actuator/shadow entities
     """
 
-    def __init__(self, project_root: Path, start_ts: float = 0.0, step_s: int = 30):
+    def __init__(self, project_root: Path, start_ts: float = 0.0, step_s: int = 30, cfg_overrides: dict | None = None):
         self.project_root = Path(project_root)
         self.store = FakeEntityStore()
         self.now = float(start_ts)
         self.step_s = int(step_s)
+        self.cfg_overrides = dict(cfg_overrides or {})
         self.history = []
 
         self.policy_mod = self._load_module(self.project_root / 'ems_net_zero_shadow.py', kind='policy')
@@ -156,6 +157,28 @@ class QuarterScenarioHarness:
             ENT['actuator_relay1']: False,
             ENT['actuator_relay2']: False,
         }
+        cfg_entities = {
+            'deadband_w': ENT['deadband_w'],
+            'ramp_max_w': ENT['ramp_max_w'],
+            'strict_limits_max_w': ENT['strict_limits_max_w'],
+            'max_solar_charge_w': ENT['max_solar_charge_w'],
+            'ev_min_current_a': ENT['ev_min_current_a'],
+            'ev_max_current_a': ENT['ev_max_current_a'],
+            'ev_charger_phases': ENT['ev_charger_phases'],
+            'ev_force_current_a': ENT['ev_force_current_a'],
+            'ev_hard_off_pv_threshold_kw': ENT['ev_hard_off_pv_threshold_kw'],
+            'ev_hard_off_low_pv_cycles': ENT['ev_hard_off_low_pv_cycles'],
+            'haeo_stale_timeout_s': ENT['haeo_stale_timeout_s'],
+            'relay1_power_kw': ENT['relay1_power_kw'],
+            'relay2_power_kw': ENT['relay2_power_kw'],
+            'relay1_priority': ENT['relay1_priority'],
+            'relay2_priority': ENT['relay2_priority'],
+            'ev_priority': ENT['ev_priority'],
+        }
+        for cfg_key, value in self.cfg_overrides.items():
+            entity_id = cfg_entities.get(cfg_key)
+            if entity_id is not None:
+                defaults[entity_id] = value
         for k, v in defaults.items():
             self.store.set_value(k, v)
 
@@ -212,6 +235,14 @@ class QuarterScenarioHarness:
             if val in (None, 'unknown', 'unavailable', 'none', ''):
                 return default
             return int(float(val))
+
+        if 'surplus_freeze_s' in self.cfg_overrides:
+            get_int_original = get_int
+
+            def get_int(entity_id, default=0):
+                if default == 30:
+                    return int(self.cfg_overrides['surplus_freeze_s'])
+                return get_int_original(entity_id, default)
 
         def get_str(entity_id, default=''):
             val = self.store.get_value(entity_id, default)

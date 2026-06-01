@@ -31,6 +31,7 @@ def read_config():
         haeo_stale_timeout_s=get_float(ENT['haeo_stale_timeout_s'], 300),
         relay1_power_kw=get_float(ENT['relay1_power_kw'], 2.5),
         relay2_power_kw=get_float(ENT['relay2_power_kw'], 5.0),
+        surplus_freeze_s=get_int(ENT['surplus_freeze_s'], 30),
         ev_priority=get_int(ENT['ev_priority'], 3),
         relay1_priority=get_int(ENT['relay1_priority'], 2),
         relay2_priority=get_int(ENT['relay2_priority'], 1),
@@ -111,6 +112,8 @@ def ems_net_zero_shadow_loop():
         pv_power_kw=get_float(ENT['pv_power_kw'], None),
         ev_hard_off_active=get_attr(ENT['policy_ev_current_a'], 'ev_policy_mode', '') == 'hard_off',
         ev_low_pv_cycles=get_attr(ENT['policy_ev_current_a'], 'ev_low_pv_cycles', 0),
+        prev_relay1_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay1_force_on', False),
+        prev_relay2_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay2_force_on', False),
     )
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     publish_sensor(ENT['policy_battery_target_w'], outputs.battery_target_w, attrs)

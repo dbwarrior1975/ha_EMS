@@ -195,3 +195,53 @@ def test_engine_max_export_haeo_battery_target_and_explanation():
     )
     assert out.battery_target_w == -2500
     assert out.explanation == 'Export-oriented policy with HAEO forecast assistance'
+
+
+@pytest.mark.unit
+def test_engine_force_rising_edge_sets_freeze_and_blocks_immediate_activation():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(surplus_freeze_s=30)
+    m = make_m()
+    nz = make_nz(rpnz_w=1000, required_power_consumption_kw=10.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 100.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_enabled_import_zero=True,
+        relay2_enabled_import_zero=True,
+        relay1_force_on=True,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        prev_relay1_force_on=False,
+        prev_relay2_force_on=False,
+    )
+
+    assert out.attrs['surplus_freeze_until_ts'] == 130.0
+    assert out.surplus_dispatch_decision == 'NOOP'
+
+
+@pytest.mark.unit
+def test_engine_force_without_rising_edge_allows_activation_without_new_freeze():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(surplus_freeze_s=30)
+    m = make_m()
+    nz = make_nz(rpnz_w=1000, required_power_consumption_kw=10.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 100.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_enabled_import_zero=True,
+        relay2_enabled_import_zero=True,
+        relay1_force_on=True,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        prev_relay1_force_on=True,
+        prev_relay2_force_on=False,
+    )
+
+    assert out.attrs['surplus_freeze_until_ts'] == 130.0
+    assert out.surplus_dispatch_decision == 'ACTIVATE_EV'

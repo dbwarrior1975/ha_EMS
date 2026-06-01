@@ -172,6 +172,28 @@ def _ev_policy_mode_and_current(
     return 'restore_min', 0, next_low_pv_cycles, False
 
 
+def _apply_force_rising_edge_freeze(
+    now_ts,
+    freeze_until_ts,
+    freeze_s,
+    relay1_force_on,
+    relay2_force_on,
+    prev_relay1_force_on,
+    prev_relay2_force_on,
+):
+    freeze_until = freeze_until_ts
+    rising_edge = (relay1_force_on and (not prev_relay1_force_on)) or (
+        relay2_force_on and (not prev_relay2_force_on)
+    )
+    if rising_edge:
+        target_freeze = now_ts + freeze_s
+        if freeze_until is None:
+            freeze_until = target_freeze
+        else:
+            freeze_until = max(float(freeze_until), float(target_freeze))
+    return freeze_until
+
+
 def compute_net_zero_engine_outputs(
     profiles, cfg, m, haeo, nz, now_ts, *,
     freeze_until_ts,
@@ -185,6 +207,8 @@ def compute_net_zero_engine_outputs(
     pv_power_kw=None,
     ev_hard_off_active=False,
     ev_low_pv_cycles=0,
+    prev_relay1_force_on=False,
+    prev_relay2_force_on=False,
 ):
     conf_fc = configured_forecast(profiles.control, profiles.forecast)
     eff_fc = effective_forecast(conf_fc, haeo.fresh)
@@ -234,9 +258,19 @@ def compute_net_zero_engine_outputs(
 
     surplus_active = net_zero_surplus_policy_active(profiles, eff_fc)
 
+    effective_freeze_until_ts = _apply_force_rising_edge_freeze(
+        now_ts=now_ts,
+        freeze_until_ts=freeze_until_ts,
+        freeze_s=cfg.surplus_freeze_s,
+        relay1_force_on=relay1_force_on,
+        relay2_force_on=relay2_force_on,
+        prev_relay1_force_on=prev_relay1_force_on,
+        prev_relay2_force_on=prev_relay2_force_on,
+    )
+
     surplus_inp = SurplusDispatchInput(
         policy_active=surplus_active,
-        freeze_until_ts=freeze_until_ts,
+        freeze_until_ts=effective_freeze_until_ts,
         rpc_kw=nz.required_power_consumption_kw,
         rpnz_w=nz.rpnz_w,
         targets=targets,
@@ -286,7 +320,11 @@ def compute_net_zero_engine_outputs(
         attrs={
             'configured_forecast': conf_fc,
             'active_stack': active_stack(targets),
-            'surplus_freeze_until_ts': surplus_decision.freeze_until_ts,
+            'surplus_freeze_until_ts': (
+                surplus_decision.freeze_until_ts
+                if surplus_decision.freeze_until_ts is not None
+                else effective_freeze_until_ts
+            ),
             'surplus_rpc_kw': nz.required_power_consumption_kw,
             'surplus_rpnz_w': nz.rpnz_w,
             'battery_write_enabled': battery_write_enabled,
@@ -295,5 +333,7 @@ def compute_net_zero_engine_outputs(
             'ev_hard_off_active': ev_hard_off_active_next,
             'pv_power_kw': pv_power_kw,
             'ev_hard_off_pv_threshold_kw': cfg.ev_hard_off_pv_threshold_kw,
+            'prev_relay1_force_on': bool(relay1_force_on),
+            'prev_relay2_force_on': bool(relay2_force_on),
         },
     )

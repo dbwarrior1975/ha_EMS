@@ -25,6 +25,7 @@ ENT = {
 
     'relay1_power_kw': 'input_number.ems_relay1_power_kw',
     'relay2_power_kw': 'input_number.ems_relay2_power_kw',
+    'surplus_freeze_s': 'input_number.ems_surplus_freeze_s',
     'relay1_priority': 'input_number.ems_surplus_relay1_priority',
     'relay2_priority': 'input_number.ems_surplus_relay2_priority',
     'ev_priority': 'input_number.ems_surplus_ev_priority',
