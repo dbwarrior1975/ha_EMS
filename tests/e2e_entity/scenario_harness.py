@@ -174,6 +174,7 @@ class QuarterScenarioHarness:
             'haeo_stale_timeout_s': ENT['haeo_stale_timeout_s'],
             'relay1_power_kw': ENT['relay1_power_kw'],
             'relay2_power_kw': ENT['relay2_power_kw'],
+            'surplus_freeze_s': ENT['surplus_freeze_s'],
             'relay1_priority': ENT['relay1_priority'],
             'relay2_priority': ENT['relay2_priority'],
             'ev_priority': ENT['ev_priority'],
@@ -238,14 +239,6 @@ class QuarterScenarioHarness:
             if val in (None, 'unknown', 'unavailable', 'none', ''):
                 return default
             return int(float(val))
-
-        if 'surplus_freeze_s' in self.cfg_overrides:
-            get_int_original = get_int
-
-            def get_int(entity_id, default=0):
-                if default == 30:
-                    return int(self.cfg_overrides['surplus_freeze_s'])
-                return get_int_original(entity_id, default)
 
         def get_str(entity_id, default=''):
             val = self.store.get_value(entity_id, default)

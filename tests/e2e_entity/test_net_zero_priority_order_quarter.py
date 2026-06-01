@@ -7,11 +7,12 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 @pytest.mark.scenario
 def test_net_zero_priority_order_one_quarter(project_root):
     """
-    Quarter story:
+    Absolute-time NET_ZERO priority story:
     - RELAY1 (priority 3) activates first
     - EV (priority 2) activates second when its threshold is reached
     - RELAY2 (priority 1) activates third
     - when surplus collapses, release order is RELAY2 -> EV -> RELAY1
+    - decision, latch visibility, and actuator visibility are separated when useful
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
@@ -23,71 +24,95 @@ def test_net_zero_priority_order_one_quarter(project_root):
 
     steps = [
         {
-            'note': 't0 activate RELAY1',
+            'at_s': 0,
+            'note': 'T0 create RELAY1 activation decision',
             'set': {
                 ENT['required_power_consumption_kw']: 3.5,
                 ENT['rpnz_w']: 500,
             },
-            'expect': {ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1'},
+            'expect': {
+                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
+                ENT['surplus_r1_active']: True,
+            },
         },
         {
-            'note': 't30 activate EV',
+            'at_s': 30,
+            'note': 'T30 RELAY1 is visible and EV activation decision is created',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
             },
             'expect': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+                ENT['surplus_ev_active']: True,
                 ENT['policy_relay1_command']: 1,
                 ENT['actuator_relay1']: True,
             },
         },
         {
-            'note': 't60 activate RELAY2',
+            'at_s': 60,
+            'note': 'T60 EV is visible and RELAY2 activation decision is created',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
             },
             'expect': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
+                ENT['surplus_r2_active']: True,
                 ENT['policy_ev_current_a']: 28,
                 ENT['actuator_ev_current_a']: 28,
             },
         },
         {
-            'note': 't90 release RELAY2 first',
+            'at_s': 90,
+            'note': 'T90 surplus collapse creates RELAY2 release decision first',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
-            'expect': {ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY2'},
+            'expect': {
+                ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY2',
+                ENT['surplus_r2_active']: False,
+            },
         },
         {
-            'note': 't120 release EV second',
+            'at_s': 120,
+            'note': 'T120 EV is released second while EV current is still visible in this step',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
-            'expect': {ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV'},
+            'expect': {
+                ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV',
+                ENT['surplus_ev_active']: False,
+                ENT['policy_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 28,
+            },
         },
         {
-            'note': 't150 release RELAY1 last',
+            'at_s': 150,
+            'note': 'T150 RELAY1 is released last and EV current returns to zero policy',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
             'expect': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
+                ENT['surplus_r1_active']: False,
                 ENT['policy_ev_current_a']: 0,
             },
         },
         {
-            'note': 't180 final quiet step',
+            'at_s': 180,
+            'note': 'T180 final quiet step with all surplus loads released',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
             'expect': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_ev_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
@@ -96,7 +121,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
 
     observed_dispatches = []
     for idx, step in enumerate(steps):
-        h.step(set_values=step.get('set', {}), note=step['note'])
+        h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
         for entity_id, expected in step['expect'].items():
             actual = h.get(entity_id)
             assert actual == expected, (

@@ -7,17 +7,18 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 @pytest.mark.scenario
 def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
     """
-    Quarter-step NET_ZERO scenario for user-forced RELAY2.
+    Absolute-time NET_ZERO scenario for user-forced RELAY2.
 
     Scenario intent:
-    1. t0 no surplus latches are active
-    2. priorities are RELAY2=3, RELAY1=2, EV=1
-    3. t30 RPC rises, but stays below RELAY2 activation threshold so nothing triggers
-    4. t60 user forces RELAY2 on; surplus freeze is set and RELAY1 must not react immediately
-    5. t90 freeze is still active; RELAY1 remains off
-    6. t120 freeze is over; RELAY1 may activate when RPC allows
-    7. t150 state remains stable for one step
-    8. t180 RPNZ collapse releases RELAY1 while forced RELAY2 stays on
+    1. T0/T30 stay below RELAY2 threshold with no surplus activations.
+    2. T60 user forces RELAY2 on, which creates a force-triggered surplus freeze.
+    3. T74 proves the force freeze still blocks RELAY1 activation just before expiry.
+    4. T90 shows RELAY1 activation decision can be created after the force freeze expires.
+    5. T120/T150 show RELAY1 visibly on while RELAY2 remains user-forced.
+    6. T180/T210 show RPNZ collapse triggers RELAY1 release and the release becomes visible.
+    7. T240 removes user force so RELAY2 returns to ordinary surplus eligibility.
+    8. T270/T284 show RELAY2 reactivation and the new freeze that blocks RELAY1 again.
+    9. T300/T301/T330 show RELAY1 reactivation after that freeze and the resulting stable state.
     """
     h = QuarterScenarioHarness(
         project_root=project_root,
@@ -29,6 +30,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
     h.set_entities({
         ENT['goal_profile']: 'NET_ZERO',
         ENT['forecast_profile']: 'NONE',
+        ENT['surplus_freeze_s']: 15,
         ENT['relay2_priority']: 3,
         ENT['relay1_priority']: 2,
         ENT['ev_priority']: 1,
@@ -71,7 +73,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         {
             'at_s': 30,
-            'note': 't30 rpc is 3kw which is still below relay2 threshold 5kw, so nothing triggers',
+            'note': 't30 RPC is 3 kW, still below the 5 kW RELAY2 threshold',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 500.0,
@@ -94,7 +96,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         {
             'at_s': 60,
-            'note': 't60 user forces relay2 on and relay1 must not react immediately',
+            'note': 't60 user forces RELAY2 on and RELAY1 must not react immediately',
             'set': {
                 ENT['relay2_force_on']: True,
                 ENT['required_power_consumption_kw']: 3.0,
@@ -118,20 +120,41 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_freeze_entity_present': True,
         },
         {
-            'at_s': 90,
-            'note': 't90 freeze boundary: relay1 may start activating (forced relay2 stays on)',
+            'at_s': 74,
+            'note': 't74 force freeze is still active and RELAY1 must remain off',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: 2500.0,
             },
-            'expect_freeze_ts': 105.0,            
             'expect_values': {
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 1,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: True,
             },
+            'expect_freeze_ts': 75.0,
+            'expect_dispatch_decision': 'NOOP',
+            'expect_dispatch_explanation': 'Freeze active -> wait for measurements to settle',
+            'expect_next_target': 'RELAY1',
+            'expect_prev_relay1_force_on': False,
+            'expect_prev_relay2_force_on': True,
+        },
+        {
+            'at_s': 90,
+            'note': 't90 force freeze has expired and RELAY1 activation decision is created',
+            'set': {
+                ENT['required_power_consumption_kw']: 3.0,
+                ENT['rpnz_w']: 500.0,
+                ENT['grid_power_w']: 2500.0,
+            },
+            'expect_values': {
+                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay2_command']: 1,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: True,
+            },
+            'expect_freeze_ts': 105.0,
             'expect_dispatch_decision': 'ACTIVATE_RELAY1',
             'expect_dispatch_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
             'expect_next_target': 'RELAY1',
@@ -140,19 +163,20 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         {
             'at_s': 120,
-            'note': 't120 freeze is over and relay1 can activate with enough rpc',
+            'note': 't120 RELAY1 activation is now visible and RELAY2 stays forced on',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },
-             'expect_freeze_ts': 105.0,           
             'expect_dispatch_decision': 'NOOP',
             'expect_dispatch_explanation': 'Waiting for EV; raw RPC below threshold',
             'expect_next_target': 'EV',
@@ -161,13 +185,15 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         {
             'at_s': 150,
-            'note': 't150 state is stable while relay1 and forced relay2 stay on',
+            'note': 't150 state is stable while RELAY1 and forced RELAY2 stay on',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
                 ENT['actuator_relay1']: True,
@@ -181,7 +207,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         },
         {
             'at_s': 180,
-            'note': 't180 rpnz collapse wont releases relay1  during freeze time',
+            'note': 't180 RPNZ collapse triggers RELAY1 release decision while RELAY2 stays forced on',
             'set': {
                 ENT['required_power_consumption_kw']: -2.0,
                 ENT['rpnz_w']: 0.0,
@@ -202,13 +228,15 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
 
         {
             'at_s': 210,
-            'note': 't210 rpnz collapse releases relay1after freeze tie while relay2 remains user-forced',
+            'note': 't210 RELAY1 release is now visible while RELAY2 remains user-forced',
             'set': {
                 ENT['required_power_consumption_kw']: -2.0,
                 ENT['rpnz_w']: -0.005,
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 1,
                 ENT['actuator_relay1']: False,
@@ -223,7 +251,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         
         {
             'at_s': 240,
-            'note': 't240 user change relay2 user-forced to disabled and relay2 changes to off',
+            'note': 't240 user removes RELAY2 force and RELAY2 turns off',
             'set': {
                 ENT['relay2_force_on']: False,
                 ENT['required_power_consumption_kw']: -3.0,
@@ -231,12 +259,13 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
-            'expect_freeze_ts': 105.0,
             'expect_dispatch_decision': 'NOOP',
             'expect_dispatch_explanation': 'Waiting for RELAY2; raw RPC below threshold',
             'expect_next_target': 'RELAY2',
@@ -247,7 +276,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         
         {
             'at_s': 270,
-            'note': 't270 RPC is now triggering RELAY2',
+            'note': 't270 RPC now triggers RELAY2 through ordinary surplus logic',
             'set': {
                 ENT['required_power_consumption_kw']: 8.0,
                 ENT['rpnz_w']: 0.015,
@@ -255,6 +284,8 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             },
              'expect_freeze_ts': 285.0,           
             'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: True,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
                 ENT['actuator_relay1']: False,
@@ -266,11 +297,58 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_prev_relay1_force_on': False,
             'expect_prev_relay2_force_on': False,
         },
+        {
+            'at_s': 284,
+            'note': 't284 RELAY2 freeze is still active and prevents RELAY1 activation',
+            'set': {
+                ENT['required_power_consumption_kw']: 3.0,
+                ENT['rpnz_w']: 0.115,
+                ENT['grid_power_w']: -500.0,
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: True,
+                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay2_command']: 1,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: True,
+            },
+            'expect_freeze_ts': 285.0,
+            'expect_dispatch_decision': 'NOOP',
+            'expect_dispatch_explanation': 'Freeze active -> wait for measurements to settle',
+            'expect_next_target': 'RELAY1',
+            'expect_prev_relay1_force_on': False,
+            'expect_prev_relay2_force_on': False,
+        },
 
         
         {
             'at_s': 300,
-            'note': 't300 freeze is over and also realy1 is triggered',
+            'note': 't300 RELAY2 is on and RELAY1 activation has already reached latch state',
+            'set': {
+                ENT['required_power_consumption_kw']: 3.0,
+                ENT['rpnz_w']: 0.215,
+                ENT['grid_power_w']: -500.0,
+            },
+            'expect_values': {
+                ENT['surplus_r2_active']: True,
+                ENT['surplus_r1_active']: True,
+                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay2_command']: 1,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: True,
+            },
+                     
+             'expect_freeze_ts': 315.0,            
+            'expect_dispatch_decision': 'ACTIVATE_RELAY1',
+            'expect_dispatch_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
+            'expect_next_target': 'RELAY1',
+            'expect_prev_relay1_force_on': False,
+            'expect_prev_relay2_force_on': False,
+        },
+        {
+            'at_s': 301,
+            'note': 't301 RELAY1 command is already visible while freeze still blocks further surplus activation',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 0.215,
@@ -279,21 +357,21 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_values': {
                 ENT['surplus_r1_active']: True,
                 ENT['surplus_r2_active']: True,
-                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
-                ENT['actuator_relay1']: False,
+                ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },
-            'expect_freeze_ts': 315.0,            
-            'expect_dispatch_decision': 'ACTIVATE_RELAY1',
-            'expect_dispatch_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-            'expect_next_target': 'RELAY1',
+            'expect_freeze_ts': 315.0,
+            'expect_dispatch_decision': 'NOOP',
+            'expect_dispatch_explanation': 'Freeze active -> wait for measurements to settle',
+            'expect_next_target': 'EV',
             'expect_prev_relay1_force_on': False,
             'expect_prev_relay2_force_on': False,
         },
         {
             'at_s': 330,
-            'note': 't330 relay2 activation is now visible after latch update and freeze time preventes relay1',
+            'note': 't330 RELAY1 activation is now visible and both relays are stably on',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.115,
