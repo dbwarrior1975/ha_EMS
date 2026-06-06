@@ -33,7 +33,7 @@ Keskeiset konfiguraatioentiteetit:
 16. `input_number.ems_relay2_power_kw`
 17. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
 
-## Kaytossa olevat looppit
+## Kaytossa olevat komponentit
 
 Nykyisen tuotantoketjun jarjestys on:
 
@@ -41,7 +41,7 @@ Nykyisen tuotantoketjun jarjestys on:
 2. `ems_surplus_latches.py`
 3. `ems_actuator_writers.py`
 
-Kaikki kolme loopia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksista.
+Kaikki kolme komponenttia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksista.
 
 ## Goal-profile-valinta
 
@@ -173,7 +173,7 @@ Operatiivinen vaikutus:
 2. EV strategy palauttaa `-1`
 3. relay strategy palauttaa `-1`
 4. `dominant_limitation` on `SYSTEM_DEGRADED`
-5. latch-loop voi clearata aktiiviset surplus-latchit, mutta writer skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
+5. latch state updater voi clearata aktiiviset surplus-latchit, mutta actuator applier skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
 
 ### `STRICT_LIMITS`
 

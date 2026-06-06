@@ -4,7 +4,7 @@ Tama muistio kuvaa, miten nykyinen EMS-ketju etenee yhdessa skenaariostepissa ja
 
 ## Ydinmalli
 
-Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme loopia tassa jarjestyksessa:
+Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme komponenttia tassa jarjestyksessa:
 
 1. `ems_policy_engine_loop()`
 2. `ems_surplus_latches_loop()`
@@ -13,8 +13,8 @@ Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme loopia tassa jarje
 Tasta seuraa perusmalli:
 
 1. Policy laskee paatokset stepin alun tilasta.
-2. Latch-loop toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
-3. Writer-loop kirjoittaa actuatorit policy-outputtien perusteella.
+2. Latch state updater toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
+3. Actuator applier kirjoittaa actuatorit policy-outputtien perusteella.
 
 ## Tarkein seuraus
 
@@ -55,7 +55,7 @@ Siksi on mahdollista, etta samassa stepissa ovat kaikki totta:
 - `surplus_ev_active == False`
 - writer trace kertoo edelleen `already_matching` ja `new_current_a == 28`
 
-Tama ei ole ristiriita, vaan seurausta loop-jarjestyksesta.
+Tama ei ole ristiriita, vaan seurausta komponenttien ajojarjestyksesta.
 
 ## Releiden logiikka
 

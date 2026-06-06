@@ -4,11 +4,11 @@
 
 Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_policy_engine.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
 
-Projektin ydin on kolmen loopin ketju:
+Projektin ydin on kolmen paakomponentin ketju:
 
-1. policy-loop laskee EMS:n tavoiteohjaukset
-2. surplus latch -loop paivittaa sisaiset aktiivisuuslukot
-3. actuator writer -loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
+1. policy engine laskee EMS:n tavoiteohjaukset
+2. surplus latch state updater paivittaa sisaiset aktiivisuuslukot
+3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
 
@@ -16,11 +16,11 @@ Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteett
 
 ```mermaid
 flowchart LR
-    HA[Home Assistant entityt] --> P[ems_policy_engine.py\npolicy-loop]
+    HA[Home Assistant entityt] --> P[ems_policy_engine.py\npolicy engine]
     P --> POL[policy_* sensorit]
-    POL --> L[ems_surplus_latches.py\nlatch-loop]
+    POL --> L[ems_surplus_latches.py\nlatch state updater]
     L --> SUR[surplus_* tilat\n+ freeze_until]
-    POL --> W[ems_actuator_writers.py\nwriter-loop]
+    POL --> W[ems_actuator_writers.py\nactuator applier]
     SUR --> W
     W --> ACT[actuator_* entiteetit]
     P --> TRACE[policy_decision_trace]
@@ -30,7 +30,7 @@ flowchart LR
 
 ## Paakomponentit
 
-### 1. Policy-loop
+### 1. Policy Engine
 
 Tiedosto: `ems_policy_engine.py`
 
@@ -63,20 +63,20 @@ Julkaistavat keskeiset policy-entiteetit:
 10. `surplus_explanation_pys`
 11. `surplus_dispatch_decision_pys`
 
-### 2. Surplus latch -loop
+### 2. Surplus Latch State Updater
 
 Tiedosto: `ems_surplus_latches.py`
 
 Vastuut:
 
-1. lukee policy-loopin tuottaman dispatch-paatoeksen
+1. lukee policy engine -komponentin tuottaman dispatch-paatoeksen
 2. muuntaa `ACTIVATE_*`, `RELEASE_*` ja `CLEAR_ALL` -paatokset sisaisiksi `surplus_*_active`-tiloiksi
 3. kirjoittaa `surplus_freeze_until`-ajan `input_datetime`-entiteettiin
 4. julkaisee `sensor.ems_surplus_latch_trace`-diagnostiikan
 
-Tama loop ei tee optimointia itse, vaan toteuttaa policy-loopin paatoksen tilamuutoksiksi.
+Tama komponentti ei tee optimointia itse, vaan toteuttaa policy engine -komponentin paatoksen tilamuutoksiksi.
 
-### 3. Actuator writer -loop
+### 3. Actuator Applier
 
 Tiedosto: `ems_actuator_writers.py`
 
@@ -87,7 +87,7 @@ Vastuut:
 3. kirjoittaa releiden paalle/pois-komennot `actuator_relay1` ja `actuator_relay2` -entiteetteihin
 4. julkaisee `sensor.ems_actuator_writer_trace`-diagnostiikan
 
-Writer-loop toimii policy-entiteettien perusteella. Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on erityisen tarkea.
+Actuator applier toimii policy-entiteettien perusteella. Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on erityisen tarkea.
 
 EV-writerissa policy-attribuutti `ev_policy_mode` erottaa kaksi eri `0 A`-semantiikkaa:
 
@@ -155,7 +155,7 @@ Nykyinen mappaus kayttaa nimenomaan `actuator_*`- ja `surplus_*`-avaimia. Keskei
 
 Tiedosto: `modules/ems_core/guard/evaluator.py`
 
-Guardin arviointi tapahtuu joka policy-loopin kierroksella.
+Guardin arviointi tapahtuu jokaisessa policy engine -ajokierroksessa.
 
 ### `STRICT_LIMITS`
 
@@ -219,7 +219,7 @@ Moottori julkaisee `dominant_limitation`-kenttan, jonka mahdollisia arvoja ovat 
 
 ### `MANUAL`
 
-`MANUAL`-tilassa moottori palauttaa nykyisen akun setpointin, mutta `battery_write_enabled` on `False`. Writer-loop ei siis kirjoita akulle.
+`MANUAL`-tilassa moottori palauttaa nykyisen akun setpointin, mutta `battery_write_enabled` on `False`. Actuator applier ei siis kirjoita akulle.
 
 ### `MANUAL_SAFE`
 

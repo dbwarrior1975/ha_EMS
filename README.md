@@ -10,7 +10,7 @@ Nykyiset tuetut goal-profiilit ovat:
 
 ## Paaosat
 
-Top-level tuotantoketju koostuu kolmesta loopista:
+Top-level tuotantoketju koostuu kolmesta paakomponentista:
 
 1. `ems_policy_engine.py`
 2. `ems_surplus_latches.py`
@@ -18,9 +18,9 @@ Top-level tuotantoketju koostuu kolmesta loopista:
 
 Vastuut lyhyesti:
 
-1. policy-loop laskee akun, EV:n ja releiden policy-ulostulot
-2. latch-loop muuntaa surplus-dispatch-paatokset sisaisiksi latch-tiloiksi
-3. writer-loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
+1. policy engine laskee akun, EV:n ja releiden policy-ulostulot
+2. latch state updater muuntaa surplus-dispatch-paatokset sisaisiksi latch-tiloiksi
+3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Lisadokumentaatio:
 
@@ -185,9 +185,9 @@ Suositeltu ensikayttoonottojarjestys:
 
 1. varmista mittausentiteetit
 2. varmista config-entiteetit ja oletusarvot
-3. kaynnista policy-loop
-4. kaynnista latch-loop
-5. kaynnista writer-loop
+3. kaynnista policy engine
+4. kaynnista latch state updater
+5. kaynnista actuator applier
 6. seuraa trace-entiteetteja ennen kuin luotat aktuaattorikirjoituksiin
 
 ## Diagnostiikka
@@ -219,7 +219,7 @@ Erityisen hyodyllisia attribuutteja:
 
 Jos EMS:n vaikutus halutaan poistaa nopeasti:
 
-1. pysayta tai disabloi top-level loopit
+1. pysayta tai disabloi top-level komponentit
 2. vaihda `control_profile` manuaalitilaan
 3. aseta akku, EV ja releet haluttuihin turvallisiin manuaaliasetuksiin Home Assistantista
 
