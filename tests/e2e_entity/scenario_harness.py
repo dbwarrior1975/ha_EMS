@@ -301,6 +301,7 @@ class QuarterScenarioHarness:
 
         ns = {
             '__name__': f'e2e_{kind}_module',
+            '__file__': str(file_path),
             'time_trigger': _time_trigger,
             'state_trigger': _state_trigger,
             'ENT': ENT,
@@ -316,7 +317,8 @@ class QuarterScenarioHarness:
             'parse_input_datetime_ts': parse_input_datetime_ts,
             'input_datetime': SimpleNamespace(set_datetime=_set_datetime),
         }
-        exec(src, ns)
+        code = compile(src, str(file_path), 'exec')
+        exec(code, ns)
         return ns
 
     @contextmanager

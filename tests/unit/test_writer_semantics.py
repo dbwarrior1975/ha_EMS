@@ -62,6 +62,7 @@ def _load_writer_module(project_root):
 
     ns = {
         '__name__': 'writer_test_module',
+        '__file__': str(path),
         'time_trigger': _time_trigger,
         'state_trigger': _state_trigger,
         'get_bool': get_bool,
@@ -74,7 +75,8 @@ def _load_writer_module(project_root):
         'ENT': ENT,
     }
 
-    exec(src, ns)
+    code = compile(src, str(path), 'exec')
+    exec(code, ns)
     return ns, state, ENT
 
 
