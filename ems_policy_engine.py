@@ -85,7 +85,7 @@ def _trace_state(profiles, outputs):
 
 @time_trigger('period(now, 30s)')
 @state_trigger('input_select.ems_control_profile or input_select.ems_goal_profile or input_select.ems_guard_profile or input_select.ems_forecast_profile or sensor.required_power_consumption or sensor.ems_calculated_required_power_for_net_zero')
-def ems_net_zero_shadow_loop():
+def ems_policy_engine_loop():
     import time
     now_ts = time.time()
     cfg = read_config()

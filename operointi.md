@@ -37,7 +37,7 @@ Keskeiset konfiguraatioentiteetit:
 
 Nykyisen tuotantoketjun jarjestys on:
 
-1. `ems_net_zero_shadow.py`
+1. `ems_policy_engine.py`
 2. `ems_surplus_latches.py`
 3. `ems_actuator_writers.py`
 

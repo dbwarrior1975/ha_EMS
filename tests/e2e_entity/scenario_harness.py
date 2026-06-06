@@ -45,9 +45,9 @@ class QuarterScenarioHarness:
         policy loop -> internal surplus latch loop -> writer loop
 
     This harness intentionally exercises the library the same way production does now:
-    - dispatcher decisions are written by ems_net_zero_shadow.py
+    - dispatcher decisions are written by ems_policy_engine.py
     - ems_surplus_latches.py converts dispatch decisions to active latches/freeze state
-    - ems_actuator_writers.py consumes policy outputs and updates actuator/shadow entities
+    - ems_actuator_writers.py consumes policy outputs and updates actuator/policy entities
     """
 
     def __init__(self, project_root: Path, start_ts: float = 0.0, step_s: int = 30, cfg_overrides: dict | None = None):
@@ -58,7 +58,7 @@ class QuarterScenarioHarness:
         self.cfg_overrides = dict(cfg_overrides or {})
         self.history = []
 
-        self.policy_mod = self._load_module(self.project_root / 'ems_net_zero_shadow.py', kind='policy')
+        self.policy_mod = self._load_module(self.project_root / 'ems_policy_engine.py', kind='policy')
         self.latch_mod = self._load_module(self.project_root / 'ems_surplus_latches.py', kind='latch')
         self.writer_mod = self._load_module(self.project_root / 'ems_actuator_writers.py', kind='writer')
         self._seed_defaults()
@@ -335,7 +335,7 @@ class QuarterScenarioHarness:
 
     def _run_policy_loop(self):
         with self._fake_time_module():
-            self.policy_mod['ems_net_zero_shadow_loop']()
+            self.policy_mod['ems_policy_engine_loop']()
 
     def _run_latch_loop(self):
         self.latch_mod['ems_surplus_latches_loop']()

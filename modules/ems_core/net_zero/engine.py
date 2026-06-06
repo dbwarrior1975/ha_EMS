@@ -64,7 +64,7 @@ def explain(profiles, configured_fc, effective_fc):
 
 
 def _battery_target_and_authority(profiles, cfg, m, haeo, nz):
-    # MANUAL = optimizer may still observe, but writer must not touch battery shadow setpoint
+    # MANUAL = optimizer may still observe, but writer must not touch battery actuator setpoint
     if profiles.control == ControlProfile.MANUAL:
         return int(round(m.current_battery_setpoint_w)), False
 

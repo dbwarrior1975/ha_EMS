@@ -3,8 +3,8 @@ import pytest
 
 
 @pytest.mark.smoke
-def test_ems_net_zero_shadow_reads_max_solar_charge(project_root):
-    path = project_root / 'ems_net_zero_shadow.py'
+def test_ems_policy_engine_reads_max_solar_charge(project_root):
+    path = project_root / 'ems_policy_engine.py'
     assert path.exists(), f'Missing: {path}'
     src = path.read_text(encoding='utf-8')
     assert 'max_solar_charge_w' in src, 'read_config() should wire max_solar_charge_w from helper to EmsConfig'

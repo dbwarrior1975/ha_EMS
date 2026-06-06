@@ -6,7 +6,7 @@ Tama muistio kuvaa, miten nykyinen EMS-ketju etenee yhdessa skenaariostepissa ja
 
 Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme loopia tassa jarjestyksessa:
 
-1. `ems_net_zero_shadow_loop()`
+1. `ems_policy_engine_loop()`
 2. `ems_surplus_latches_loop()`
 3. `ems_actuator_writers_loop()`
 

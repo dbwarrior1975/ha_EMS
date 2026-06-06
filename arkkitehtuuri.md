@@ -2,7 +2,7 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_net_zero_shadow.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
+Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_policy_engine.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
 
 Projektin ydin on kolmen loopin ketju:
 
@@ -16,7 +16,7 @@ Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteett
 
 ```mermaid
 flowchart LR
-    HA[Home Assistant entityt] --> P[ems_net_zero_shadow.py\npolicy-loop]
+    HA[Home Assistant entityt] --> P[ems_policy_engine.py\npolicy-loop]
     P --> POL[policy_* sensorit]
     POL --> L[ems_surplus_latches.py\nlatch-loop]
     L --> SUR[surplus_* tilat\n+ freeze_until]
@@ -32,7 +32,7 @@ flowchart LR
 
 ### 1. Policy-loop
 
-Tiedosto: `ems_net_zero_shadow.py`
+Tiedosto: `ems_policy_engine.py`
 
 Vastuut:
 
@@ -454,7 +454,7 @@ Tama semantiikka on nyt linjassa nykyisten e2e-skenaarioiden kanssa.
 
 ## Avoimet kysymykset / jatkokehitys
 
-1. Pitaako `ems_net_zero_shadow.py` nimetä uudelleen vastaamaan nykyista rooliaan policy-loopina?
+1. Onko `ems_policy_engine.py`-nimeaminen ja rajapinta nyt lopullinen tuotantolinjaus?
 2. Pitaako writeriin lisata erillinen eksplisiittinen EV hard-off -polku `MAX_EXPORT`-semantiikkaa varten?
 3. Tarvitaanko erillinen `SAFE_OFF`- tai `PAUSED`-kayttotila tulevaisuudessa, jos halutaan yksi eksplisiittinen tapa pysayttaa EMS:n vaikutus ilman manuaalista aktuaattorikohtaista asetusta?
 4. Sijaitseeko mahdollinen automaattinen goal switcher toisessa Home Assistant -konfiguraatiorepossa?
