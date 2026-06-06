@@ -156,7 +156,7 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
     assert trace['value'] == 'ACTIVE'
     assert trace['attrs']['ev']['written'] is True
     assert trace['attrs']['ev']['reason'] == 'restore_min_current'
-    assert trace['attrs']['ev']['new_current_a'] == 4
+    assert trace['attrs']['ev']['target_current_a'] == 4
 
 
 @pytest.mark.unit

@@ -4,6 +4,10 @@ from ems_adapter.entity_map import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
+LATCH_TRACE = 'sensor.ems_surplus_latch_trace'
+WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
+
+
 @pytest.mark.scenario
 def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(project_root):
     """
@@ -16,8 +20,6 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
     3. If PV stays below a known practical threshold for long enough, EV should be
        hard-disabled because there is no real surplus left even for minimum current.
 
-    This test is intentionally written as a target spec. It is expected to fail until
-    production code learns a dedicated NET_ZERO hard-off policy.
 
     Assumptions encoded here:
     1. low PV threshold is represented by a separate external sensor value
@@ -25,6 +27,11 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
     3. persistence requirement is 2 x 30 s policy cycles ~= 60 s
     4. hard-off is only expected after EV has first gone through the existing
        restore-to-min path
+
+    Harness semantics:
+    1. `at_s` is explicit scenario time and should be preferred over implied step order.
+    2. Each step may assert policy, latch, and writer-visible state separately.
+    3. Decision creation and visible actuator state are intentionally not treated as the same moment.
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
@@ -43,145 +50,453 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 4,
         pv_ent: 3.5,
+        ENT['surplus_freeze_s']: 15        
     })
 
     steps = [
         {
+            'at_s': 0,
             'note': 't0 enough surplus -> activate relay1 first',
             'set': {
                 ENT['required_power_consumption_kw']: 3.5,
                 ENT['rpnz_w']: 500,
                 pv_ent: 3.5,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
+                'surplus_next_target': 'RELAY1',
+                'ev_policy_mode': 'restore_min',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 3.5,
+                'ev_hard_off_pv_threshold_kw': pv_threshold_kw,
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_RELAY1',
+            },
+            'expect_values': {
                 ENT['surplus_r1_active']: True,
             },
         },
         {
+            'at_s': 30,
             'note': 't30 enough surplus -> activate EV next',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
                 pv_ent: 3.2,
             },
-            'expect_values': {
+            'expect_policy': {
+                # This remains the last generated freeze timestamp even after the
+                # freeze itself has already expired.
+                'surplus_freeze_until_ts': 45.0,            
+           
+                'surplus_dispatch_decision': 'ACTIVATE_EV',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'restore_min',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 3.2,
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_EV',
+            },
+            'expect_values': {
                 ENT['surplus_ev_active']: True,
             },
         },
         {
-            'note': 't60 EV is actively burning at max current',
+            'at_s': 46,
+            'note': 't46 freeze has expired and EV burn is now visible at max current',
             'set': {
-                ENT['required_power_consumption_kw']: 6.0,
+                ENT['required_power_consumption_kw']: 4.5,
                 ENT['rpnz_w']: 500,
                 pv_ent: 3.0,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 45.0,            
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
+                'surplus_next_target': 'RELAY2',
+                'ev_policy_mode': 'burn',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 3.0,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'state_changed',
+                    'written': True,
+                    'target_current_a': 28,
+                },
+            },
+            'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
                 ENT['surplus_ev_active']: True,
             },
         },
         {
-            'note': 't90 PV drops below threshold, EV burn is released but EV remains at min first',
+            'at_s': 60,
+            'note': 't60 EV remains stably at max current after the freeze-expiry transition',
             'set': {
-                ENT['surplus_r1_active']: True,
+                ENT['required_power_consumption_kw']: 4.9,
+                ENT['rpnz_w']: 500,
+                pv_ent: 3.0,
+            },
+            'expect_policy': {
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
+                'surplus_next_target': 'RELAY2',
+                'ev_policy_mode': 'burn',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 3.0,
+            },
+            'expect_policy_values': {
+                ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'already_matching',
+                    'written': False,
+                    'target_current_a': 28,
+                },
+            },
+            'expect_values': {
+                ENT['actuator_ev_enabled']: True,
+                ENT['actuator_ev_current_a']: 28,
                 ENT['surplus_ev_active']: True,
-                ENT['surplus_r2_active']: False,
+            },
+        },        
+        {
+            'at_s': 90,
+            'note': 't90 PV drops below threshold and RELEASE_EV is decided, but writer still sees 28 A this step',
+            'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
                 pv_ent: 1.4,
             },
+            'expect_policy': {
+                'surplus_dispatch_decision': 'RELEASE_EV',
+                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_next_target': 'RELAY2',
+                'ev_policy_mode': 'burn',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 1.4,
+            },
+            'expect_latch': {
+                'decision': 'RELEASE_EV',
+            },
+
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'already_matching',
+                    'written': False,
+                    'target_current_a': 28,
+                },
+            },
             'expect_values': {
-                ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV',
+                ENT['actuator_ev_enabled']: True,
+                ENT['actuator_ev_current_a']: 28,
+                ENT['surplus_ev_active']: False,
             },
         },
         {
-            'note': 't120 first low-PV cycle after release -> restore min, no hard-off yet',
+            'at_s': 95,
+            'note': 't95 first low-PV cycle after release -> restore min, no hard-off yet',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.0,
+                ENT['rpnz_w']: 0.1,
                 pv_ent: 1.3,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'restore_min',
+                'ev_low_pv_cycles': 1,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 1.3,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'restore_min_current',
+                    'written': True,
+                    'target_current_a': 4,
+                },
+            },
+            'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 4,
+                ENT['surplus_ev_active']: False,
             },
-            'expect_trace': {
-                ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'restore_min_current',
-                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
-            },
-        },
+        },        
         {
-            'note': 't150 second consecutive low-PV cycle below threshold -> hard-off expected',
+            'at_s': 120,
+            'note': 't120 second consecutive low-PV cycle below threshold -> hard-off expected',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.0,
-                pv_ent: 1.2,
+                ENT['rpnz_w']: 0.1,
+                pv_ent: 1.3,
+            },
+            'expect_policy': {
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 2,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 1.3,
+            },
+            'expect_policy_values': {
+                ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'hard_off',
+                    'written': True,
+                    'target_current_a': 4,
+                },
             },
             'expect_values': {
-                ENT['policy_ev_current_a']: 0,
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
-            },
-            'expect_trace': {
-                ('sensor.ems_actuator_writer_trace', 'ev', 'reason'): 'hard_off',
-                ('sensor.ems_actuator_writer_trace', 'ev', 'new_current_a'): 4,
+                ENT['surplus_ev_active']: False,
             },
         },
         {
+            'at_s': 180,
             'note': 't180 low PV persists -> EV remains off',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
                 pv_ent: 1.1,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_dispatch_decision': 'RELEASE_RELAY1',
+                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 3,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 1.1,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'RELEASE_RELAY1',
+            },
+            'expect_writer_trace': {
+                'relay1': {
+                    'reason': 'already_matching',
+                    'written': False,
+                }
+            },
+            'expect_values': {
+                ENT['relay1']: True,
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
             },
         },
         {
-            'note': 't210 notlow PV persists anymore -> EV still remains off',
+            'at_s': 210,
+            'note': 't210 PV recovers above threshold, but EV and relays remain off without a new surplus trigger',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
                 pv_ent: 1.9,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
+                'surplus_next_target': 'RELAY1',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 1.9,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'relay1': {
+                    'reason': 'state_changed',
+                    'written': True,
+                }
+            },
+            'expect_values': {
+                ENT['relay1']: False,
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
             },
         }, 
 
         {
-            'note': 't240 required power conumption is close to trigger EV charger normally way',
+            'at_s': 224,
+            'note': 't224 recovered PV and moderate RPC reactivate RELAY1 while EV remains hard-off',
             'set': {
-                ENT['required_power_consumption_kw']: 4.0,
-                ENT['rpnz_w']: 0.0,
-                pv_ent: 5.9,
+                ENT['required_power_consumption_kw']: 3.0,
+                ENT['rpnz_w']: 0.1,
+                pv_ent: 1.9,
+            },
+            'expect_policy': {
+                'surplus_freeze_until_ts': 239.0,            
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
+                'surplus_next_target': 'RELAY1',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 1.9,
+            },
+            'expect_policy_values': {
+                ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
+                ENT['relay1']: False,
+                ENT['surplus_r1_active']: True,
+                ENT['actuator_ev_enabled']: False,
+                ENT['actuator_ev_current_a']: 4,
+            },
+        }, 
+        {
+            'at_s': 238,
+            'note': 't239 RELAY1 activation is now visible at actuator level while EV remains hard-off',
+            'set': {
+                ENT['required_power_consumption_kw']: 3.0,
+                ENT['rpnz_w']: 0.1,
+                pv_ent: 1.9,
+            },
+            'expect_policy': {
+                'surplus_freeze_until_ts': 239.0,               
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Freeze active -> wait for measurements to settle',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 1.9,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_writer_trace': {
+                'relay1': {
+                    'reason': 'state_changed',
+                    'written': True,
+                },
+            },
+            'expect_values': {
+                ENT['relay1']: True,
+                ENT['surplus_r1_active']: True,
+                ENT['actuator_ev_enabled']: False,
+                ENT['actuator_ev_current_a']: 4,
+            },
+        },
+        {
+            'at_s': 240,
+            'note': 't240 recovered PV and RPC remain below the EV activation threshold',
+            'set': {
+                ENT['required_power_consumption_kw']: 4.0,
+                ENT['rpnz_w']: 0.15,
+                pv_ent: 5.9,
+            },
+            'expect_policy': {
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'hard_off',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': True,
+                'pv_power_kw': 5.9,
+            },
+            'expect_policy_values': {
+                ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
             },
         },
 
         {
-            'note': 't270 required power conumption is triggering EV charger normally way',
+            'at_s': 270,
+            'note': 't270 recovered PV and RPC cross the EV threshold so normal EV activation resumes',
             'set': {
                 ENT['required_power_consumption_kw']: 5.8,
-                ENT['rpnz_w']: 0.0,
+                ENT['rpnz_w']: 0.19,
                 pv_ent: 5.9,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_dispatch_decision': 'ACTIVATE_EV',
+                'surplus_explanation': 'Raw RPC 5.800 kW >= EV threshold 5.520 kW',
+                'surplus_next_target': 'EV',
+                'ev_policy_mode': 'burn',
+                'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': False,
+                'pv_power_kw': 5.9,
+            },
+            'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_EV',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'state_changed',
+                    'written': True,
+                    'target_current_a': 28,
+                },
+            },
+            'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
             },
@@ -189,7 +504,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
     ]
 
     for idx, step in enumerate(steps):
-        h.step(set_values=step.get('set', {}), note=step['note'])
+        h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
         for entity_id, expected in step.get('expect_values', {}).items():
             actual = h.get(entity_id)
@@ -198,16 +513,42 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 f"entity={entity_id} actual={actual} expected={expected}"
             )
 
-        for key_tuple, expected in step.get('expect_trace', {}).items():
-            entity_id, branch, field = key_tuple
-            trace_state = h.get(entity_id)
-            assert trace_state == 'ACTIVE', (
-                f"step={idx} note={step['note']} trace entity {entity_id} "
-                f"actual={trace_state} expected=ACTIVE"
-            )
-            attrs = h.getattrs(entity_id)
-            actual = attrs[branch][field]
+        policy_trace = h.getattrs(ENT['policy_decision_trace'])
+        latch_trace = h.getattrs(LATCH_TRACE)
+
+        assert policy_trace['goal'] == 'NET_ZERO'
+        assert policy_trace['relay1_command'] == h.get(ENT['policy_relay1_command'])
+        assert policy_trace['relay2_command'] == h.get(ENT['policy_relay2_command'])
+
+        for attr, expected in step.get('expect_policy', {}).items():
+            actual = policy_trace.get(attr)
             assert actual == expected, (
-                f"step={idx} note={step['note']} trace={entity_id}.{branch}.{field} "
+                f"step={idx} note={step['note']} policy.{attr} actual={actual} expected={expected}"
+            )
+
+        for entity_id, expected in step.get('expect_policy_values', {}).items():
+            actual = h.get(entity_id)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} policy_value entity={entity_id} "
                 f"actual={actual} expected={expected}"
             )
+
+        for attr, expected in step.get('expect_latch', {}).items():
+            actual = latch_trace.get(attr)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} latch.{attr} actual={actual} expected={expected}"
+            )
+
+        if step.get('expect_writer_trace'):
+            assert h.get(WRITER_TRACE) == 'ACTIVE', (
+                f"step={idx} note={step['note']} expected writer trace entity to be ACTIVE"
+            )
+            writer_trace = h.getattrs(WRITER_TRACE)
+            for branch, expected_fields in step['expect_writer_trace'].items():
+                actual_branch = writer_trace[branch]
+                for field, expected in expected_fields.items():
+                    actual = actual_branch.get(field)
+                    assert actual == expected, (
+                        f"step={idx} note={step['note']} writer.{branch}.{field} "
+                        f"actual={actual} expected={expected}"
+                    )

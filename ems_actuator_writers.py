@@ -119,7 +119,7 @@ def _write_ev_actuator():
             'reason': 'state_changed' if (enabled_changed or current_changed) else 'already_matching',
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
-            'new_current_a': strategy_a,
+            'target_current_a': strategy_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
         }
@@ -141,7 +141,7 @@ def _write_ev_actuator():
             'reason': 'hard_off',
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
-            'new_current_a': min_a,
+            'target_current_a': min_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
         }
@@ -156,7 +156,7 @@ def _write_ev_actuator():
             'reason': 'restore_min_current',
             'written': True,
             'previous_current_a': current_level,
-            'new_current_a': min_a,
+            'target_current_a': min_a,
         }
 
     return {

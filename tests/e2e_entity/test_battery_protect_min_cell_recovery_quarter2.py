@@ -29,7 +29,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['battery_protect_soc_recovery_margin']: 1.0,
                 ENT['battery_protect_min_cell_voltage_v']: 3.05,
             },
-            'expect': {
+            'expect_policy_values': {
                 ENT['policy_decision_trace']: 'AUTOMATIC/NET_ZERO/NORMAL_LIMITS/NONE',
             },
         },
@@ -39,7 +39,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['soc']: 0.0,
                 ENT['min_cell_voltage_v']: 3.04,
             },
-            'expect_guard': {
+            'expect_policy': {
                 'guard': 'BATTERY_PROTECT',
                 'guard_reason': 'Battery protect active: SOC and minimum cell voltage below thresholds',
                 'dominant_limitation': 'BATTERY_SOC_LIMIT',
@@ -52,7 +52,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['soc']: 1.0,
                 ENT['min_cell_voltage_v']: 3.055,
             },
-            'expect_guard': {
+            'expect_policy': {
                 'guard': 'BATTERY_PROTECT',
                 'guard_reason': 'Battery protect persists until SOC recovery margin and minimum cell voltage threshold are both satisfied',
             },
@@ -64,7 +64,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['soc']: 2.0,
                 ENT['min_cell_voltage_v']: 3.055,
             },
-            'expect_guard': {
+            'expect_policy': {
                 'guard': 'NORMAL_LIMITS',
                 'guard_reason': 'Guard recovered: SOC recovery margin reached and minimum cell voltage threshold restored',
             },
@@ -75,7 +75,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['soc']: 1.0,
                 ENT['min_cell_voltage_v']: 3.045,
             },
-            'expect_guard': {
+            'expect_policy': {
                 'guard': 'BATTERY_PROTECT',
                 'guard_reason': 'Battery protect active: minimum cell voltage below threshold',
                 'dominant_limitation': 'BATTERY_SOC_LIMIT',
@@ -88,7 +88,7 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
                 ENT['soc']: 2.0,
                 ENT['min_cell_voltage_v']: 3.06,
             },
-            'expect_guard': {
+            'expect_policy': {
                 'guard': 'NORMAL_LIMITS',
                 'guard_reason': 'Guard recovered: SOC recovery margin reached and minimum cell voltage threshold restored',
             },
@@ -98,16 +98,17 @@ def test_battery_protect_min_cell_trigger_and_recovery_quarter(project_root):
     for idx, step in enumerate(steps):
         h.step(set_values=step.get('set', {}), note=step['note'])
 
-        for entity_id, expected in step.get('expect', {}).items():
-            actual = h.get(entity_id)
+        policy_trace = h.getattrs(ENT['policy_decision_trace'])
+
+        for attr, expected in step.get('expect_policy', {}).items():
+            actual = policy_trace.get(attr)
             assert actual == expected, (
-                f'step={idx} note={step["note"]} entity={entity_id} actual={actual} expected={expected}'
+                f"step={idx} note={step['note']} policy.{attr} actual={actual} expected={expected}"
             )
 
-        if 'expect_guard' in step:
-            attrs = h.getattrs(ENT['policy_decision_trace'])
-            for key, expected in step['expect_guard'].items():
-                actual = attrs[key]
-                assert actual == expected, (
-                    f'step={idx} note={step["note"]} guard attr={key} actual={actual} expected={expected}'
-                )
+        for entity_id, expected in step.get('expect_policy_values', {}).items():
+            actual = h.get(entity_id)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} policy_value entity={entity_id} "
+                f"actual={actual} expected={expected}"
+            )

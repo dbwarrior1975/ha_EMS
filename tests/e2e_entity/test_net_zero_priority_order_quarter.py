@@ -4,6 +4,10 @@ from ems_adapter.entity_map import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
+LATCH_TRACE = 'sensor.ems_surplus_latch_trace'
+WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
+
+
 @pytest.mark.scenario
 def test_net_zero_priority_order_one_quarter(project_root):
     """
@@ -32,20 +36,26 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 3.5,
                 ENT['rpnz_w']: 500,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 15.0,
+                'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
+                'surplus_next_target': 'RELAY1',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
+                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay2_command']: 0,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_RELAY1',
+            },
+            'expect_values': {
                 ENT['surplus_r1_active']: True,
                 ENT['surplus_ev_active']: False,
                 ENT['surplus_r2_active']: False,
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
-            'expect_freeze_ts': 15.0,
-            'expect_dispatch_decision': 'ACTIVATE_RELAY1',
-            'expect_dispatch_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
-            'expect_next_target': 'RELAY1',
         },
         {
             'at_s': 30,
@@ -54,20 +64,26 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 45.0,
+                'surplus_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
+                'surplus_next_target': 'EV',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+                ENT['policy_relay1_command']: 1,
+                ENT['policy_relay2_command']: 0,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_EV',
+            },
+            'expect_values': {
                 ENT['surplus_r1_active']: True,
                 ENT['surplus_ev_active']: True,
                 ENT['surplus_r2_active']: False,
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 0,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
             },
-            'expect_freeze_ts': 45.0,
-            'expect_dispatch_decision': 'ACTIVATE_EV',
-            'expect_dispatch_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
-            'expect_next_target': 'EV',
         },
         {
             'at_s': 60,
@@ -76,22 +92,28 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 500,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 75.0,
+                'surplus_explanation': 'Raw RPC 6.000 kW >= RELAY2 threshold 5.000 kW',
+                'surplus_next_target': 'RELAY2',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_RELAY2',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: True,
+                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_current_a']: 28,
             },
-            'expect_freeze_ts': 75.0,
-            'expect_dispatch_decision': 'ACTIVATE_RELAY2',
-            'expect_dispatch_explanation': 'Raw RPC 6.000 kW >= RELAY2 threshold 5.000 kW',
-            'expect_next_target': 'RELAY2',
         },
         {
             'at_s': 61,
@@ -100,22 +122,28 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 500,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 75.0,
+                'surplus_explanation': 'Freeze active -> wait for measurements to settle',
+                'surplus_next_target': 'NONE',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: True,
+                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
                 ENT['actuator_ev_current_a']: 28,
             },
-            'expect_freeze_ts': 75.0,
-            'expect_dispatch_decision': 'NOOP',
-            'expect_dispatch_explanation': 'Freeze active -> wait for measurements to settle',
-            'expect_next_target': 'NONE',
         },
 
         {
@@ -125,22 +153,28 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 6.0,
                 ENT['rpnz_w']: 450,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 75.0,
+                'surplus_explanation': 'No eligible next surplus target',
+                'surplus_next_target': 'NONE',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: True,
+                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
                 ENT['actuator_ev_current_a']: 28,
             },
-            'expect_freeze_ts': 75.0,
-            'expect_dispatch_decision': 'NOOP',
-            'expect_dispatch_explanation': 'No eligible next surplus target',
-            'expect_next_target': 'NONE',
         },
         
         {
@@ -150,20 +184,26 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY2',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
-                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'RELEASE_RELAY2',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: True,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
                 ENT['actuator_ev_current_a']: 28,
             },
-            'expect_dispatch_decision': 'RELEASE_RELAY2',
-            'expect_dispatch_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
         },
         {
             'at_s': 91,
@@ -172,20 +212,26 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 28,
+            },
+            'expect_latch': {
+                'decision': 'RELEASE_EV',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_current_a']: 28,
             },
-            'expect_dispatch_decision': 'RELEASE_EV',
-            'expect_dispatch_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
         },
         {
             'at_s': 120,
@@ -194,20 +240,26 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'RELEASE_RELAY1',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_ev_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_current_a']: 4,
             },
-            'expect_dispatch_decision': 'RELEASE_RELAY1',
-            'expect_dispatch_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
         },
         {
             'at_s': 121,
@@ -216,19 +268,25 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.1,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_ev_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
-            'expect_dispatch_decision': 'NOOP',
-            'expect_dispatch_explanation': 'Waiting for RELAY1; raw RPC below threshold',
         },
         {
             'at_s': 150,
@@ -237,61 +295,76 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 0.1,
             },
-            'expect_values': {
+            'expect_policy': {
+                'surplus_freeze_until_ts': 165.0,
+                'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
+                'surplus_next_target': 'RELAY1',
+            },
+            'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
+            },
+            'expect_latch': {
+                'decision': 'ACTIVATE_RELAY1',
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: True,
+                ENT['surplus_ev_active']: False,
+                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
-            'expect_freeze_ts': 165.0,            
-            'expect_dispatch_decision': 'ACTIVATE_RELAY1',
-            'expect_dispatch_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-            'expect_next_target': 'RELAY1',
         },
     ]
 
     for idx, step in enumerate(steps):
         h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
-        for entity_id, expected in step.get('expect_values', {}).items():
-            actual = h.get(entity_id)
-            assert actual == expected, (
-                f'step={idx} note={step["note"]} entity={entity_id} actual={actual} expected={expected}'
-            )
-
-        latch_trace = h.getattrs('sensor.ems_surplus_latch_trace')
         policy_trace = h.getattrs(ENT['policy_decision_trace'])
-
-        if 'expect_dispatch_decision' in step:
-            assert latch_trace['decision'] == step['expect_dispatch_decision'], (
-                f'step={idx} note={step["note"]} decision={latch_trace["decision"]} '
-                f'expected={step["expect_dispatch_decision"]}'
-            )
-
-        if 'expect_freeze_ts' in step:
-            actual_freeze = policy_trace.get('surplus_freeze_until_ts')
-            assert actual_freeze == step['expect_freeze_ts'], (
-                f'step={idx} note={step["note"]} freeze_until_ts={actual_freeze} '
-                f'expected={step["expect_freeze_ts"]}'
-            )
-
-        if 'expect_dispatch_explanation' in step:
-            assert policy_trace['surplus_explanation'] == step['expect_dispatch_explanation'], (
-                f'step={idx} note={step["note"]} surplus_explanation={policy_trace["surplus_explanation"]} '
-                f'expected={step["expect_dispatch_explanation"]}'
-            )
-
-        if 'expect_next_target' in step:
-            assert policy_trace['surplus_next_target'] == step['expect_next_target'], (
-                f'step={idx} note={step["note"]} surplus_next_target={policy_trace["surplus_next_target"]} '
-                f'expected={step["expect_next_target"]}'
-            )
+        latch_trace = h.getattrs(LATCH_TRACE)
 
         assert policy_trace['goal'] == 'NET_ZERO'
         assert policy_trace['relay1_command'] == h.get(ENT['policy_relay1_command'])
         assert policy_trace['relay2_command'] == h.get(ENT['policy_relay2_command'])
+
+        for attr, expected in step.get('expect_policy', {}).items():
+            actual = policy_trace.get(attr)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} policy.{attr} actual={actual} expected={expected}"
+            )
+
+        for entity_id, expected in step.get('expect_policy_values', {}).items():
+            actual = h.get(entity_id)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} policy_value entity={entity_id} "
+                f"actual={actual} expected={expected}"
+            )
+
+        for attr, expected in step.get('expect_latch', {}).items():
+            actual = latch_trace.get(attr)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} latch.{attr} actual={actual} expected={expected}"
+            )
+
+        if step.get('expect_writer_trace'):
+            assert h.get(WRITER_TRACE) == 'ACTIVE', (
+                f"step={idx} note={step['note']} expected writer trace entity to be ACTIVE"
+            )
+            writer_trace = h.getattrs(WRITER_TRACE)
+            for branch, expected_fields in step['expect_writer_trace'].items():
+                actual_branch = writer_trace[branch]
+                for field, expected in expected_fields.items():
+                    actual = actual_branch.get(field)
+                    assert actual == expected, (
+                        f"step={idx} note={step['note']} writer.{branch}.{field} "
+                        f"actual={actual} expected={expected}"
+                    )
+
+        for entity_id, expected in step.get('expect_values', {}).items():
+            actual = h.get(entity_id)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} entity={entity_id} "
+                f"actual={actual} expected={expected}"
+            )

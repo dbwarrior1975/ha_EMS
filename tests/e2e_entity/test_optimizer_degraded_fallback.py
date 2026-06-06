@@ -18,11 +18,31 @@ def test_optimizer_stale_reactive_fallback(project_root):
     h.set_stale(ENT['haeo_battery_active_power_fresh_source'], 1000.0)
     h.set_stale(ENT['haeo_ev_active_power_fresh_source'], 1000.0)
 
-    h.step(set_values={ENT['required_power_consumption_kw']: 0.0, ENT['rpnz_w']: 500}, note='stale forecast')
-    attrs = h.getattrs(ENT['policy_decision_trace'])
-    assert attrs['configured_forecast'] == 'HAEO'
-    assert attrs['effective_forecast'] == 'NONE'
-    assert attrs['dominant_limitation'] == 'FORECAST_FALLBACK_LOCAL'
+    steps = [
+        {
+            'note': 'stale forecast',
+            'set': {
+                ENT['required_power_consumption_kw']: 0.0,
+                ENT['rpnz_w']: 500,
+            },
+            'expect_policy': {
+                'configured_forecast': 'HAEO',
+                'effective_forecast': 'NONE',
+                'dominant_limitation': 'FORECAST_FALLBACK_LOCAL',
+            },
+        },
+    ]
+
+    for idx, step in enumerate(steps):
+        h.step(set_values=step.get('set', {}), note=step['note'])
+
+        policy_trace = h.getattrs(ENT['policy_decision_trace'])
+
+        for attr, expected in step.get('expect_policy', {}).items():
+            actual = policy_trace.get(attr)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} policy.{attr} actual={actual} expected={expected}"
+            )
 
 
 @pytest.mark.scenario
@@ -41,6 +61,35 @@ def test_forecast_missing_keeps_runtime_alive(project_root):
     h.set_stale(ENT['haeo_battery_active_power_fresh_source'], 1000.0)
     h.set_stale(ENT['haeo_ev_active_power_fresh_source'], 1000.0)
 
-    h.step(set_values={ENT['required_power_consumption_kw']: 0.0, ENT['rpnz_w']: 0.0}, note='missing forecast payload')
-    assert h.get(ENT['policy_battery_target_w']) == 100
-    assert h.get(ENT['policy_ev_current_a']) == h.get(ENT['ev_max_current_a'])
+    steps = [
+        {
+            'note': 'missing forecast payload',
+            'set': {
+                ENT['required_power_consumption_kw']: 0.0,
+                ENT['rpnz_w']: 0.0,
+            },
+            'expect_values': {
+                ENT['policy_battery_target_w']: 100,
+            },
+            'expect_same_as_entity': {
+                ENT['policy_ev_current_a']: ENT['ev_max_current_a'],
+            },
+        },
+    ]
+
+    for idx, step in enumerate(steps):
+        h.step(set_values=step.get('set', {}), note=step['note'])
+
+        for entity_id, expected in step.get('expect_values', {}).items():
+            actual = h.get(entity_id)
+            assert actual == expected, (
+                f"step={idx} note={step['note']} entity={entity_id} actual={actual} expected={expected}"
+            )
+
+        for lhs_entity, rhs_entity in step.get('expect_same_as_entity', {}).items():
+            lhs_actual = h.get(lhs_entity)
+            rhs_actual = h.get(rhs_entity)
+            assert lhs_actual == rhs_actual, (
+                f"step={idx} note={step['note']} entity={lhs_entity} actual={lhs_actual} "
+                f"expected_same_as {rhs_entity}={rhs_actual}"
+            )

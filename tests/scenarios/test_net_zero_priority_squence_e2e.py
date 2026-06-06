@@ -291,7 +291,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
 
     assert ev_result['written'] is True
     assert ev_result['reason'] == 'restore_min_current'
-    assert ev_result['new_current_a'] == cfg.ev_min_current_a
+    assert ev_result['target_current_a'] == cfg.ev_min_current_a
     assert writer_state[ENT['actuator_ev_current_a']] == cfg.ev_min_current_a
 
     # After EV released, last one should be RELAY1
