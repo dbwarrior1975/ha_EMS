@@ -38,7 +38,7 @@ Keskeiset konfiguraatioentiteetit:
 Nykyisen tuotantoketjun jarjestys on:
 
 1. `ems_policy_engine.py`
-2. `ems_surplus_latches.py`
+2. `ems_dispatch_state_applier.py`
 3. `ems_actuator_writers.py`
 
 Kaikki kolme komponenttia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksista.
@@ -85,7 +85,7 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 1. `sensor.ems_policy_decision_trace_pyscript`
 2. `sensor.ems_actuator_writer_trace`
-3. `sensor.ems_surplus_latch_trace`
+3. `sensor.ems_dispatch_state_applier_trace`
 
 ## Operatiivinen kayttaytyminen profiileittain
 
@@ -173,7 +173,7 @@ Operatiivinen vaikutus:
 2. EV strategy palauttaa `-1`
 3. relay strategy palauttaa `-1`
 4. `dominant_limitation` on `SYSTEM_DEGRADED`
-5. latch state updater voi clearata aktiiviset surplus-latchit, mutta actuator applier skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
+5. dispatch state applier voi clearata aktiiviset surplus-stateit, mutta actuator applier skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
 
 ### `STRICT_LIMITS`
 
@@ -235,7 +235,7 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 
 Sen jalkeen tarkasta:
 
-1. `sensor.ems_surplus_latch_trace`
+1. `sensor.ems_dispatch_state_applier_trace`
 2. `sensor.ems_actuator_writer_trace`
 
 ## Vianetsintaohjeet

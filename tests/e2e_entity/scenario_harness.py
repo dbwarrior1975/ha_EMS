@@ -42,11 +42,11 @@ class QuarterScenarioHarness:
     """
     Entity-map-level quarter simulator for the current three-loop production chain:
 
-        policy loop -> internal surplus latch loop -> writer loop
+        policy loop -> dispatch state applier loop -> writer loop
 
     This harness intentionally exercises the library the same way production does now:
     - dispatcher decisions are written by ems_policy_engine.py
-    - ems_surplus_latches.py converts dispatch decisions to active latches/freeze state
+    - ems_dispatch_state_applier.py converts dispatch decisions to active states/freeze state
     - ems_actuator_writers.py consumes policy outputs and updates actuator/policy entities
     """
 
@@ -59,7 +59,10 @@ class QuarterScenarioHarness:
         self.history = []
 
         self.policy_mod = self._load_module(self.project_root / 'ems_policy_engine.py', kind='policy')
-        self.latch_mod = self._load_module(self.project_root / 'ems_surplus_latches.py', kind='latch')
+        self.dispatch_state_applier_mod = self._load_module(
+            self.project_root / 'ems_dispatch_state_applier.py',
+            kind='dispatch_state_applier',
+        )
         self.writer_mod = self._load_module(self.project_root / 'ems_actuator_writers.py', kind='writer')
         self._seed_defaults()
 
@@ -97,7 +100,7 @@ class QuarterScenarioHarness:
             self.set_entities(set_values)
 
         self._run_policy_loop()
-        self._run_latch_loop()
+        self._run_dispatch_state_applier_loop()
         self._run_writer_loop()
 
         snap = self.snapshot(note=note)
@@ -337,8 +340,8 @@ class QuarterScenarioHarness:
         with self._fake_time_module():
             self.policy_mod['ems_policy_engine_loop']()
 
-    def _run_latch_loop(self):
-        self.latch_mod['ems_surplus_latches_loop']()
+    def _run_dispatch_state_applier_loop(self):
+        self.dispatch_state_applier_mod['ems_dispatch_state_applier_loop']()
 
     def _run_writer_loop(self):
         self.writer_mod['ems_actuator_writers_loop']()

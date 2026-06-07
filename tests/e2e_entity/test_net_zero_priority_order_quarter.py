@@ -4,7 +4,7 @@ from ems_adapter.entity_map import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
-LATCH_TRACE = 'sensor.ems_surplus_latch_trace'
+DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 
 
@@ -16,7 +16,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
     - EV (priority 2) activates second when its threshold is reached
     - RELAY2 (priority 1) activates third
     - when surplus collapses, release order is RELAY2 -> EV -> RELAY1
-    - decision, latch visibility, and actuator visibility are separated when useful
+    - decision, dispatch state visibility, and actuator visibility are separated when useful
     - Then cycle starts over again and Raly 1 activates
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
@@ -46,7 +46,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
@@ -74,7 +74,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_EV',
             },
             'expect_values': {
@@ -103,7 +103,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY2',
             },
             'expect_values': {
@@ -133,7 +133,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
@@ -164,7 +164,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
@@ -193,7 +193,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 1,
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'RELEASE_RELAY2',
             },
             'expect_values': {
@@ -221,7 +221,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'RELEASE_EV',
             },
             'expect_values': {
@@ -249,7 +249,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'RELEASE_RELAY1',
             },
             'expect_values': {
@@ -277,7 +277,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
@@ -306,7 +306,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 ENT['policy_relay2_command']: 0,
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
@@ -323,7 +323,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
         h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
         policy_trace = h.getattrs(ENT['policy_decision_trace'])
-        latch_trace = h.getattrs(LATCH_TRACE)
+        dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)
 
         assert policy_trace['goal'] == 'NET_ZERO'
         assert policy_trace['relay1_command'] == h.get(ENT['policy_relay1_command'])
@@ -342,10 +342,10 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 f"actual={actual} expected={expected}"
             )
 
-        for attr, expected in step.get('expect_latch', {}).items():
-            actual = latch_trace.get(attr)
+        for attr, expected in step.get('expect_dispatch_state', {}).items():
+            actual = dispatch_state_trace.get(attr)
             assert actual == expected, (
-                f"step={idx} note={step['note']} latch.{attr} actual={actual} expected={expected}"
+                f"step={idx} note={step['note']} dispatch state.{attr} actual={actual} expected={expected}"
             )
 
         if step.get('expect_writer_trace'):

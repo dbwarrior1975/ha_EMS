@@ -13,13 +13,13 @@ Nykyiset tuetut goal-profiilit ovat:
 Top-level tuotantoketju koostuu kolmesta paakomponentista:
 
 1. `ems_policy_engine.py`
-2. `ems_surplus_latches.py`
+2. `ems_dispatch_state_applier.py`
 3. `ems_actuator_writers.py`
 
 Vastuut lyhyesti:
 
 1. policy engine laskee akun, EV:n ja releiden policy-ulostulot
-2. latch state updater muuntaa surplus-dispatch-paatokset sisaisiksi latch-tiloiksi
+2. dispatch state applier muuntaa surplus-dispatch-paatokset sisaisiksi dispatch state-tiloiksi
 3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Lisadokumentaatio:
@@ -132,7 +132,7 @@ Nykyinen `DEGRADED`-kayttaytyminen:
 1. akun policy clampataan `0`:aan
 2. EV policy menee `-1`:een
 3. relepolicyt menevat `-1`:een
-4. surplus-latchit voivat clearantua
+4. surplus-stateit voivat clearantua
 5. writer skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
 
 Tama kohta on syyta ymmartaa ennen tuotantokayttoa, koska `DEGRADED` ei nykysemantiikassa pakota kaikkia jo paalla olevia aktuaattoreita pois paalta.
@@ -186,7 +186,7 @@ Suositeltu ensikayttoonottojarjestys:
 1. varmista mittausentiteetit
 2. varmista config-entiteetit ja oletusarvot
 3. kaynnista policy engine
-4. kaynnista latch state updater
+4. kaynnista dispatch state applier
 5. kaynnista actuator applier
 6. seuraa trace-entiteetteja ennen kuin luotat aktuaattorikirjoituksiin
 
@@ -195,7 +195,7 @@ Suositeltu ensikayttoonottojarjestys:
 Tarkeimmat seurattavat entiteetit:
 
 1. `sensor.ems_policy_decision_trace_pyscript`
-2. `sensor.ems_surplus_latch_trace`
+2. `sensor.ems_dispatch_state_applier_trace`
 3. `sensor.ems_actuator_writer_trace`
 
 Erityisen hyodyllisia attribuutteja:

@@ -21,10 +21,10 @@ def release_target(targets):
 
 def compute_surplus_dispatch(inp, now_ts, freeze_s=30):
     if not inp.policy_active:
-        return SurplusDispatchDecision(clear_all=True, freeze_until_ts=now_ts, explanation='Policy inactive -> clear all surplus latches')
+        return SurplusDispatchDecision(clear_all=True, freeze_until_ts=now_ts, explanation='Policy inactive -> clear all surplus states')
     for t in inp.targets:
         if t.active and ((not t.enabled) or t.force_on):
-            return SurplusDispatchDecision(release=t.name, explanation=f'{t.name} no longer eligible -> release latch')
+            return SurplusDispatchDecision(release=t.name, explanation=f'{t.name} no longer eligible -> release dispatch state')
     active = [t for t in inp.targets if t.active and t.priority > 0]
     if inp.rpnz_w <= 0 and active:
         rel = release_target(inp.targets)

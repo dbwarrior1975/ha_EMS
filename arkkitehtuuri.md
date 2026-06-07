@@ -2,12 +2,12 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_policy_engine.py`, `ems_surplus_latches.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
+Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_policy_engine.py`, `ems_dispatch_state_applier.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
 
 Projektin ydin on kolmen paakomponentin ketju:
 
 1. policy engine laskee EMS:n tavoiteohjaukset
-2. surplus latch state updater paivittaa sisaiset aktiivisuuslukot
+2. surplus dispatch state applier paivittaa sisaiset aktiivisuuslukot
 3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
@@ -18,13 +18,13 @@ Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteett
 flowchart LR
     HA[Home Assistant entityt] --> P[ems_policy_engine.py\npolicy engine]
     P --> POL[policy_* sensorit]
-    POL --> L[ems_surplus_latches.py\nlatch state updater]
+    POL --> L[ems_dispatch_state_applier.py\ndispatch state applier]
     L --> SUR[surplus_* tilat\n+ freeze_until]
     POL --> W[ems_actuator_writers.py\nactuator applier]
     SUR --> W
     W --> ACT[actuator_* entiteetit]
     P --> TRACE[policy_decision_trace]
-    L --> LTRACE[surplus_latch_trace]
+    L --> LTRACE[dispatch_state_applier_trace]
     W --> WTRACE[actuator_writer_trace]
 ```
 
@@ -63,16 +63,16 @@ Julkaistavat keskeiset policy-entiteetit:
 10. `surplus_explanation_pys`
 11. `surplus_dispatch_decision_pys`
 
-### 2. Surplus Latch State Updater
+### 2. Dispatch State Applier
 
-Tiedosto: `ems_surplus_latches.py`
+Tiedosto: `ems_dispatch_state_applier.py`
 
 Vastuut:
 
 1. lukee policy engine -komponentin tuottaman dispatch-paatoeksen
 2. muuntaa `ACTIVATE_*`, `RELEASE_*` ja `CLEAR_ALL` -paatokset sisaisiksi `surplus_*_active`-tiloiksi
 3. kirjoittaa `surplus_freeze_until`-ajan `input_datetime`-entiteettiin
-4. julkaisee `sensor.ems_surplus_latch_trace`-diagnostiikan
+4. julkaisee `sensor.ems_dispatch_state_applier_trace`-diagnostiikan
 
 Tama komponentti ei tee optimointia itse, vaan toteuttaa policy engine -komponentin paatoksen tilamuutoksiksi.
 
@@ -427,7 +427,7 @@ Sisaltaa omat haaransa:
 3. `relay1`
 4. `relay2`
 
-### `surplus_latch_trace`
+### `dispatch_state_applier_trace`
 
 Sisaltaa esimerkiksi:
 

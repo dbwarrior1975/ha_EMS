@@ -57,7 +57,7 @@ def test_soc_stale_enters_safe_mode(project_root):
 
 @pytest.mark.scenario
 def test_writer_freeze_in_system_degraded(project_root):
-    """In DEGRADED the latch state clears, but writers skip existing EV/relay actuators."""
+    """In DEGRADED the dispatch state state clears, but writers skip existing EV/relay actuators."""
     h = QuarterScenarioHarness(project_root=project_root, start_ts=1000.0, step_s=30)
     h.set_entities({
         ENT['goal_profile']: 'NET_ZERO',
@@ -74,7 +74,7 @@ def test_writer_freeze_in_system_degraded(project_root):
 
     steps = [
         {
-            'note': 'degraded clears latches and skips ev',
+            'note': 'degraded clears dispatch states and skips ev',
             'set': {
                 ENT['required_power_consumption_kw']: 4.0,
                 ENT['rpnz_w']: 500,

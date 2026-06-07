@@ -4,7 +4,7 @@ from ems_adapter.entity_map import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
-LATCH_TRACE = 'sensor.ems_surplus_latch_trace'
+DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 
 
@@ -15,7 +15,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
 
     Current expected semantics:
     - NET_ZERO surplus policy becomes inactive when goal != NET_ZERO
-    - surplus latch loop clears active surplus latches
+    - surplus dispatch state loop clears active surplus states
     - MAX_EXPORT EV policy is 0 A with hard-off semantics
     - EV charger is disabled if it was already enabled
     - EV current selector is restored to hardware minimum while charger is off
@@ -23,7 +23,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
 
     Harness semantics:
     1. `at_s` is explicit scenario time and should be preferred over implied step order.
-    2. Each step may assert policy, latch, and writer-visible state separately.
+    2. Each step may assert policy, dispatch state, and writer-visible state separately.
     3. Decision creation and visible actuator state are intentionally not treated as the same moment.
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
@@ -56,7 +56,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
@@ -81,7 +81,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
                 ENT['policy_relay1_command']: 1,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_EV',
             },
             'expect_values': {
@@ -108,7 +108,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
                 ENT['policy_relay1_command']: 1,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -141,7 +141,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['policy_ev_current_a']: 28,
                 ENT['policy_relay1_command']: 1,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
@@ -152,7 +152,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
         },
         {
             'at_s': 90,
-            'note': 't90 goal changes to MAX_EXPORT; surplus latches clear and EV drops to 0 current',
+            'note': 't90 goal changes to MAX_EXPORT; surplus states clear and EV drops to 0 current',
             'set': {
                 ENT['goal_profile']: 'MAX_EXPORT',
                 ENT['required_power_consumption_kw']: 6.0,
@@ -161,7 +161,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
                 'surplus_dispatch_decision': 'CLEAR_ALL',
-                'surplus_explanation': 'Policy inactive -> clear all surplus latches',
+                'surplus_explanation': 'Policy inactive -> clear all surplus states',
                 'surplus_next_target': 'RELAY2',
                 'ev_policy_mode': 'hard_off',
             },
@@ -171,7 +171,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'CLEAR_ALL',
             },
             'expect_writer_trace': {
@@ -201,7 +201,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
         },
         {
             'at_s': 120,
-            'note': 't120 MAX_EXPORT remains stable: EV stays off and latches remain clear',
+            'note': 't120 MAX_EXPORT remains stable: EV stays off and dispatch states remain clear',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -209,7 +209,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
                 'surplus_dispatch_decision': 'CLEAR_ALL',
-                'surplus_explanation': 'Policy inactive -> clear all surplus latches',
+                'surplus_explanation': 'Policy inactive -> clear all surplus states',
                 'surplus_next_target': 'RELAY1',
                 'ev_policy_mode': 'hard_off',
             },
@@ -218,7 +218,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'CLEAR_ALL',
             },
             'expect_writer_trace': {
@@ -252,7 +252,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
         h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
         policy_trace = h.getattrs(ENT['policy_decision_trace'])
-        latch_trace = h.getattrs(LATCH_TRACE)
+        dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)
 
         assert policy_trace['relay1_command'] == h.get(ENT['policy_relay1_command'])
         assert policy_trace['relay2_command'] == h.get(ENT['policy_relay2_command'])
@@ -270,10 +270,10 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 f"actual={actual} expected={expected}"
             )
 
-        for attr, expected in step.get('expect_latch', {}).items():
-            actual = latch_trace.get(attr)
+        for attr, expected in step.get('expect_dispatch_state', {}).items():
+            actual = dispatch_state_trace.get(attr)
             assert actual == expected, (
-                f"step={idx} note={step['note']} latch.{attr} actual={actual} expected={expected}"
+                f"step={idx} note={step['note']} dispatch state.{attr} actual={actual} expected={expected}"
             )
 
         if step.get('expect_writer_trace'):

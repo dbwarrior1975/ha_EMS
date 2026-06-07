@@ -4,7 +4,7 @@ from ems_adapter.entity_map import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
-LATCH_TRACE = 'sensor.ems_surplus_latch_trace'
+DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 
 
@@ -30,7 +30,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
 
     Harness semantics:
     1. `at_s` is explicit scenario time and should be preferred over implied step order.
-    2. Each step may assert policy, latch, and writer-visible state separately.
+    2. Each step may assert policy, dispatch state, and writer-visible state separately.
     3. Decision creation and visible actuator state are intentionally not treated as the same moment.
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
@@ -75,7 +75,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
@@ -106,7 +106,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_EV',
             },
             'expect_values': {
@@ -134,7 +134,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -170,7 +170,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -203,7 +203,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 'ev_hard_off_active': False,
                 'pv_power_kw': 1.4,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'RELEASE_EV',
             },
 
@@ -240,7 +240,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -276,7 +276,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -314,7 +314,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'RELEASE_RELAY1',
             },
             'expect_writer_trace': {
@@ -351,7 +351,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -390,7 +390,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_RELAY1',
             },
             'expect_values': {
@@ -421,7 +421,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_writer_trace': {
@@ -457,7 +457,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 0,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
@@ -486,7 +486,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
             },
-            'expect_latch': {
+            'expect_dispatch_state': {
                 'decision': 'ACTIVATE_EV',
             },
             'expect_writer_trace': {
@@ -514,7 +514,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             )
 
         policy_trace = h.getattrs(ENT['policy_decision_trace'])
-        latch_trace = h.getattrs(LATCH_TRACE)
+        dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)
 
         assert policy_trace['goal'] == 'NET_ZERO'
         assert policy_trace['relay1_command'] == h.get(ENT['policy_relay1_command'])
@@ -533,10 +533,10 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 f"actual={actual} expected={expected}"
             )
 
-        for attr, expected in step.get('expect_latch', {}).items():
-            actual = latch_trace.get(attr)
+        for attr, expected in step.get('expect_dispatch_state', {}).items():
+            actual = dispatch_state_trace.get(attr)
             assert actual == expected, (
-                f"step={idx} note={step['note']} latch.{attr} actual={actual} expected={expected}"
+                f"step={idx} note={step['note']} dispatch state.{attr} actual={actual} expected={expected}"
             )
 
         if step.get('expect_writer_trace'):

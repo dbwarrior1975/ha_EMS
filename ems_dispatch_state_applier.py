@@ -75,14 +75,14 @@ def _apply_dispatch(decision):
 
 @time_trigger('period(now, 30s)')
 @state_trigger('sensor.ems_net_zero_surplus_dispatch_decision_pyscript or sensor.ems_policy_decision_trace_pyscript')
-def ems_surplus_latches_loop():
+def ems_dispatch_state_applier_loop():
     decision = get_str(ENT['surplus_dispatch_decision_pys'], 'NOOP')
     freeze_until_ts = get_attr(ENT['policy_decision_trace'], 'surplus_freeze_until_ts', None)
 
     writes = _apply_dispatch(decision)
     freeze_written = _set_freeze_until_ts(ENT['surplus_freeze_until'], freeze_until_ts)
 
-    publish_sensor('sensor.ems_surplus_latch_trace', decision, {
+    publish_sensor('sensor.ems_dispatch_state_applier_trace', decision, {
         'decision': decision,
         'writes': writes,
         'freeze_written': freeze_written,

@@ -194,7 +194,7 @@ def test_freeze_blocks_new_activation():
 def test_active_target_no_longer_eligible_releases_it():
     now = 1000.0
 
-    # Active but force_on toggled on -> allocator releases latch
+    # Active but force_on toggled on -> allocator releases dispatch state
     inp_force = SurplusDispatchInput(
         policy_active=True,
         freeze_until_ts=None,
@@ -205,7 +205,7 @@ def test_active_target_no_longer_eligible_releases_it():
     dec_force = compute_surplus_dispatch(inp_force, now_ts=now, freeze_s=30)
     assert dec_force.release == 'RELAY1'
 
-    # Active but disabled -> allocator releases latch
+    # Active but disabled -> allocator releases dispatch state
     inp_disabled = SurplusDispatchInput(
         policy_active=True,
         freeze_until_ts=None,

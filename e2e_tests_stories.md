@@ -18,7 +18,7 @@ Tiedosto: `tests/e2e_entity/test_goal_transition_net_zero_to_max_export.py`
 
 Eteneminen:
 1. Testi kaynnistyy `NET_ZERO`-tilasta, jossa ensin aktivoidaan RELAY1 ja sen jalkeen EV.
-2. EV ehtii burn-tilaan (korkea virta) ja rele-/surplus-latchit ovat aktiivisia.
+2. EV ehtii burn-tilaan (korkea virta) ja rele-/surplus-stateit ovat aktiivisia.
 3. Tavoite vaihdetaan `MAX_EXPORT`-tilaan.
 4. Surplus-politiikka kytkeytyy pois paalta, latchit nollataan (`CLEAR_ALL`) ja EV siirtyy hard-off-polulle.
 5. Kirjoittaja varmistaa, etta EV disabletaan, virta palautetaan minimiin laturin ollessa pois, ja releet vapautetaan.
@@ -31,7 +31,7 @@ Eteneminen:
 1. `NET_ZERO`-tilassa aktivointijarjestys etenee prioriteetin mukaan: RELAY1 -> EV -> RELAY2.
 2. Freeze-ikkunat erottavat paatoksen syntymisen ja fyysisen toteuman nakymisen.
 3. Kun surplus romahtaa, vapautus tapahtuu kaanteisessa jarjestyksessa: RELAY2 -> EV -> RELAY1.
-4. Testi varmistaa jokaisessa vaiheessa latch-, policy- ja actuator-nakyvyyden eron.
+4. Testi varmistaa jokaisessa vaiheessa dispatch state-, policy- ja actuator-nakyvyyden eron.
 5. Lopussa sykli kaynnistyy uudelleen ja RELAY1 voidaan aktivoida taas ensimmaisena.
 
 ## 4) test_net_zero_user_forces_relay2_with_freeze_hygiene

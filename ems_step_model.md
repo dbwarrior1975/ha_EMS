@@ -7,7 +7,7 @@ Tama muistio kuvaa, miten nykyinen EMS-ketju etenee yhdessa skenaariostepissa ja
 Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme komponenttia tassa jarjestyksessa:
 
 1. `ems_policy_engine_loop()`
-2. `ems_surplus_latches_loop()`
+2. `ems_dispatch_state_applier_loop()`
 3. `ems_actuator_writers_loop()`
 
 Tasta seuraa perusmalli:
@@ -22,10 +22,10 @@ Tasta seuraa perusmalli:
 
 Monissa tilanteissa tapahtuu nain:
 
-1. Policy paattaa nyt, etta joku latch aktivoidaan tai vapautetaan.
+1. Policy paattaa nyt, etta joku dispatch state aktivoidaan tai vapautetaan.
 2. Latch tekee muutoksen heti samassa stepissa.
-3. Writer ei valttamatta viela muuta actuatoria, koska policy command laskettiin ennen latch-muutosta.
-4. Seuraavassa stepissa policy nakee uuden latch-tilan ja writer voi vasta silloin toteuttaa nakyvan actuator-muutoksen.
+3. Writer ei valttamatta viela muuta actuatoria, koska policy command laskettiin ennen dispatch state-muutosta.
+4. Seuraavassa stepissa policy nakee uuden dispatch state-tilan ja writer voi vasta silloin toteuttaa nakyvan actuator-muutoksen.
 
 ## Missa tama nakyy selvimmin
 
@@ -36,15 +36,15 @@ Tama viive nakyy erityisesti surplus-ohjatuissa kuormissa:
 - `surplus_r2_active`
 - `surplus_freeze_until_ts`
 
-Policy lukee juuri naita tiloja stepin alussa. Jos latch muuttaa niita saman stepin aikana, uusi vaikutus policy-commandiin nakyy tavallisesti vasta seuraavalla kierroksella.
+Policy lukee juuri naita tiloja stepin alussa. Jos dispatch state muuttaa niita saman stepin aikana, uusi vaikutus policy-commandiin nakyy tavallisesti vasta seuraavalla kierroksella.
 
 ## EV-esimerkki
 
 Tyypillinen EV-polku:
 
 1. Step A: policy paattaa `RELEASE_EV`
-2. Step A: latch asettaa `surplus_ev_active = False`
-3. Step A: writer voi silti nahda `policy_ev_current_a = 28`, koska se laskettiin ennen latch-muutosta
+2. Step A: dispatch state asettaa `surplus_ev_active = False`
+3. Step A: writer voi silti nahda `policy_ev_current_a = 28`, koska se laskettiin ennen dispatch state-muutosta
 4. Step B: policy nakee nyt `surplus_ev_active = False`
 5. Step B: policy tuottaa `policy_ev_current_a = 0` ja esimerkiksi `ev_policy_mode = 'restore_min'`
 6. Step B: writer laskee EV-currentin minimiin
@@ -59,7 +59,7 @@ Tama ei ole ristiriita, vaan seurausta komponenttien ajojarjestyksesta.
 
 ## Releiden logiikka
 
-Sama periaate koskee myos releita, kun niiden command riippuu surplus-latch-tilasta.
+Sama periaate koskee myos releita, kun niiden command riippuu surplus-state-tilasta.
 
 Esimerkki aktivoinnista:
 
@@ -76,7 +76,7 @@ Sama toimii myos release-suunnassa.
 
 Kaikki eivat aina viivasty yhdella stepilla.
 
-Nopea actuator-muutos voi tapahtua jo samassa stepissa, jos policy command perustuu suoraan stepin inputtiin eika juuri saman stepin aikana muuttuneeseen latch-tilaan.
+Nopea actuator-muutos voi tapahtua jo samassa stepissa, jos policy command perustuu suoraan stepin inputtiin eika juuri saman stepin aikana muuttuneeseen dispatch state-tilaan.
 
 Hyva esimerkki:
 
@@ -92,15 +92,15 @@ Kun kirjoitat E2E-skenaariota, erottele aina ainakin nama tasot:
    näkyvat entity-tilat stepin jalkeen
 2. `expect_policy`
    policy trace -attribuutit
-3. `expect_latch`
-   latch trace -attribuutit
+3. `expect_dispatch_state`
+   dispatch state trace -attribuutit
 4. `expect_writer_trace`
    writer trace -attribuutit
 
 Talla tavalla testi pystyy ilmaisemaan oikein tilanteet, joissa:
 
 - paatos syntyy nyt
-- latch muuttuu nyt
+- dispatch state muuttuu nyt
 - actuator muuttuu vasta seuraavassa stepissa
 
 ## Tiivistys
@@ -108,7 +108,7 @@ Talla tavalla testi pystyy ilmaisemaan oikein tilanteet, joissa:
 Nykyinen EMS on kaytannossa pipelinoitu tilakone:
 
 1. policy paattaa
-2. latch paivittaa tilan
+2. dispatch state paivittaa tilan
 3. writer toteuttaa commandit
 
 Siksi kaikki muutokset eivat nay samassa stepissa, vaikka ne kuuluvat samaan business-tapahtumaan.
