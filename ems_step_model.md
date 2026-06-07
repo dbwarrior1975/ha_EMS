@@ -13,7 +13,7 @@ Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme komponenttia tassa
 Tasta seuraa perusmalli:
 
 1. Policy laskee paatokset stepin alun tilasta.
-2. Latch state updater toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
+2. Dispatch state applier toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
 3. Actuator applier kirjoittaa actuatorit policy-outputtien perusteella.
 
 ## Tarkein seuraus
@@ -23,7 +23,7 @@ Tasta seuraa perusmalli:
 Monissa tilanteissa tapahtuu nain:
 
 1. Policy paattaa nyt, etta joku dispatch state aktivoidaan tai vapautetaan.
-2. Latch tekee muutoksen heti samassa stepissa.
+2. Dispatch state applier tekee muutoksen heti samassa stepissa.
 3. Writer ei valttamatta viela muuta actuatoria, koska policy command laskettiin ennen dispatch state-muutosta.
 4. Seuraavassa stepissa policy nakee uuden dispatch state-tilan ja writer voi vasta silloin toteuttaa nakyvan actuator-muutoksen.
 
@@ -64,7 +64,7 @@ Sama periaate koskee myos releita, kun niiden command riippuu surplus-state-tila
 Esimerkki aktivoinnista:
 
 1. Policy paattaa `ACTIVATE_RELAY1`
-2. Latch asettaa `surplus_r1_active = True`
+2. Dispatch state applier asettaa `surplus_r1_active = True`
 3. Writer ei valttamatta viela kytke reletta paalle, jos saman stepin `policy_relay1_command` on yha `0`
 4. Seuraavassa stepissa policy nakee `surplus_r1_active = True`
 5. `policy_relay1_command` muuttuu `1`:ksi

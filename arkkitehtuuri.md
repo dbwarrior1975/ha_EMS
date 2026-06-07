@@ -12,6 +12,8 @@ Projektin ydin on kolmen paakomponentin ketju:
 
 Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
 
+Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon `business_logic_guide.md`.
+
 ## Kokonaiskuva
 
 ```mermaid
@@ -26,6 +28,38 @@ flowchart LR
     P --> TRACE[policy_decision_trace]
     L --> LTRACE[dispatch_state_applier_trace]
     W --> WTRACE[actuator_writer_trace]
+```
+
+## Tilakaavio
+
+Seuraava kaavio kokoaa yhteen guard-profiilien keskeiset operaatiotilat ja surplus-dispatch-statejen paavaiheet.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NORMAL_LIMITS
+
+    NORMAL_LIMITS --> BATTERY_PROTECT: soc < protect_soc or min_cell < protect_v
+    BATTERY_PROTECT --> NORMAL_LIMITS: soc >= protect_soc + margin and min_cell >= protect_v
+
+    NORMAL_LIMITS --> STRICT_LIMITS: user selects STRICT_LIMITS
+    STRICT_LIMITS --> NORMAL_LIMITS: user leaves STRICT_LIMITS
+
+    NORMAL_LIMITS --> DEGRADED: stale/invalid victron or soc
+    BATTERY_PROTECT --> DEGRADED: stale/invalid victron or soc
+    STRICT_LIMITS --> DEGRADED: stale/invalid victron or soc
+    DEGRADED --> NORMAL_LIMITS: data fresh and valid, no protect trigger
+    DEGRADED --> BATTERY_PROTECT: data fresh and battery protect trigger
+
+    state "Surplus Dispatch State" as SDS {
+        [*] --> IDLE
+        IDLE --> ACTIVE: ACTIVATE_*
+        ACTIVE --> ACTIVE: ACTIVATE_* (same or next target)
+        ACTIVE --> IDLE: RELEASE_* or CLEAR_ALL
+        ACTIVE --> FROZEN: freeze_until_ts > now
+        FROZEN --> ACTIVE: freeze expired and target still active
+        FROZEN --> IDLE: RELEASE_* or CLEAR_ALL
+        IDLE --> FROZEN: freeze created on force/activation edge
+    }
 ```
 
 ## Paakomponentit

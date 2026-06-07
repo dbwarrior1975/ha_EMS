@@ -27,6 +27,15 @@ Lisadokumentaatio:
 1. `arkkitehtuuri.md`
 2. `operointi.md`
 3. `testausautomaatio.md`
+4. `tilakaavio.md`
+5. `business_logic_guide.md`
+
+## Nopeat suunnistusdokumentit
+
+Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
+
+1. `tilakaavio.md` kokoaa yhteen guard-tilojen ja surplus-dispatch-statejen siirtymalogiikan.
+2. `business_logic_guide.md` kuvaa EMS:n energiastrategian kayttajan nakokulmasta.
 
 ## Tuetut semantiikat
 
