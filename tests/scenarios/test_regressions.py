@@ -29,8 +29,8 @@ from tests.helpers import make_profiles, make_cfg, make_m, make_haeo, make_nz
         (
             'degraded_fallback',
             make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO),
-            make_cfg(victron_heartbeat_timeout_s=10),
-            make_m(victron_heartbeat_age_s=999),
+            make_cfg(battery_heartbeat_timeout_s=10),
+            make_m(battery_heartbeat_age_s=999),
             GuardProfile.DEGRADED,
             'SYSTEM_DEGRADED',
         ),

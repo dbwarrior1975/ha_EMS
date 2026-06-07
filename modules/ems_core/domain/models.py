@@ -49,7 +49,7 @@ class EmsConfig:
     battery_protect_soc: float = 2.0
     battery_protect_soc_recovery_margin: float = 1.0
     battery_protect_min_cell_voltage_v: float = 3.030
-    victron_heartbeat_timeout_s: float = 360.0
+    battery_heartbeat_timeout_s: float = 360.0
     haeo_stale_timeout_s: float = 300.0
     ev_min_current_a: int = 4
     ev_max_current_a: int = 28
@@ -69,7 +69,7 @@ class RuntimeMeasurements:
     now_ts: float
     soc: Optional[float]
     min_cell_voltage_v: Optional[float]
-    victron_heartbeat_age_s: float
+    battery_heartbeat_age_s: float
     grid_power_w: float
     current_battery_setpoint_w: float
     hourly_energy_balance_kwh: float

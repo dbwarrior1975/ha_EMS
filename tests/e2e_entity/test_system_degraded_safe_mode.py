@@ -9,19 +9,19 @@ WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 
 @pytest.mark.scenario
 def test_soc_stale_enters_safe_mode(project_root):
-    """Stale Victron heartbeat pushes guard into DEGRADED and clamps policy outputs."""
+    """Stale battery inverter heartbeat pushes guard into DEGRADED and clamps policy outputs."""
     h = QuarterScenarioHarness(project_root=project_root, start_ts=1000.0, step_s=30)
     h.set_entities({
         ENT['goal_profile']: 'NET_ZERO',
         ENT['forecast_profile']: 'NONE',
         ENT['soc']: 50.0,
-        ENT['victron_heartbeat']: 0.0,
+        ENT['battery_heartbeat']: 0.0,
     })
-    h.set_stale(ENT['victron_heartbeat'], 1000.0)
+    h.set_stale(ENT['battery_heartbeat'], 1000.0)
 
     steps = [
         {
-            'note': 'stale victron enters degraded',
+            'note': 'stale battery inverter heartbeat enters degraded',
             'set': {
                 ENT['required_power_consumption_kw']: 4.0,
                 ENT['rpnz_w']: 500,
@@ -57,24 +57,24 @@ def test_soc_stale_enters_safe_mode(project_root):
 
 @pytest.mark.scenario
 def test_writer_freeze_in_system_degraded(project_root):
-    """In DEGRADED the dispatch state state clears, but writers skip existing EV/relay actuators."""
+    """In DEGRADED the latch state clears, but writers skip existing EV/relay actuators."""
     h = QuarterScenarioHarness(project_root=project_root, start_ts=1000.0, step_s=30)
     h.set_entities({
         ENT['goal_profile']: 'NET_ZERO',
         ENT['forecast_profile']: 'NONE',
         ENT['soc']: 50.0,
-        ENT['victron_heartbeat']: 0.0,
+        ENT['battery_heartbeat']: 0.0,
         ENT['surplus_ev_active']: True,
         ENT['surplus_r1_active']: True,
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 16,
         ENT['actuator_relay1']: True,
     })
-    h.set_stale(ENT['victron_heartbeat'], 1000.0)
+    h.set_stale(ENT['battery_heartbeat'], 1000.0)
 
     steps = [
         {
-            'note': 'degraded clears dispatch states and skips ev',
+            'note': 'degraded clears latches and skips ev',
             'set': {
                 ENT['required_power_consumption_kw']: 4.0,
                 ENT['rpnz_w']: 500,

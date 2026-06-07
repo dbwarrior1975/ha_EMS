@@ -50,7 +50,7 @@ def _load_writer_module(project_root):
 
     ENT = {
         'policy_battery_target_w': 'sensor.policy_battery',
-        'actuator_victron_setpoint_w': 'input_number.test_actuator_victron_setpoint_w',
+        'actuator_battery_setpoint_w': 'input_number.test_actuator_battery_setpoint_w',
         'policy_ev_current_a': 'sensor.policy_ev',
         'actuator_ev_enabled': 'input_boolean.actuator_ev_enabled',
         'actuator_ev_current_a': 'input_number.test_actuator_ev_current_a',
@@ -100,12 +100,12 @@ def test_writer_manual_battery_is_hands_off(project_root):
 
     state['input_select.ems_control_profile'] = 'MANUAL'
     state[ENT['policy_battery_target_w']] = 1500
-    state[ENT['actuator_victron_setpoint_w']] = 250
+    state[ENT['actuator_battery_setpoint_w']] = 250
 
-    result = mod['_write_victron_actuator']()
+    result = mod['_write_battery_actuator']()
     assert result['written'] is False
     assert result['reason'] == 'manual_skip'
-    assert state[ENT['actuator_victron_setpoint_w']] == 250
+    assert state[ENT['actuator_battery_setpoint_w']] == 250
 
 
 @pytest.mark.unit
@@ -114,12 +114,12 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
 
     state['input_select.ems_control_profile'] = 'MANUAL_SAFE'
     state[ENT['policy_battery_target_w']] = 0
-    state[ENT['actuator_victron_setpoint_w']] = -500
+    state[ENT['actuator_battery_setpoint_w']] = -500
 
-    result = mod['_write_victron_actuator']()
+    result = mod['_write_battery_actuator']()
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
-    assert state[ENT['actuator_victron_setpoint_w']] == 0
+    assert state[ENT['actuator_battery_setpoint_w']] == 0
     
     
 @pytest.mark.unit
@@ -132,7 +132,7 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
     state['input_number.ems_ramp_max_w'] = 500
 
     state[ENT['policy_battery_target_w']] = 0
-    state[ENT['actuator_victron_setpoint_w']] = 0
+    state[ENT['actuator_battery_setpoint_w']] = 0
 
     state[ENT['policy_relay1_command']] = -1
     state[ENT['policy_relay2_command']] = -1

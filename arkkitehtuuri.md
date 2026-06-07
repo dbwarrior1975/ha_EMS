@@ -44,9 +44,9 @@ stateDiagram-v2
     NORMAL_LIMITS --> STRICT_LIMITS: user selects STRICT_LIMITS
     STRICT_LIMITS --> NORMAL_LIMITS: user leaves STRICT_LIMITS
 
-    NORMAL_LIMITS --> DEGRADED: stale/invalid victron or soc
-    BATTERY_PROTECT --> DEGRADED: stale/invalid victron or soc
-    STRICT_LIMITS --> DEGRADED: stale/invalid victron or soc
+    NORMAL_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
+    BATTERY_PROTECT --> DEGRADED: stale/invalid battery inverter or soc
+    STRICT_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
     DEGRADED --> NORMAL_LIMITS: data fresh and valid, no protect trigger
     DEGRADED --> BATTERY_PROTECT: data fresh and battery protect trigger
 
@@ -116,7 +116,7 @@ Tiedosto: `ems_actuator_writers.py`
 
 Vastuut:
 
-1. kirjoittaa akun setpointin `actuator_victron_setpoint_w`-entiteettiin
+1. kirjoittaa akun setpointin `actuator_battery_setpoint_w`-entiteettiin
 2. kirjoittaa EV-laturin paalle/pois-tilan ja virran `actuator_ev_enabled` ja `actuator_ev_current_a` -entiteetteihin
 3. kirjoittaa releiden paalle/pois-komennot `actuator_relay1` ja `actuator_relay2` -entiteetteihin
 4. julkaisee `sensor.ems_actuator_writer_trace`-diagnostiikan
@@ -183,7 +183,7 @@ Nykyinen mappaus kayttaa nimenomaan `actuator_*`- ja `surplus_*`-avaimia. Keskei
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_*`
 6. surplus-tilat: `surplus_freeze_until`, `surplus_ev_active`, `surplus_r1_active`, `surplus_r2_active`
-7. aktuaattorit: `actuator_victron_setpoint_w`, `actuator_ev_current_a`, `actuator_ev_enabled`, `actuator_relay1`, `actuator_relay2`
+7. aktuaattorit: `actuator_battery_setpoint_w`, `actuator_ev_current_a`, `actuator_ev_enabled`, `actuator_relay1`, `actuator_relay2`
 
 ## Guard-logiikka
 
@@ -197,12 +197,12 @@ Jos guard on kayttajan valitsema `STRICT_LIMITS`, evaluator ei overridea sita. K
 
 ### `DEGRADED`
 
-`DEGRADED` aktivoituu, jos Victron/SOC-data on stale tai virheellinen:
+`DEGRADED` aktivoituu, jos battery inverter/SOC-data on stale tai virheellinen:
 
-1. `victron_heartbeat_age_s > victron_heartbeat_timeout_s`
+1. `battery_heartbeat_age_s > battery_heartbeat_timeout_s`
 2. SOC puuttuu tai ei ole valilla 0..100
 
-Koodin syyteksti: `Victron/SOC data is stale or invalid`.
+Koodin syyteksti: `battery inverter/SOC data is stale or invalid`.
 
 ### `BATTERY_PROTECT`
 

@@ -27,7 +27,7 @@ def _writer_enabled_from_policy(default=True):
     return str(raw).lower() in ('1', 'true', 'on', 'yes')
 
 
-def _write_victron_actuator():
+def _write_battery_actuator():
     control = get_str(_ent('control_profile', 'input_select.ems_control_profile'), 'AUTOMATIC')
 
     if control == 'MANUAL':
@@ -50,7 +50,7 @@ def _write_victron_actuator():
         }
 
     target_w = get_float(ENT['policy_battery_target_w'], 0)
-    current_w = get_float(ENT['actuator_victron_setpoint_w'], 0)
+    current_w = get_float(ENT['actuator_battery_setpoint_w'], 0)
     deadband = get_float(_ent('deadband_w', 'input_number.ems_deadband_w'), 100)
     ramp = get_float(_ent('ramp_max_w', 'input_number.ems_ramp_max_w'), 500)
 
@@ -68,7 +68,7 @@ def _write_victron_actuator():
 
     step = max(min(delta, ramp), -ramp)
     new_setpoint = _quantize_50w(current_w + step)
-    set_number(ENT['actuator_victron_setpoint_w'], new_setpoint)
+    set_number(ENT['actuator_battery_setpoint_w'], new_setpoint)
 
     return {
         'target': 'victron',
@@ -233,7 +233,7 @@ def _publish_writer_trace(victron, ev, relay1, relay2):
     'input_select.ems_control_profile'
 )
 def ems_actuator_writers_loop():
-    victron = _write_victron_actuator()
+    victron = _write_battery_actuator()
     ev = _write_ev_actuator()
     relay1 = _write_relay_actuator(
         ENT['policy_relay1_command'],

@@ -165,7 +165,7 @@ Operatiivinen vaikutus:
 
 ### `DEGRADED`
 
-Aktivoituu stale/invalid Victron- tai SOC-datasta.
+Aktivoituu stale/invalid battery inverter- tai SOC-datasta.
 
 Operatiivinen vaikutus:
 
@@ -288,7 +288,7 @@ Tarkista:
 2. `control_profile`
 3. `guard`
 4. `policy_battery_target_w`
-5. `actuator_victron_setpoint_w`
+5. `actuator_battery_setpoint_w`
 6. writerin deadband- ja ramp-arvot
 
 Jos `battery_write_enabled=False`, writer ei kirjoita akulle.
@@ -297,11 +297,11 @@ Jos `battery_write_enabled=False`, writer ei kirjoita akulle.
 
 Tarkista:
 
-1. Victron heartbeatin ika
+1. battery inverter heartbeatin ika
 2. SOC:n saatavuus ja validius
 3. `guard_reason`
 
-Koodin perusteella `DEGRADED` tulee stale/invalid Victron- tai SOC-datasta.
+Koodin perusteella `DEGRADED` tulee stale/invalid battery inverter- tai SOC-datasta.
 
 ### HAEO ei vaikuta
 

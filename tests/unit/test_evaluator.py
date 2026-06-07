@@ -15,8 +15,8 @@ def test_strict_limits_is_never_overridden():
 
 @pytest.mark.unit
 def test_stale_or_invalid_soc_enters_degraded():
-    cfg = make_cfg(victron_heartbeat_timeout_s=10)
-    m = make_m(victron_heartbeat_age_s=999)
+    cfg = make_cfg(battery_heartbeat_timeout_s=10)
+    m = make_m(battery_heartbeat_age_s=999)
     dec = evaluate_guard(GuardProfile.NORMAL_LIMITS, m, cfg)
     assert dec.guard == GuardProfile.DEGRADED
     assert dec.soc_stale is True

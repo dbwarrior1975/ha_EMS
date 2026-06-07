@@ -132,7 +132,7 @@ Tuetut guard-profiilit:
 
 Tarkeat huomiot:
 
-1. `DEGRADED` aktivoituu stale/invalid Victron- tai SOC-datasta
+1. `DEGRADED` aktivoituu stale/invalid battery inverter- tai SOC-datasta
 2. `BATTERY_PROTECT` estaa haitallisen akun purun
 3. `STRICT_LIMITS` on kayttajan pakottama tila
 

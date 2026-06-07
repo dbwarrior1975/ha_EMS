@@ -17,9 +17,9 @@ stateDiagram-v2
     NORMAL_LIMITS --> STRICT_LIMITS: user selects STRICT_LIMITS
     STRICT_LIMITS --> NORMAL_LIMITS: user leaves STRICT_LIMITS
 
-    NORMAL_LIMITS --> DEGRADED: stale/invalid victron or soc
-    BATTERY_PROTECT --> DEGRADED: stale/invalid victron or soc
-    STRICT_LIMITS --> DEGRADED: stale/invalid victron or soc
+    NORMAL_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
+    BATTERY_PROTECT --> DEGRADED: stale/invalid battery inverter or soc
+    STRICT_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
 
     DEGRADED --> NORMAL_LIMITS: data fresh and valid, no protect trigger
     DEGRADED --> BATTERY_PROTECT: data fresh and battery protect trigger

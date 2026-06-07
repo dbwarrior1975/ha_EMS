@@ -104,7 +104,7 @@ def _load_writer_module(project_root):
 
     ENT = {
         'policy_battery_target_w': 'sensor.policy_battery',
-        'actuator_victron_setpoint_w': 'input_number.test_actuator_victron_setpoint_w',
+        'actuator_battery_setpoint_w': 'input_number.test_actuator_battery_setpoint_w',
         'policy_ev_current_a': 'sensor.policy_ev',
         'actuator_ev_enabled': 'input_boolean.actuator_ev_enabled',
         'actuator_ev_current_a': 'input_number.test_actuator_ev_current_a',

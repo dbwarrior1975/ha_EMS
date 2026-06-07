@@ -51,7 +51,7 @@ def read_measurements(now_ts):
         now_ts=now_ts,
         soc=get_float(ENT['soc'], None),
         min_cell_voltage_v=get_float(ENT['min_cell_voltage_v'], None),
-        victron_heartbeat_age_s=age_seconds(ENT['victron_heartbeat'], now_ts),
+        battery_heartbeat_age_s=age_seconds(ENT['battery_heartbeat'], now_ts),
         grid_power_w=get_float(ENT['grid_power_w'], 0),
         current_battery_setpoint_w=get_float(ENT['current_battery_sp'], 100),
         hourly_energy_balance_kwh=get_float(ENT['hourly_energy_balance'], 0),

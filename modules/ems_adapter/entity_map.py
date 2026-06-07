@@ -32,7 +32,7 @@ ENT = {
 
     'soc': 'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc',
     'min_cell_voltage_v': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage',
-    'victron_heartbeat': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
+    'battery_heartbeat': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
     'grid_power_w': 'sensor.average_active_power_2',
     'current_battery_sp': 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
     'hourly_energy_balance': 'sensor.hourly_energy_balance',
@@ -73,7 +73,7 @@ ENT = {
     'surplus_explanation_pys': 'sensor.ems_net_zero_surplus_explanation_pyscript',
     'surplus_dispatch_decision_pys': 'sensor.ems_net_zero_surplus_dispatch_decision_pyscript',
 
-    'actuator_victron_setpoint_w': 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
+    'actuator_battery_setpoint_w': 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
     'actuator_ev_current_a': 'number.charger_current_level',
     'actuator_ev_enabled': 'switch.charger_control',
     'actuator_relay1': 'switch.relay_1_2',

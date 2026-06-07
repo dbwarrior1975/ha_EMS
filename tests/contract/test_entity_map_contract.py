@@ -19,7 +19,7 @@ def test_required_entities_exist():
         'surplus_ev_active',
         'surplus_r1_active',
         'surplus_r2_active',
-        'actuator_victron_setpoint_w',
+        'actuator_battery_setpoint_w',
         'actuator_ev_current_a',
         'actuator_ev_enabled',
         'actuator_relay1',
@@ -36,7 +36,7 @@ def test_entity_ids_are_unique():
         duplicates.setdefault(value, []).append(key)
 
     allowed_shared_entities = {
-        'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point': {'current_battery_sp', 'actuator_victron_setpoint_w'},
+        'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point': {'current_battery_sp', 'actuator_battery_setpoint_w'},
         'number.charger_current_level': {'charger_current', 'actuator_ev_current_a'},
         'switch.charger_control': {'charger_control', 'actuator_ev_enabled'},
         'switch.relay_1_2': {'relay1', 'actuator_relay1'},
@@ -53,7 +53,7 @@ def test_unit_conversion_contract():
     assert ENT['required_power_consumption_kw'].startswith('sensor.')
     assert ENT['policy_battery_target_w'].startswith('sensor.')
     assert ENT['policy_ev_current_a'].startswith('sensor.')
-    assert ENT['actuator_victron_setpoint_w'].startswith('number.')
+    assert ENT['actuator_battery_setpoint_w'].startswith('number.')
     assert ENT['actuator_ev_current_a'].startswith('number.')
 
 

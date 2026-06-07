@@ -77,7 +77,7 @@ Eteneminen:
 Tiedosto: `tests/e2e_entity/test_system_degraded_safe_mode.py`
 
 Eteneminen:
-1. Victron heartbeat asetetaan stale-tilaan.
+1. battery inverter heartbeat asetetaan stale-tilaan.
 2. Yhdella stepilla guard siirtyy `DEGRADED`-tilaan.
 3. Samalla politiikka clampataan turvalliseen moodiin: akun tavoite 0 W ja EV-policy -1 (safe/degraded-kayttaytyminen).
 4. Paatosjalki vahvistaa rajoitteen syyksi `SYSTEM_DEGRADED`.
@@ -87,6 +87,6 @@ Tiedosto: `tests/e2e_entity/test_system_degraded_safe_mode.py`
 
 Eteneminen:
 1. Aluksi simuloidaan, etta EV ja relay1 ovat aktiivisia.
-2. Victron heartbeat stale-tilan seurauksena jarjestelma menee `DEGRADED`-tilaan.
+2. battery inverter heartbeat stale-tilan seurauksena jarjestelma menee `DEGRADED`-tilaan.
 3. Latch-tilat nollataan, mutta kirjoittaja ei pakota aktuattoreita uuteen tilaan, vaan skipataan policy-syysta.
 4. Testi varmistaa writer-tracesta, etta EV:n ja relay1:n syy on `policy_skip`.

@@ -26,7 +26,7 @@ def make_m(**overrides):
         now_ts=0.0,
         soc=50.0,
         min_cell_voltage_v=3.2,
-        victron_heartbeat_age_s=0.0,
+        battery_heartbeat_age_s=0.0,
         grid_power_w=0.0,
         current_battery_setpoint_w=100.0,
         hourly_energy_balance_kwh=0.0,
