@@ -55,8 +55,8 @@ ENT = {
     'surplus_r1_active': 'input_boolean.ems_surplus_relay1_active',
     'surplus_r2_active': 'input_boolean.ems_surplus_relay2_active',
 
-    'relay1_enabled_import_zero': 'input_boolean.ems_relay1_enabled_import_zero',
-    'relay2_enabled_import_zero': 'input_boolean.ems_relay2_enabled_import_zero',
+    'relay1_surplus_allowed': 'input_boolean.ems_relay1_surplus_allowed',
+    'relay2_surplus_allowed': 'input_boolean.ems_relay2_surplus_allowed',
     'relay1_force_on': 'input_boolean.ems_relay1_force_on',
     'relay2_force_on': 'input_boolean.ems_relay2_force_on',
 

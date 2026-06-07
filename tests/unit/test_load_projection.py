@@ -80,37 +80,37 @@ def test_max_export_force_current_ignored_and_ev_is_off():
 @pytest.mark.unit
 def test_relay_manual_force_on_and_release_to_off():
     profiles = make_profiles(control=ControlProfile.MANUAL)
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=True, net_zero_active=False) == 1
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=False, net_zero_active=False) == 0
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=True, net_zero_active=False) == 1
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=False, net_zero_active=False) == 0
 
 
 @pytest.mark.unit
 def test_relay_manual_safe_force_on_and_release_to_off():
     profiles = make_profiles(control=ControlProfile.MANUAL_SAFE)
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=True, net_zero_active=False) == 1
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=False, net_zero_active=False) == 0
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=True, net_zero_active=False) == 1
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=False, net_zero_active=False) == 0
 
 
 @pytest.mark.unit
 def test_relay_degraded_skips():
     profiles = make_profiles(guard=GuardProfile.DEGRADED)
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=True, net_zero_active=False) == -1
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=True, net_zero_active=False) == -1
 
 
 @pytest.mark.unit
 def test_relay_net_zero_force_on_overrides_allocator_state():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
-    assert relay_strategy_command(profiles, enabled_import_zero=False, force_on=True, net_zero_active=False) == 1
-    assert relay_strategy_command(profiles, enabled_import_zero=False, force_on=False, net_zero_active=False) == 0
+    assert relay_strategy_command(profiles, surplus_allowed=False, force_on=True, net_zero_active=False) == 1
+    assert relay_strategy_command(profiles, surplus_allowed=False, force_on=False, net_zero_active=False) == 0
 
 
 @pytest.mark.unit
 def test_relay_cheap_charge_is_off():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.CHEAP_GRID_CHARGE)
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=False, net_zero_active=False) == 0
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=False, net_zero_active=False) == 0
 
 
 @pytest.mark.unit
 def test_relay_max_export_is_off():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT)
-    assert relay_strategy_command(profiles, enabled_import_zero=True, force_on=False, net_zero_active=False) == 0
+    assert relay_strategy_command(profiles, surplus_allowed=True, force_on=False, net_zero_active=False) == 0

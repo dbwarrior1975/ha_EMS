@@ -47,7 +47,7 @@ def ev_strategy_current_a(profiles, cfg, haeo, burn_active):
     return -1
 
 
-def relay_strategy_command(profiles, enabled_import_zero, force_on, net_zero_active):
+def relay_strategy_command(profiles, surplus_allowed, force_on, net_zero_active):
     # MANUAL / MANUAL_SAFE -> direct user override
     if profiles.control == ControlProfile.MANUAL:
         return 1 if force_on else 0
@@ -64,7 +64,7 @@ def relay_strategy_command(profiles, enabled_import_zero, force_on, net_zero_act
     if profiles.goal == GoalProfile.NET_ZERO:
         if force_on:
             return 1
-        if not enabled_import_zero:
+        if not surplus_allowed:
             return 0
         if net_zero_active:
             return 1

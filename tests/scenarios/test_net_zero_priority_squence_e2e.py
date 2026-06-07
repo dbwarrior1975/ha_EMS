@@ -191,7 +191,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
 
     relay1_cmd = relay_strategy_command(
         profiles=profiles,
-        enabled_import_zero=True,
+        surplus_allowed=True,
         force_on=False,
         net_zero_active=True,
     )
@@ -230,7 +230,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
 
     relay2_cmd = relay_strategy_command(
         profiles=profiles,
-        enabled_import_zero=True,
+        surplus_allowed=True,
         force_on=False,
         net_zero_active=True,
     )
@@ -254,7 +254,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
     # Relay2 command after release should be OFF
     relay2_cmd_off = relay_strategy_command(
         profiles=profiles,
-        enabled_import_zero=True,
+        surplus_allowed=True,
         force_on=False,
         net_zero_active=False,
     )
@@ -309,7 +309,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
 
     relay1_cmd_off = relay_strategy_command(
         profiles=profiles,
-        enabled_import_zero=True,
+        surplus_allowed=True,
         force_on=False,
         net_zero_active=False,
     )

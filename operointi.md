@@ -274,7 +274,7 @@ Tyypillinen selitys nykykoodissa:
 
 Tarkista:
 
-1. `relay*_enabled_import_zero`
+1. `relay*_surplus_allowed`
 2. `relay*_force_on`
 3. `surplus_r*_active`
 4. `policy_relay*_command`
