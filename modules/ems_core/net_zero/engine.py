@@ -85,6 +85,11 @@ def _normalized_adjustable_primary_load(cfg):
     return ''
 
 
+def _normal_limits_discharge_cap(raw, cfg):
+    limit = int(round(max(float(getattr(cfg, 'max_battery_discharge_w', cfg.strict_limits_max_w)), 0.0)))
+    return max(int(raw), -limit)
+
+
 def _battery_target_and_authority(
     profiles,
     cfg,
@@ -150,6 +155,8 @@ def _battery_target_and_authority(
                 if profiles.guard == GuardProfile.STRICT_LIMITS:
                     limit = int(cfg.strict_limits_max_w)
                     return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
+                if profiles.guard == GuardProfile.NORMAL_LIMITS:
+                    raw = _normal_limits_discharge_cap(raw, cfg)
                 return raw, True, battery_min_floor_w, battery_min_floor_reason, False
 
         if battery_min_floor_w is None:
@@ -218,6 +225,9 @@ def _battery_target_and_authority(
     if profiles.guard == GuardProfile.STRICT_LIMITS:
         limit = int(cfg.strict_limits_max_w)
         return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
+
+    if profiles.guard == GuardProfile.NORMAL_LIMITS:
+        raw = _normal_limits_discharge_cap(raw, cfg)
 
     return raw, True, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next
 

@@ -51,6 +51,7 @@ class EmsConfig:
     deadband_w: float = 50.0
     ramp_max_w: float = 1000.0
     strict_limits_max_w: float = 4600.0
+    max_battery_discharge_w: float = 4600.0
     default_sp_w: float = 100.0
     max_solar_charge_w: float = 3700.0
     battery_protect_soc: float = 2.0

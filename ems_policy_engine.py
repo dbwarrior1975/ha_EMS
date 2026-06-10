@@ -18,6 +18,7 @@ def read_config():
         deadband_w=get_float(ENT['deadband_w'], 50),
         ramp_max_w=get_float(ENT['ramp_max_w'], 1000),
         strict_limits_max_w=get_float(ENT['strict_limits_max_w'], 4600),
+        max_battery_discharge_w=get_float(ENT['max_battery_discharge_w'], 4600),
         max_solar_charge_w=get_float(ENT['max_solar_charge_w'], 3700),
         battery_protect_soc=get_float(ENT['battery_protect_soc'], 2),
         battery_protect_soc_recovery_margin=get_float(ENT['battery_protect_soc_recovery_margin'], 1),

@@ -11,6 +11,7 @@ ENT = {
     'deadband_w': 'input_number.ems_deadband_w',
     'ramp_max_w': 'input_number.ems_ramp_max_w',
     'strict_limits_max_w': 'input_number.ems_strict_limits_max_w',
+    'max_battery_discharge_w': 'input_number.ems_max_battery_discharge_w',
     'max_solar_charge_w': 'input_number.victron_maksimi_auringon_latausteho',
 
     'ev_min_current_a': 'input_number.ems_ev_min_current_a',

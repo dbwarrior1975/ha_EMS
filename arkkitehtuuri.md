@@ -178,7 +178,7 @@ Tiedosto: `modules/ems_adapter/entity_map.py`
 Nykyinen mappaus kayttaa nimenomaan `actuator_*`- ja `surplus_*`-avaimia. Keskeiset ryhmat:
 
 1. profiilit: `control_profile`, `goal_profile`, `forecast_profile`, `guard_profile`
-2. konfiguraatio: `deadband_w`, `ramp_max_w`, `strict_limits_max_w`, `max_solar_charge_w`, `ev_*`, `relay*_power_kw`, `*_priority`
+2. konfiguraatio: `deadband_w`, `ramp_max_w`, `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`, `ev_*`, `relay*_power_kw`, `*_priority`
 3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`, `pv_power_kw`
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_*`
@@ -267,6 +267,7 @@ Tarkemmat guard-vaikutukset:
 1. `DEGRADED` -> akkutarget `0`
 2. `BATTERY_PROTECT` -> akkutarget ei-negatiiviseksi
 3. `STRICT_LIMITS` -> akkutarget `[-strict_limits_max_w, +strict_limits_max_w]`
+4. `NORMAL_LIMITS` -> purkupuoli clampataan rajaan `-max_battery_discharge_w`
 
 ### `NET_ZERO`
 

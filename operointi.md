@@ -18,19 +18,20 @@ Keskeiset konfiguraatioentiteetit:
 1. `input_number.ems_deadband_w`
 2. `input_number.ems_ramp_max_w`
 3. `input_number.ems_strict_limits_max_w`
-4. `input_number.victron_maksimi_auringon_latausteho`
-5. `input_number.ems_battery_protect_soc`
-6. `input_number.ems_battery_protect_soc_recovery_margin`
-7. `input_number.ems_battery_protect_min_cell_voltage_v`
-8. `input_number.ems_ev_min_current_a`
-9. `input_number.ems_ev_max_current_a`
-10. `input_number.ems_ev_charger_phases`
-11. `input_number.ems_ev_force_current_a`
-12. `input_number.ems_ev_hard_off_pv_threshold_kw`
-13. `input_number.ems_ev_hard_off_low_pv_cycles`
-14. `input_number.ems_haeo_stale_timeout_s`
-15. `input_number.ems_relay1_power_kw`
-16. `input_number.ems_relay2_power_kw`
+4. `input_number.ems_max_battery_discharge_w`
+5. `input_number.victron_maksimi_auringon_latausteho`
+6. `input_number.ems_battery_protect_soc`
+7. `input_number.ems_battery_protect_soc_recovery_margin`
+8. `input_number.ems_battery_protect_min_cell_voltage_v`
+9. `input_number.ems_ev_min_current_a`
+10. `input_number.ems_ev_max_current_a`
+11. `input_number.ems_ev_charger_phases`
+12. `input_number.ems_ev_force_current_a`
+13. `input_number.ems_ev_hard_off_pv_threshold_kw`
+14. `input_number.ems_ev_hard_off_low_pv_cycles`
+15. `input_number.ems_haeo_stale_timeout_s`
+16. `input_number.ems_relay1_power_kw`
+17. `input_number.ems_relay2_power_kw`
 17. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
 
 ## Kaytossa olevat komponentit
