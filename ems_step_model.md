@@ -31,7 +31,7 @@ Monissa tilanteissa tapahtuu nain:
 
 Tama viive nakyy erityisesti surplus-ohjatuissa kuormissa:
 
-- `surplus_ev_active`
+- `surplus_adjustable_active`
 - `surplus_r1_active`
 - `surplus_r2_active`
 - `surplus_freeze_until_ts`
@@ -42,17 +42,17 @@ Policy lukee juuri naita tiloja stepin alussa. Jos dispatch state muuttaa niita 
 
 Tyypillinen EV-polku:
 
-1. Step A: policy paattaa `RELEASE_EV`
-2. Step A: dispatch state asettaa `surplus_ev_active = False`
+1. Step A: policy paattaa `RELEASE_ADJUSTABLE`
+2. Step A: dispatch state asettaa `surplus_adjustable_active = False`
 3. Step A: writer voi silti nahda `policy_ev_current_a = 28`, koska se laskettiin ennen dispatch state-muutosta
-4. Step B: policy nakee nyt `surplus_ev_active = False`
+4. Step B: policy nakee nyt `surplus_adjustable_active = False`
 5. Step B: policy tuottaa `policy_ev_current_a = 0` ja esimerkiksi `ev_policy_mode = 'restore_min'`
 6. Step B: writer laskee EV-currentin minimiin
 
 Siksi on mahdollista, etta samassa stepissa ovat kaikki totta:
 
-- `surplus_dispatch_decision == 'RELEASE_EV'`
-- `surplus_ev_active == False`
+- `surplus_dispatch_decision == 'RELEASE_ADJUSTABLE'`
+- `surplus_adjustable_active == False`
 - writer trace kertoo edelleen `already_matching` ja `new_current_a == 28`
 
 Tama ei ole ristiriita, vaan seurausta komponenttien ajojarjestyksesta.

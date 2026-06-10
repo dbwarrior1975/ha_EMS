@@ -59,7 +59,6 @@ ENT = {
     'rpnz_w': 'sensor.ems_calculated_required_power_for_net_zero',
 
     'surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
-    'surplus_ev_active': 'input_boolean.ems_surplus_ev_active',
     'surplus_adjustable_active': 'input_boolean.ems_surplus_adjustable_active',
     'surplus_r1_active': 'input_boolean.ems_surplus_relay1_active',
     'surplus_r2_active': 'input_boolean.ems_surplus_relay2_active',

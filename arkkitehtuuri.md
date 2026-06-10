@@ -182,7 +182,7 @@ Nykyinen mappaus kayttaa nimenomaan `actuator_*`- ja `surplus_*`-avaimia. Keskei
 3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`, `pv_power_kw`
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_*`
-6. surplus-tilat: `surplus_freeze_until`, `surplus_ev_active`, `surplus_r1_active`, `surplus_r2_active`
+6. surplus-tilat: `surplus_freeze_until`, `surplus_adjustable_active`, `surplus_r1_active`, `surplus_r2_active`
 7. aktuaattorit: `actuator_battery_setpoint_w`, `actuator_ev_current_a`, `actuator_ev_enabled`, `actuator_relay1`, `actuator_relay2`
 
 ## Guard-logiikka
@@ -278,6 +278,7 @@ Tarkemmat guard-vaikutukset:
 4. deadbandia
 5. ramppirajaa
 6. `max_solar_charge_w`-ylakattoa
+7. konfiguroitavaa minimi-flooria `nz_battery_floor_default_w`
 
 ### `MAX_EXPORT`
 

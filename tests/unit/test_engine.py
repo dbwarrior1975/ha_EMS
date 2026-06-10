@@ -272,6 +272,33 @@ def test_engine_home_battery_adjustable_uses_rpnz_controller_when_not_primary_ev
 
 
 @pytest.mark.unit
+def test_engine_net_zero_uses_configurable_default_battery_floor():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        max_solar_charge_w=2000,
+        nz_battery_floor_default_w=250,
+    )
+    m = make_m(grid_power_w=0, current_battery_setpoint_w=100)
+    nz = make_nz(rpnz_w=100, required_power_consumption_kw=0.5)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=45.0,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=True,
+    )
+
+    assert out.battery_target_w == 250
+
+
+@pytest.mark.unit
 def test_engine_home_battery_adjustable_release_stops_max_hold():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(adjustable_surplus_load='HOME_BATTERY', max_solar_charge_w=2000)
@@ -338,6 +365,35 @@ def test_engine_adjustable_surplus_activation_overrides_threshold_source():
     assert below.surplus_explanation == 'Waiting for ADJUSTABLE; raw RPC below threshold'
     assert at.surplus_dispatch_decision == 'ACTIVATE_ADJUSTABLE'
     assert at.surplus_explanation == 'Raw RPC 2.000 kW >= ADJUSTABLE threshold 2.000 kW'
+
+
+@pytest.mark.unit
+def test_engine_same_target_combo_emits_fallback_warning_attrs():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='EV_CHARGER',
+    )
+    m = make_m()
+    nz = make_nz(rpnz_w=200, required_power_consumption_kw=1.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+    )
+
+    assert out.attrs['primary_surplus_combo_valid'] is False
+    assert out.attrs['primary_surplus_combo_reason'] == 'fallback_to_cross_combo'
+    assert out.attrs['primary_surplus_combo_fallback_active'] is True
+    assert 'fallback_to_cross_combo' in out.attrs['primary_surplus_combo_warning']
 
 
 @pytest.mark.unit

@@ -122,7 +122,7 @@ def _battery_target_and_authority(
 
     if profiles.goal == GoalProfile.NET_ZERO:
         effective_rpnz_w = nz.rpnz_w
-        min_charge_floor_w = 100.0
+        min_charge_floor_w = float(cfg.nz_battery_floor_default_w)
         ev_primary_positive_rpnz = bool(use_ev_primary_mode) and float(nz.rpnz_w) > 0.0
         adjustable_is_home_battery = _normalized_adjustable_surplus_load(cfg) == 'HOME_BATTERY'
         configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
@@ -414,6 +414,14 @@ def compute_net_zero_engine_outputs(
         adjustable_primary_load = 'HOME_BATTERY' if adjustable_surplus_load == 'EV_CHARGER' else 'EV_CHARGER'
         primary_surplus_combo_reason = 'fallback_to_cross_combo'
 
+    combo_fallback_active = primary_surplus_combo_reason == 'fallback_to_cross_combo'
+    combo_fallback_warning = (
+        'Unsupported primary/surplus same-target combo detected; '
+        'runtime forced fallback_to_cross_combo'
+        if combo_fallback_active
+        else ''
+    )
+
     use_ev_surplus_mode = adjustable_surplus_load == 'EV_CHARGER'
     use_ev_primary_mode = adjustable_primary_load == 'EV_CHARGER'
     use_ev_primary_home_battery_combo = use_ev_primary_mode and (not use_ev_surplus_mode)
@@ -665,6 +673,8 @@ def compute_net_zero_engine_outputs(
             'adjustable_primary_load': adjustable_primary_load,
             'primary_surplus_combo_valid': bool(primary_surplus_combo_valid),
             'primary_surplus_combo_reason': primary_surplus_combo_reason,
+            'primary_surplus_combo_fallback_active': bool(combo_fallback_active),
+            'primary_surplus_combo_warning': combo_fallback_warning,
             'battery_min_floor_w': battery_min_floor_w,
             'battery_min_floor_reason': battery_min_floor_reason,
             'surplus_adjustable_active': bool(adjustable_surplus_active_next),

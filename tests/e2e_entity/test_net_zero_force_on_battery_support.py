@@ -46,7 +46,6 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
         ENT['relay2_force_on']: False,
         ENT['surplus_r1_active']: False,
         ENT['surplus_r2_active']: False,
-        ENT['surplus_ev_active']: False,
         ENT['actuator_relay1']: False,
         ENT['actuator_relay2']: False,
         ENT['actuator_ev_enabled']: False,
@@ -81,7 +80,6 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_values': {
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
@@ -110,7 +108,6 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_values': {
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },

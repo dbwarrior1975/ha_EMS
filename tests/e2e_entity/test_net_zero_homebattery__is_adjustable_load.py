@@ -76,7 +76,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -107,7 +106,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -139,7 +137,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -171,7 +168,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -204,7 +200,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -233,7 +228,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_battery_setpoint_w']: 2000                               
@@ -262,7 +256,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_battery_setpoint_w']: 2000                    
@@ -292,7 +285,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -322,7 +314,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: None,                  
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_ev_enabled']: False,
@@ -353,7 +344,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: True,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_ev_enabled']: False,
@@ -384,7 +374,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: True,                
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
@@ -415,7 +404,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: True,                
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
@@ -446,7 +434,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_battery_setpoint_w']: 1000,
@@ -475,7 +462,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: True,
                 ENT['actuator_ev_current_a']: 28,                                
             },
@@ -505,7 +491,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
             },
             'expect_values': {
             
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: False,                 
             },
         },        
@@ -534,7 +519,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: False,                 
             },
         },
@@ -562,7 +546,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['surplus_adjustable_active']: False,                 
             },
         },        
@@ -590,7 +573,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,                
                 ENT['actuator_battery_setpoint_w']: -1200,                
@@ -619,7 +601,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_battery_setpoint_w']: -1800,                                    
@@ -649,7 +630,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,                 
                 ENT['actuator_battery_setpoint_w']: -2200,   
@@ -678,7 +658,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_battery_setpoint_w']: -1200,                                   
@@ -706,7 +685,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
@@ -736,7 +714,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
@@ -768,7 +745,6 @@ def test_net_zero_ev_primary_charge_mode_spec(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_battery_setpoint_w']: 1800,                 

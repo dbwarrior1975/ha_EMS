@@ -112,7 +112,7 @@ Keskeiset config-entiteetit:
 Surplus- ja aktuaattoritilat:
 
 1. `input_datetime.ems_surplus_freeze_until`
-2. `input_boolean.ems_surplus_ev_active`
+2. `input_boolean.ems_surplus_adjustable_active`
 3. `input_boolean.ems_surplus_relay1_active`
 4. `input_boolean.ems_surplus_relay2_active`
 5. `switch.charger_control`

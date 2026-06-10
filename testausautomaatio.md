@@ -164,8 +164,8 @@ Nykyiset testit kattavat esimerkiksi:
 
 1. deadbandin tarkkoja rajoja
 2. ramppiklippausta
-3. 100 W kvantisointia
-4. minimi-floor-kayttaytymista
+3. kvantisointia
+4. konfiguroitavan minimi-floorin kayttaytymista (`nz_battery_floor_default_w`)
 
 ### HAEO-integraatio
 

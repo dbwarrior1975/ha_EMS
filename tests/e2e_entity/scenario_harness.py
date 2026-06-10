@@ -150,7 +150,6 @@ class QuarterScenarioHarness:
             ENT['rpnz_w']: 500.0,
             ENT['pv_power_kw']: 3.5,
             ENT['surplus_freeze_until']: None,
-            ENT['surplus_ev_active']: False,
             ENT['surplus_r1_active']: False,
             ENT['surplus_r2_active']: False,
             ENT['relay1_surplus_allowed']: True,

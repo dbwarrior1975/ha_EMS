@@ -69,7 +69,7 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 ### Surplus-tilat
 
 1. `input_datetime.ems_surplus_freeze_until`
-2. `input_boolean.ems_surplus_ev_active`
+2. `input_boolean.ems_surplus_adjustable_active`
 3. `input_boolean.ems_surplus_relay1_active`
 4. `input_boolean.ems_surplus_relay2_active`
 
@@ -247,7 +247,7 @@ Tarkista jarjestyksessa:
 1. `goal_profile`
 2. `guard`
 3. `policy_ev_current_a`
-4. `surplus_ev_active`
+4. `surplus_adjustable_active`
 5. `actuator_writer_trace.ev`
 
 Tulkitse:
@@ -262,7 +262,7 @@ Tarkista:
 
 1. `ev_force_current_a`
 2. `goal_profile`
-3. `surplus_ev_active`
+3. `surplus_adjustable_active`
 4. `actuator_writer_trace.ev.reason`
 
 Tyypillinen selitys nykykoodissa:
