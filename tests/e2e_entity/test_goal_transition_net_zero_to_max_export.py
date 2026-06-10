@@ -72,20 +72,20 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'ACTIVATE_EV',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
-                'surplus_next_target': 'EV',
+                'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 3.700 kW',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
             },
             'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_ADJUSTABLE',
                 ENT['policy_relay1_command']: 1,
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_EV',
+                'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_relay1']: True,
             },
         },
@@ -102,7 +102,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 'surplus_dispatch_decision': 'NOOP',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'burn',
+                'ev_policy_mode': 'restore_min',
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
@@ -113,13 +113,12 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_writer_trace': {
                 'ev': {
-                    'reason': 'state_changed',
-                    'written': True,
-                    'target_current_a': 28,
+                    'reason': 'already_released',
+                    'written': False,
                 },
             },
             'expect_values': {
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_relay1']: True,
             },
         },        
@@ -135,10 +134,10 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 'surplus_dispatch_decision': 'NOOP',
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'burn',
+                'ev_policy_mode': 'restore_min',
             },
             'expect_policy_values': {
-                ENT['policy_ev_current_a']: 28,
+                ENT['policy_ev_current_a']: 0,
                 ENT['policy_relay1_command']: 1,
             },
             'expect_dispatch_state': {
@@ -146,8 +145,8 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 28,
-                ENT['surplus_ev_active']: True,
+                ENT['actuator_ev_current_a']: 4,
+                ENT['surplus_adjustable_active']: True,
             },
         },
         {
@@ -191,7 +190,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_values': {
                 ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
@@ -238,7 +237,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_values': {
                 ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,

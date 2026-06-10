@@ -19,6 +19,14 @@ ENT = {
     'ev_force_current_a': 'input_number.ems_ev_force_current_a',
     'ev_hard_off_pv_threshold_kw': 'input_number.ems_ev_hard_off_pv_threshold_kw',
     'ev_hard_off_low_pv_cycles': 'input_number.ems_ev_hard_off_low_pv_cycles',
+    'ev_current_step_a': 'input_number.ems_ev_current_step_a',
+    'ev_primary_charge_mode': 'input_boolean.ems_ev_primary_charge_mode',
+    'nz_battery_floor_default_w': 'input_number.ems_nz_battery_floor_default_w',
+    'nz_battery_floor_ev_active_w': 'input_number.ems_nz_battery_floor_ev_active_w',
+    'adjustable_surplus_load': 'input_select.ems_adjustable_surplus_load',
+    'adjustable_primary_load': 'input_select.ems_adjustable_primary_load',
+    'adjustable_surplus_activation': 'input_number.ems_adjustable_surplus_activation',
+    'adjustable_surplus_load_priority': 'input_number.ems_adjustable_surplus_load_priority',
     'pv_power_kw': 'sensor.pv_instant_power_2',
 
     'haeo_stale_timeout_s': 'input_number.ems_haeo_stale_timeout_s',
@@ -52,6 +60,7 @@ ENT = {
 
     'surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
     'surplus_ev_active': 'input_boolean.ems_surplus_ev_active',
+    'surplus_adjustable_active': 'input_boolean.ems_surplus_adjustable_active',
     'surplus_r1_active': 'input_boolean.ems_surplus_relay1_active',
     'surplus_r2_active': 'input_boolean.ems_surplus_relay2_active',
 

@@ -28,6 +28,14 @@ def read_config():
         ev_force_current_a=get_int(ENT['ev_force_current_a'], 0),
         ev_hard_off_pv_threshold_kw=get_float(ENT['ev_hard_off_pv_threshold_kw'], 1.6),
         ev_hard_off_low_pv_cycles=get_int(ENT['ev_hard_off_low_pv_cycles'], 2),
+        ev_current_step_a=get_int(ENT['ev_current_step_a'], 4),
+        ev_primary_charge_mode=get_bool(ENT['ev_primary_charge_mode']),
+        nz_battery_floor_default_w=get_float(ENT['nz_battery_floor_default_w'], 100.0),
+        nz_battery_floor_ev_active_w=get_float(ENT['nz_battery_floor_ev_active_w'], 0.0),
+        adjustable_surplus_load=get_str(ENT['adjustable_surplus_load'], 'HOME_BATTERY'),
+        adjustable_primary_load=get_str(ENT['adjustable_primary_load'], ''),
+        adjustable_surplus_activation=get_float(ENT['adjustable_surplus_activation'], 0.0),
+        adjustable_surplus_load_priority=get_int(ENT['adjustable_surplus_load_priority'], get_int(ENT['ev_priority'], 3)),
         haeo_stale_timeout_s=get_float(ENT['haeo_stale_timeout_s'], 300),
         relay1_power_kw=get_float(ENT['relay1_power_kw'], 2.5),
         relay2_power_kw=get_float(ENT['relay2_power_kw'], 5.0),
@@ -83,6 +91,10 @@ def _trace_state(profiles, outputs):
     return f"{profiles.control}/{profiles.goal}/{profiles.guard}/{outputs.effective_forecast}"
 
 
+def _read_adjustable_surplus_active():
+    return bool(get_bool(ENT['surplus_adjustable_active']))
+
+
 @time_trigger('period(now, 30s)')
 @state_trigger('input_select.ems_control_profile or input_select.ems_goal_profile or input_select.ems_guard_profile or input_select.ems_forecast_profile or sensor.required_power_consumption or sensor.ems_calculated_required_power_for_net_zero')
 def ems_policy_engine_loop():
@@ -102,16 +114,18 @@ def ems_policy_engine_loop():
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=parse_input_datetime_ts(ENT['surplus_freeze_until']),
-        ev_burn_active=get_bool(ENT['surplus_ev_active']),
+        ev_burn_active=_read_adjustable_surplus_active(),
         relay1_surplus_allowed=get_bool(ENT['relay1_surplus_allowed']),
         relay2_surplus_allowed=get_bool(ENT['relay2_surplus_allowed']),
         relay1_force_on=get_bool(ENT['relay1_force_on']),
         relay2_force_on=get_bool(ENT['relay2_force_on']),
         relay1_net_zero_active=get_bool(ENT['surplus_r1_active']),
         relay2_net_zero_active=get_bool(ENT['surplus_r2_active']),
+        adjustable_surplus_active=_read_adjustable_surplus_active(),
         pv_power_kw=get_float(ENT['pv_power_kw'], None),
         ev_hard_off_active=get_attr(ENT['policy_ev_current_a'], 'ev_policy_mode', '') == 'hard_off',
         ev_low_pv_cycles=get_attr(ENT['policy_ev_current_a'], 'ev_low_pv_cycles', 0),
+        ev_hard_off_release_ready_cycles=get_attr(ENT['policy_ev_current_a'], 'ev_hard_off_release_ready_cycles', 0),
         prev_relay1_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay1_force_on', False),
         prev_relay2_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay2_force_on', False),
     )

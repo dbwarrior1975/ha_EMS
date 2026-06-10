@@ -63,38 +63,143 @@ def explain(profiles, configured_fc, effective_fc):
     return 'Policy active'
 
 
-def _battery_target_and_authority(profiles, cfg, m, haeo, nz):
-    # MANUAL = optimizer may still observe, but writer must not touch battery actuator setpoint
-    if profiles.control == ControlProfile.MANUAL:
-        return int(round(m.current_battery_setpoint_w)), False
+def _normalized_adjustable_surplus_load(cfg):
+    raw = str(getattr(cfg, 'adjustable_surplus_load', '') or '').strip().lower()
+    if raw in ('ev_charger', 'ev', 'charger_current'):
+        return 'EV_CHARGER'
+    if raw in ('home_battery', 'battery', 'actuator_battery_setpoint_w'):
+        return 'HOME_BATTERY'
+    return 'HOME_BATTERY'
 
-    # MANUAL_SAFE = user-oriented battery control, but guard may clamp unsafe values
+
+def _uses_ev_adjustable_mode(cfg):
+    return _normalized_adjustable_surplus_load(cfg) == 'EV_CHARGER'
+
+
+def _normalized_adjustable_primary_load(cfg):
+    raw = str(getattr(cfg, 'adjustable_primary_load', '') or '').strip().lower()
+    if raw in ('ev_charger', 'ev', 'charger_current'):
+        return 'EV_CHARGER'
+    if raw in ('home_battery', 'battery', 'actuator_battery_setpoint_w'):
+        return 'HOME_BATTERY'
+    return ''
+
+
+def _battery_target_and_authority(
+    profiles,
+    cfg,
+    m,
+    haeo,
+    nz,
+    *,
+    ev_burn_active=False,
+    ev_release_pending=False,
+    ev_target_w=0.0,
+    adjustable_surplus_active=False,
+    use_ev_primary_mode=False,
+):
+    battery_min_floor_w = None
+    battery_min_floor_reason = 'not_applicable'
+    adjustable_surplus_active_next = bool(adjustable_surplus_active)
+
+    if profiles.control == ControlProfile.MANUAL:
+        return int(round(m.current_battery_setpoint_w)), False, battery_min_floor_w, battery_min_floor_reason, False
+
     if profiles.control == ControlProfile.MANUAL_SAFE:
         current = int(round(m.current_battery_setpoint_w))
 
         if profiles.guard == GuardProfile.DEGRADED:
-            return 0, True
+            return 0, True, battery_min_floor_w, battery_min_floor_reason, False
 
         if profiles.guard == GuardProfile.BATTERY_PROTECT:
-            return max(current, 0), True
+            return max(current, 0), True, battery_min_floor_w, battery_min_floor_reason, False
 
         if profiles.guard == GuardProfile.STRICT_LIMITS:
             limit = int(cfg.strict_limits_max_w)
-            return min(max(current, -limit), limit), True
+            return min(max(current, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
 
-        # In ordinary MANUAL_SAFE, leave current value untouched
-        return current, False
+        return current, False, battery_min_floor_w, battery_min_floor_reason, False
 
-    # Automatic / forecast-driven paths
     if profiles.goal == GoalProfile.NET_ZERO:
-        raw = candidate_sp_net_zero(
-            rpnz_w=nz.rpnz_w,
-            grid_actual_w=m.grid_power_w,
-            current_sp_w=m.current_battery_setpoint_w,
-            deadband_w=cfg.deadband_w,
-            ramp_w=cfg.ramp_max_w,
-            max_sp_w=cfg.max_solar_charge_w,
+        effective_rpnz_w = nz.rpnz_w
+        min_charge_floor_w = 100.0
+        ev_primary_positive_rpnz = bool(use_ev_primary_mode) and float(nz.rpnz_w) > 0.0
+        adjustable_is_home_battery = _normalized_adjustable_surplus_load(cfg) == 'HOME_BATTERY'
+        configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
+
+        if use_ev_primary_mode:
+            # EV primary path does not use legacy battery default floor.
+            min_charge_floor_w = float(cfg.nz_battery_floor_ev_active_w)
+            battery_min_floor_reason = 'ev_active_floor_override'
+
+            battery_min_floor_w = float(min_charge_floor_w)
+            effective_rpnz_w = float(nz.rpnz_w) - float(max(ev_target_w, 0.0))
+
+            ev_max_w = float(cfg.ev_max_current_a * max(cfg.ev_charger_phases, 1) * 230)
+            if (
+                ev_burn_active
+                and (not ev_primary_positive_rpnz)
+                and float(nz.rpnz_w) >= 0.0
+                and float(nz.required_power_consumption_kw) * 1000.0 <= ev_max_w
+            ):
+                raw = int(round(min_charge_floor_w))
+                if profiles.guard == GuardProfile.DEGRADED:
+                    return 0, True, battery_min_floor_w, battery_min_floor_reason, False
+                if profiles.guard == GuardProfile.BATTERY_PROTECT:
+                    return max(raw, 0), True, battery_min_floor_w, battery_min_floor_reason, False
+                if profiles.guard == GuardProfile.STRICT_LIMITS:
+                    limit = int(cfg.strict_limits_max_w)
+                    return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
+                return raw, True, battery_min_floor_w, battery_min_floor_reason, False
+
+        if battery_min_floor_w is None:
+            battery_min_floor_w = float(min_charge_floor_w)
+
+        if ev_primary_positive_rpnz:
+            raw = int(round(min_charge_floor_w))
+        else:
+            if (
+                use_ev_primary_mode
+                and ev_burn_active
+                and float(nz.rpnz_w) <= 0.0
+                and (not ev_release_pending)
+            ):
+                adjustable_surplus_active_next = False
+                raw = int(round(min_charge_floor_w))
+            else:
+                adjustable_surplus_active_next = False
+                raw = candidate_sp_net_zero(
+                    rpnz_w=effective_rpnz_w,
+                    grid_actual_w=m.grid_power_w,
+                    current_sp_w=m.current_battery_setpoint_w,
+                    deadband_w=cfg.deadband_w,
+                    ramp_w=cfg.ramp_max_w,
+                    max_sp_w=cfg.max_solar_charge_w,
+                    min_charge_floor_w=min_charge_floor_w,
+                )
+
+        if (
+            use_ev_primary_mode
+            and adjustable_is_home_battery
+            and bool(adjustable_surplus_active)
+            and float(nz.rpnz_w) >= 0.0
+        ):
+            activation_clamped_w = min(max(configured_activation_w, 0.0), float(cfg.max_solar_charge_w))
+            raw = int(round(activation_clamped_w))
+
+        activation_gate_active = (
+            adjustable_is_home_battery
+            and configured_activation_w > 0.0
+            and (not bool(adjustable_surplus_active))
+            and float(nz.required_power_consumption_kw) < (configured_activation_w / 1000.0)
         )
+        if activation_gate_active:
+            current_sp = int(round(m.current_battery_setpoint_w))
+            # Activation gate protects only positive charging ramp-up before activation.
+            # Negative-domain recovery toward zero must stay under normal controller dynamics.
+            if raw > current_sp and raw >= 0 and current_sp >= 0:
+                raw = current_sp
+                battery_min_floor_reason = 'activation_gate_hold'
     elif haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal in (GoalProfile.MAX_EXPORT, GoalProfile.CHEAP_GRID_CHARGE):
         raw = int(round(haeo.battery_target_kw * 1000.0))
     elif profiles.goal == GoalProfile.MAX_EXPORT:
@@ -105,16 +210,16 @@ def _battery_target_and_authority(profiles, cfg, m, haeo, nz):
         raw = int(round(cfg.default_sp_w))
 
     if profiles.guard == GuardProfile.DEGRADED:
-        return 0, True
+        return 0, True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.BATTERY_PROTECT:
-        return max(raw, 0), True
+        return max(raw, 0), True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.STRICT_LIMITS:
         limit = int(cfg.strict_limits_max_w)
-        return min(max(raw, -limit), limit), True
+        return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
 
-    return raw, True
+    return raw, True, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next
 
 
 def net_zero_surplus_policy_active(profiles, effective_fc):
@@ -129,12 +234,43 @@ def net_zero_surplus_policy_active(profiles, effective_fc):
 def _ev_policy_mode_and_current(
     profiles, cfg, haeo, *,
     burn_active,
+    adjustable_surplus_active,
+    ev_release_pending,
     pv_power_kw,
     ev_hard_off_active,
     ev_low_pv_cycles,
     rpc_kw,
+    rpnz_w,
+    grid_power_w,
+    current_ev_current_a,
+    use_ev_adjustable_mode=False,
+    use_ev_primary_mode=False,
+    use_ev_primary_home_battery_combo=False,
 ):
-    current_a = ev_strategy_current_a(profiles, cfg, haeo, burn_active)
+    current_a = ev_strategy_current_a(
+        profiles,
+        cfg,
+        haeo,
+        burn_active,
+    )
+
+    if (
+        burn_active
+        and adjustable_surplus_active
+        and (not ev_release_pending)
+        and use_ev_adjustable_mode
+        and float(rpnz_w) > 0.0
+    ):
+        current_a = int(cfg.ev_max_current_a)
+
+    if (
+        burn_active
+        and (not ev_release_pending)
+        and use_ev_adjustable_mode
+        and float(rpnz_w) > 0.0
+        and int(max(current_ev_current_a, 0)) >= int(cfg.ev_max_current_a)
+    ):
+        current_a = int(cfg.ev_max_current_a)
 
     if profiles.goal == GoalProfile.MAX_EXPORT and current_a == 0:
         return 'hard_off', 0, 0, False
@@ -158,6 +294,8 @@ def _ev_policy_mode_and_current(
     )
 
     if hard_off_allowed and ev_hard_off_active:
+        if use_ev_primary_home_battery_combo:
+            return 'hard_off', 0, next_low_pv_cycles, True
         ev_threshold_kw = max(
             ((cfg.ev_max_current_a - cfg.ev_min_current_a) * max(cfg.ev_charger_phases, 1) * 230) / 1000.0,
             0,
@@ -169,7 +307,45 @@ def _ev_policy_mode_and_current(
     if hard_off_allowed and next_low_pv_cycles >= int(cfg.ev_hard_off_low_pv_cycles):
         return 'hard_off', 0, next_low_pv_cycles, True
 
-    return 'restore_min', 0, next_low_pv_cycles, False
+    restore_min_a = int(cfg.ev_min_current_a) if use_ev_primary_mode else 0
+    return 'restore_min', restore_min_a, next_low_pv_cycles, False
+
+
+def _primary_ev_step_current_a(cfg, envelope_w):
+    phases = max(int(cfg.ev_charger_phases), 1)
+    per_amp_w = float(phases * 230)
+    positive_envelope_w = max(float(envelope_w), 0.0)
+    raw_a = int(round(positive_envelope_w / per_amp_w))
+    if raw_a <= 0:
+        return 0
+
+    min_a = max(1, int(cfg.ev_min_current_a))
+    max_a = max(min_a, int(cfg.ev_max_current_a))
+    step_a = max(1, int(getattr(cfg, 'ev_current_step_a', min_a) or min_a))
+
+    if raw_a <= min_a:
+        quantized_a = min_a
+    else:
+        # Quantize above minimum using configurable EV current steps.
+        offset = raw_a - min_a
+        quantized_a = min_a + (offset // step_a) * step_a
+
+    return int(min(max(quantized_a, min_a), max_a))
+
+
+def _primary_power_envelope_w(cfg, m, nz):
+    phases = max(int(cfg.ev_charger_phases), 1)
+    current_ev_w = float(max(int(max(m.charger_current_a, 0)), 0) * phases * 230)
+    ev_max_w = float(int(cfg.ev_max_current_a) * phases * 230)
+    return candidate_sp_net_zero(
+        rpnz_w=float(nz.rpnz_w),
+        grid_actual_w=float(m.grid_power_w),
+        current_sp_w=current_ev_w,
+        deadband_w=float(cfg.deadband_w),
+        ramp_w=float(cfg.ramp_max_w),
+        max_sp_w=ev_max_w,
+        min_charge_floor_w=0.0,
+    )
 
 
 def _apply_force_rising_edge_freeze(
@@ -204,9 +380,11 @@ def compute_net_zero_engine_outputs(
     relay2_force_on,
     relay1_net_zero_active,
     relay2_net_zero_active,
+    adjustable_surplus_active=False,
     pv_power_kw=None,
     ev_hard_off_active=False,
     ev_low_pv_cycles=0,
+    ev_hard_off_release_ready_cycles=0,
     prev_relay1_force_on=False,
     prev_relay2_force_on=False,
 ):
@@ -221,27 +399,58 @@ def compute_net_zero_engine_outputs(
         ev_target_kw=haeo.ev_target_kw,
     )
 
-    ev_threshold_kw = max(
-        ((cfg.ev_max_current_a - cfg.ev_min_current_a) * max(cfg.ev_charger_phases, 1) * 230) / 1000.0,
-        0,
-    )
+    adjustable_surplus_load = _normalized_adjustable_surplus_load(cfg)
+    requested_primary_load = _normalized_adjustable_primary_load(cfg)
+    if not requested_primary_load:
+        adjustable_primary_load = adjustable_surplus_load
+        primary_surplus_combo_valid = True
+        primary_surplus_combo_reason = 'implicit_legacy_default'
+    else:
+        adjustable_primary_load = requested_primary_load
+        primary_surplus_combo_valid = adjustable_primary_load != adjustable_surplus_load
+        primary_surplus_combo_reason = 'supported_cross_combo' if primary_surplus_combo_valid else 'unsupported_same_target_combo'
 
+    if not primary_surplus_combo_valid:
+        adjustable_primary_load = 'HOME_BATTERY' if adjustable_surplus_load == 'EV_CHARGER' else 'EV_CHARGER'
+        primary_surplus_combo_reason = 'fallback_to_cross_combo'
+
+    use_ev_surplus_mode = adjustable_surplus_load == 'EV_CHARGER'
+    use_ev_primary_mode = adjustable_primary_load == 'EV_CHARGER'
+    use_ev_primary_home_battery_combo = use_ev_primary_mode and (not use_ev_surplus_mode)
+
+    configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
+    if configured_activation_w > 0.0:
+        adjustable_threshold_kw = configured_activation_w / 1000.0
+    else:
+        # Legacy fallback keeps previous behavior when explicit activation threshold is not configured.
+        adjustable_threshold_kw = (
+            max(
+                ((cfg.ev_max_current_a - cfg.ev_min_current_a) * max(cfg.ev_charger_phases, 1) * 230) / 1000.0,
+                0,
+            )
+            if use_ev_surplus_mode
+            else float(cfg.max_solar_charge_w) / 1000.0
+        )
+    adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
+    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.ev_priority))
+    relay1_enabled = bool(relay1_surplus_allowed)
+    relay2_enabled = bool(relay2_surplus_allowed)
     targets = (
         SurplusTargetConfig(
-            'EV',
-            priority=cfg.ev_priority,
+            'ADJUSTABLE',
+            priority=adjustable_priority,
             rank=1,
-            threshold_kw=ev_threshold_kw,
+            threshold_kw=adjustable_threshold_kw,
             enabled=True,
             force_on=False,
-            active=ev_burn_active,
+            active=adjustable_active_current,
         ),
         SurplusTargetConfig(
             'RELAY1',
             priority=cfg.relay1_priority,
             rank=2,
             threshold_kw=cfg.relay1_power_kw,
-            enabled=relay1_surplus_allowed,
+            enabled=relay1_enabled,
             force_on=relay1_force_on,
             active=relay1_net_zero_active,
         ),
@@ -250,7 +459,7 @@ def compute_net_zero_engine_outputs(
             priority=cfg.relay2_priority,
             rank=3,
             threshold_kw=cfg.relay2_power_kw,
-            enabled=relay2_surplus_allowed,
+            enabled=relay2_enabled,
             force_on=relay2_force_on,
             active=relay2_net_zero_active,
         ),
@@ -288,18 +497,124 @@ def compute_net_zero_engine_outputs(
     else:
         decision_text = 'NOOP'
 
-    battery_target_w, battery_write_enabled = _battery_target_and_authority(
-        profiles, cfg, m, normalized_haeo, nz
+    primary_release_target = 'ADJUSTABLE'
+    low_pv = (
+        pv_power_kw is not None
+        and float(pv_power_kw) < float(cfg.ev_hard_off_pv_threshold_kw)
     )
+    battery_to_ev_loop_risk = (
+        low_pv
+        and float(m.current_battery_setpoint_w) < 0.0
+        and int(cfg.ev_force_current_a) <= 0
+    )
+
+    ev_min_power_kw = (
+        float(int(cfg.ev_min_current_a) * max(int(cfg.ev_charger_phases), 1) * 230) / 1000.0
+    )
+    hard_off_release_rpc_kw = ev_min_power_kw if use_ev_primary_home_battery_combo else 0.0
+    hard_off_release_cycles_required = max(1, int(getattr(cfg, 'ev_hard_off_release_cycles', 2) or 2))
+    hard_off_release_condition = (
+        use_ev_primary_home_battery_combo
+        and ev_hard_off_active
+        and (pv_power_kw is not None)
+        and float(pv_power_kw) >= float(cfg.ev_hard_off_pv_threshold_kw)
+        and float(nz.required_power_consumption_kw) >= float(hard_off_release_rpc_kw)
+        and (not battery_to_ev_loop_risk)
+    )
+    hard_off_release_ready_cycles_next = (
+        int(ev_hard_off_release_ready_cycles) + 1
+        if hard_off_release_condition
+        else 0
+    )
+
+    # V2: primary EV path is continuously evaluated from RPNZ even when
+    # ADJUSTABLE dispatch target is HOME_BATTERY.
+    ev_primary_burn_active = (
+        use_ev_primary_mode
+        and (
+            (
+                (not use_ev_primary_home_battery_combo)
+                and float(nz.rpnz_w) > 0.0
+            )
+            or (
+                use_ev_primary_home_battery_combo
+                and (
+                    (
+                        (not ev_hard_off_active)
+                        and float(nz.rpnz_w) > 0.0
+                    )
+                    or (
+                        ev_hard_off_active
+                        and hard_off_release_ready_cycles_next >= hard_off_release_cycles_required
+                    )
+                )
+            )
+        )
+        and (not battery_to_ev_loop_risk)
+    )
+    # Keep legacy deterministic dispatch-tied burn when EV is the ADJUSTABLE target.
+    ev_surplus_burn_active = (
+        use_ev_surplus_mode
+        and adjustable_active_current
+        and (not battery_to_ev_loop_risk)
+    )
+    ev_burn_for_cycle = ev_surplus_burn_active or ev_primary_burn_active
     ev_policy_mode, ev_current_a, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_current(
         profiles,
         cfg,
         normalized_haeo,
-        burn_active=ev_burn_active,
+        burn_active=ev_burn_for_cycle,
+        adjustable_surplus_active=adjustable_active_current,
+        ev_release_pending=(surplus_decision.release == primary_release_target),
         pv_power_kw=pv_power_kw,
         ev_hard_off_active=ev_hard_off_active,
         ev_low_pv_cycles=ev_low_pv_cycles,
         rpc_kw=nz.required_power_consumption_kw,
+        rpnz_w=nz.rpnz_w,
+        grid_power_w=m.grid_power_w,
+        current_ev_current_a=m.charger_current_a,
+        use_ev_adjustable_mode=use_ev_surplus_mode,
+        use_ev_primary_mode=use_ev_primary_mode,
+        use_ev_primary_home_battery_combo=use_ev_primary_home_battery_combo,
+    )
+
+    if (
+        profiles.goal == GoalProfile.NET_ZERO
+        and use_ev_surplus_mode
+        and (surplus_decision.clear_all or surplus_decision.release == primary_release_target)
+        and ev_policy_mode != 'skip'
+    ):
+        ev_policy_mode = 'restore_min'
+        ev_current_a = 0
+
+    primary_envelope_w = None
+    if use_ev_primary_mode and (not use_ev_surplus_mode) and ev_policy_mode == 'burn':
+        primary_envelope_w = _primary_power_envelope_w(cfg, m, nz)
+        stepped_primary_a = _primary_ev_step_current_a(cfg, primary_envelope_w)
+        ev_current_a = stepped_primary_a
+        ev_policy_mode = 'burn' if stepped_primary_a > 0 else 'restore_min'
+
+    ev_target_w = float(max(ev_current_a, 0) * max(cfg.ev_charger_phases, 1) * 230)
+    ev_burn_active_for_battery = (
+        (ev_policy_mode == 'burn' and int(max(ev_current_a, 0)) > 0)
+        or (
+            use_ev_primary_mode
+            and ev_policy_mode == 'restore_min'
+            and int(max(ev_current_a, 0)) > 0
+            and not battery_to_ev_loop_risk
+        )
+    )
+    battery_target_w, battery_write_enabled, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next = _battery_target_and_authority(
+        profiles,
+        cfg,
+        m,
+        normalized_haeo,
+        nz,
+        ev_burn_active=ev_burn_active_for_battery,
+        ev_release_pending=(surplus_decision.release == primary_release_target),
+        ev_target_w=ev_target_w,
+        adjustable_surplus_active=adjustable_surplus_active,
+        use_ev_primary_mode=use_ev_primary_mode,
     )
 
     return NetZeroOutputs(
@@ -320,6 +635,7 @@ def compute_net_zero_engine_outputs(
         attrs={
             'configured_forecast': conf_fc,
             'active_stack': active_stack(targets),
+            'surplus_primary_target': primary_release_target,
             'surplus_freeze_until_ts': (
                 surplus_decision.freeze_until_ts
                 if surplus_decision.freeze_until_ts is not None
@@ -331,8 +647,27 @@ def compute_net_zero_engine_outputs(
             'ev_policy_mode': ev_policy_mode,
             'ev_low_pv_cycles': next_low_pv_cycles,
             'ev_hard_off_active': ev_hard_off_active_next,
+            'ev_hard_off_release_ready_cycles': hard_off_release_ready_cycles_next,
+            'ev_hard_off_release_cycles_required': hard_off_release_cycles_required,
+            'ev_hard_off_release_rpc_kw': hard_off_release_rpc_kw,
             'pv_power_kw': pv_power_kw,
             'ev_hard_off_pv_threshold_kw': cfg.ev_hard_off_pv_threshold_kw,
+            'battery_to_ev_loop_risk': bool(battery_to_ev_loop_risk),
+            'ev_primary_charge_mode': bool(cfg.ev_primary_charge_mode),
+            'ev_adjustable_mode': bool(use_ev_surplus_mode),
+            'ev_primary_burn_active': bool(ev_primary_burn_active),
+            'ev_surplus_burn_active': bool(ev_surplus_burn_active),
+            'ev_current_step_a': int(getattr(cfg, 'ev_current_step_a', cfg.ev_min_current_a)),
+            'primary_power_envelope_w': primary_envelope_w,
+            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.ev_priority)),
+            'adjustable_surplus_load': adjustable_surplus_load,
+            'adjustable_surplus_activation': configured_activation_w,
+            'adjustable_primary_load': adjustable_primary_load,
+            'primary_surplus_combo_valid': bool(primary_surplus_combo_valid),
+            'primary_surplus_combo_reason': primary_surplus_combo_reason,
+            'battery_min_floor_w': battery_min_floor_w,
+            'battery_min_floor_reason': battery_min_floor_reason,
+            'surplus_adjustable_active': bool(adjustable_surplus_active_next),
             'prev_relay1_force_on': bool(relay1_force_on),
             'prev_relay2_force_on': bool(relay2_force_on),
         },

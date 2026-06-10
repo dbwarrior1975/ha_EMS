@@ -16,7 +16,7 @@ def test_required_entities_exist():
         'policy_relay2_command',
         'policy_decision_trace',
         'surplus_dispatch_decision_pys',
-        'surplus_ev_active',
+        'surplus_adjustable_active',
         'surplus_r1_active',
         'surplus_r2_active',
         'actuator_battery_setpoint_w',
@@ -61,4 +61,4 @@ def test_unit_conversion_contract():
 def test_unknown_state_defaults():
     assert ENT['surplus_policy_active_pys'].startswith('binary_sensor.')
     assert ENT['surplus_freeze_until'].startswith('input_datetime.')
-    assert ENT['surplus_ev_active'].startswith('input_boolean.')
+    assert ENT['surplus_adjustable_active'].startswith('input_boolean.')

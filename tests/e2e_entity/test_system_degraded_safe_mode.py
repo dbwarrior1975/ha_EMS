@@ -64,7 +64,7 @@ def test_writer_freeze_in_system_degraded(project_root):
         ENT['forecast_profile']: 'NONE',
         ENT['soc']: 50.0,
         ENT['battery_heartbeat']: 0.0,
-        ENT['surplus_ev_active']: True,
+        ENT['surplus_adjustable_active']: True,
         ENT['surplus_r1_active']: True,
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 16,
@@ -80,7 +80,7 @@ def test_writer_freeze_in_system_degraded(project_root):
                 ENT['rpnz_w']: 500,
             },
             'expect_values': {
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r1_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_ev_enabled']: True,

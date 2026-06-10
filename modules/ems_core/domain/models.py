@@ -2,26 +2,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Literal
 
+
 class ControlProfile:
     MANUAL = 'MANUAL'
     MANUAL_SAFE = 'MANUAL_SAFE'
     AUTOMATIC = 'AUTOMATIC'
     HORIZON_BY_HAEO = 'HORIZON_BY_HAEO'
 
+
 class GoalProfile:
     NET_ZERO = 'NET_ZERO'
     MAX_EXPORT = 'MAX_EXPORT'
     CHEAP_GRID_CHARGE = 'CHEAP_GRID_CHARGE'
 
+
 class ForecastProfile:
     NONE = 'NONE'
     HAEO = 'HAEO'
+
 
 class GuardProfile:
     NORMAL_LIMITS = 'NORMAL_LIMITS'
     STRICT_LIMITS = 'STRICT_LIMITS'
     BATTERY_PROTECT = 'BATTERY_PROTECT'
     DEGRADED = 'DEGRADED'
+
 
 class DominantLimitation:
     SYSTEM_DEGRADED = 'SYSTEM_DEGRADED'
@@ -32,12 +37,14 @@ class DominantLimitation:
     FORECAST_FALLBACK_LOCAL = 'FORECAST_FALLBACK_LOCAL'
     OPTIMIZATION_ACTIVE = 'OPTIMIZATION_ACTIVE'
 
+
 @dataclass(frozen=True)
 class Profiles:
     control: str
     goal: str
     forecast: str
     guard: str
+
 
 @dataclass(frozen=True)
 class EmsConfig:
@@ -57,12 +64,22 @@ class EmsConfig:
     ev_force_current_a: int = 0
     ev_hard_off_pv_threshold_kw: float = 1.6
     ev_hard_off_low_pv_cycles: int = 2
+    ev_hard_off_release_cycles: int = 2
+    ev_current_step_a: int = 4
+    ev_primary_charge_mode: bool = False
+    nz_battery_floor_default_w: float = 100.0
+    nz_battery_floor_ev_active_w: float = 0.0
+    adjustable_surplus_load: str = 'HOME_BATTERY'
+    adjustable_primary_load: str = ''
+    adjustable_surplus_activation: float = 0.0
+    adjustable_surplus_load_priority: int = 3
     relay1_power_kw: float = 2.5
     relay2_power_kw: float = 5.0
     relay1_priority: int = 2
     relay2_priority: int = 1
     ev_priority: int = 3
     surplus_freeze_s: int = 30
+
 
 @dataclass(frozen=True)
 class RuntimeMeasurements:
@@ -78,6 +95,7 @@ class RuntimeMeasurements:
     relay1_on: bool
     relay2_on: bool
 
+
 @dataclass(frozen=True)
 class HaeoTargets:
     effective_forecast: str
@@ -86,20 +104,23 @@ class HaeoTargets:
     battery_target_kw: float = 0.0
     ev_target_kw: float = 0.0
 
+
 @dataclass(frozen=True)
 class NetZeroState:
     rpnz_w: float
     required_power_consumption_kw: float
 
+
 @dataclass(frozen=True)
 class SurplusTargetConfig:
-    name: Literal['EV','RELAY1','RELAY2']
+    name: Literal['EV', 'BATTERY', 'ADJUSTABLE', 'RELAY1', 'RELAY2']
     priority: int
     rank: int
     threshold_kw: float
     enabled: bool = True
     force_on: bool = False
     active: bool = False
+
 
 @dataclass(frozen=True)
 class SurplusDispatchInput:
@@ -109,6 +130,7 @@ class SurplusDispatchInput:
     rpnz_w: float
     targets: tuple[SurplusTargetConfig, ...]
 
+
 @dataclass(frozen=True)
 class SurplusDispatchDecision:
     activate: Optional[str] = None
@@ -116,6 +138,7 @@ class SurplusDispatchDecision:
     clear_all: bool = False
     freeze_until_ts: Optional[float] = None
     explanation: str = ''
+
 
 @dataclass(frozen=True)
 class NetZeroOutputs:

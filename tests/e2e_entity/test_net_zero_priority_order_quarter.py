@@ -17,15 +17,25 @@ def test_net_zero_priority_order_one_quarter(project_root):
     - RELAY2 (priority 1) activates third
     - when surplus collapses, release order is RELAY2 -> EV -> RELAY1
     - decision, dispatch state visibility, and actuator visibility are separated when useful
-    - Then cycle starts over again and Raly 1 activates
+    - Then cycle starts over again and Relay 1 activates
     """
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30)
 
-    # Keep EV already enabled so later EV activation is visible on current level
+    # Start EV disabled; ADJUSTABLE activation should make EV burn visible via current.
     h.set_entities({
-            ENT['surplus_freeze_s']: 15,
-        ENT['actuator_ev_enabled']: True,
+        ENT['surplus_freeze_s']: 15,
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['adjustable_primary_load']: 'HOME_BATTERY',
+        ENT['adjustable_surplus_load_priority']: 2,
+        ENT['surplus_adjustable_active']: False,
+        ENT['actuator_ev_enabled']: False,
         ENT['actuator_ev_current_a']: 4,
+        ENT['ev_max_current_a']: 28,
+         ENT['relay1_priority']: 3,
+        ENT['relay2_priority']: 1,
+        ENT['relay1_surplus_allowed']: True,
+        ENT['relay2_surplus_allowed']: True,
+               
     })
 
     steps = [
@@ -40,6 +50,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 'surplus_freeze_until_ts': 15.0,
                 'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_target': 'RELAY1',
+                
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
@@ -51,10 +62,11 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
+                ENT['actuator_ev_enabled']: False,
             },
         },
         {
@@ -66,20 +78,20 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 45.0,
-                'surplus_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_next_target': 'ADJUSTABLE',
             },
             'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_ADJUSTABLE',
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_EV',
+                'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
@@ -108,7 +120,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
@@ -138,7 +150,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
@@ -169,11 +181,12 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
                 ENT['actuator_ev_current_a']: 28,
+                ENT['actuator_ev_enabled']: True,
             },
         },
         
@@ -198,7 +211,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
@@ -207,7 +220,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
         },
         {
             'at_s': 91,
-            'note': 't91 RELAY2 release is now visible while RELAY1 and EV remain active',
+            'note': 't91 RELAY2 release is now visible while RELAY1 remains active and ADJUSTABLE gets released',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
@@ -216,21 +229,21 @@ def test_net_zero_priority_order_one_quarter(project_root):
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
             },
             'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'RELEASE_EV',
+                ENT['surplus_dispatch_decision_pys']: 'RELEASE_ADJUSTABLE',
                 ENT['policy_relay1_command']: 1,
                 ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 28,
+                ENT['policy_ev_current_a']: 0,
             },
             'expect_dispatch_state': {
-                'decision': 'RELEASE_EV',
+                'decision': 'RELEASE_ADJUSTABLE',
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
-                ENT['actuator_ev_current_a']: 28,
+                ENT['actuator_ev_current_a']: 4,
             },
         },
         {
@@ -254,7 +267,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
@@ -282,7 +295,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: False,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
@@ -290,7 +303,7 @@ def test_net_zero_priority_order_one_quarter(project_root):
         },
         {
             'at_s': 150,
-            'note': 't150 RELAY1 actuator release is now visible and the system returns to quiet idle state',
+            'note': 't150 RELAY1 release is visible and the next cycle starts by activating RELAY1 again',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 0.1,
@@ -311,10 +324,11 @@ def test_net_zero_priority_order_one_quarter(project_root):
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
+                ENT['actuator_ev_enabled']: True,                
             },
         },
     ]

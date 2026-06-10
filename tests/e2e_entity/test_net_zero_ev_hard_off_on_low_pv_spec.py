@@ -50,7 +50,12 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 4,
         pv_ent: 3.5,
-        ENT['surplus_freeze_s']: 15        
+        ENT['surplus_freeze_s']: 15,
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['adjustable_primary_load']: 'HOME_BATTERY',
+        ENT['adjustable_surplus_load_priority']: 2,
+        ENT['relay1_priority']: 3,
+        ENT['relay2_priority']: 1,           
     })
 
     steps = [
@@ -80,6 +85,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
+                ENT['actuator_battery_setpoint_w']: 200,
             },
         },
         {
@@ -87,7 +93,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'note': 't30 enough surplus -> activate EV next',
             'set': {
                 ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 500,
+                ENT['rpnz_w']: 2900,
                 pv_ent: 3.2,
             },
             'expect_policy': {
@@ -95,22 +101,23 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 # freeze itself has already expired.
                 'surplus_freeze_until_ts': 45.0,            
            
-                'surplus_dispatch_decision': 'ACTIVATE_EV',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= EV threshold 5.520 kW',
-                'surplus_next_target': 'EV',
+                'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': False,
                 'pv_power_kw': 3.2,
             },
             'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_EV',
+                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_ADJUSTABLE',
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_EV',
+                'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
+                ENT['actuator_battery_setpoint_w']: 1200,
             },
         },
         {
@@ -147,7 +154,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
             },
         },
         {
@@ -183,41 +190,41 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
-                ENT['surplus_ev_active']: True,
+                ENT['surplus_adjustable_active']: True,
             },
         },        
         {
             'at_s': 90,
-            'note': 't90 PV drops below threshold and RELEASE_EV is decided, but writer still sees 28 A this step',
+            'note': 't90 PV drops below threshold and RELEASE_ADJUSTABLE is decided; writer restores EV to minimum',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
                 pv_ent: 1.4,
             },
             'expect_policy': {
-                'surplus_dispatch_decision': 'RELEASE_EV',
+                'surplus_dispatch_decision': 'RELEASE_ADJUSTABLE',
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'burn',
+                'ev_policy_mode': 'restore_min',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': False,
                 'pv_power_kw': 1.4,
             },
             'expect_dispatch_state': {
-                'decision': 'RELEASE_EV',
+                'decision': 'RELEASE_ADJUSTABLE',
             },
 
             'expect_writer_trace': {
                 'ev': {
-                    'reason': 'already_matching',
-                    'written': False,
-                    'target_current_a': 28,
+                    'reason': 'restore_min_current',
+                    'written': True,
+                    'target_current_a': 4,
                 },
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 28,
-                ENT['surplus_ev_active']: False,
+                ENT['actuator_ev_current_a']: 4,
+                ENT['surplus_adjustable_active']: False,
             },
         },
         {
@@ -230,8 +237,8 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             },
             'expect_policy': {
                 'surplus_dispatch_decision': 'NOOP',
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
                 'ev_low_pv_cycles': 1,
                 'ev_hard_off_active': False,
@@ -245,15 +252,15 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             },
             'expect_writer_trace': {
                 'ev': {
-                    'reason': 'restore_min_current',
-                    'written': True,
-                    'target_current_a': 4,
+                    'reason': 'already_released',
+                    'written': False,
+                    'target_current_a': None,
                 },
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 4,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
             },
         },        
         {
@@ -266,8 +273,8 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             },
             'expect_policy': {
                 'surplus_dispatch_decision': 'NOOP',
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'hard_off',
                 'ev_low_pv_cycles': 2,
                 'ev_hard_off_active': True,
@@ -291,7 +298,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 4,
-                ENT['surplus_ev_active']: False,
+                ENT['surplus_adjustable_active']: False,
             },
         },
         {
@@ -305,7 +312,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             'expect_policy': {
                 'surplus_dispatch_decision': 'RELEASE_RELAY1',
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
-                'surplus_next_target': 'EV',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'hard_off',
                 'ev_low_pv_cycles': 3,
                 'ev_hard_off_active': True,
@@ -402,7 +409,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
         }, 
         {
             'at_s': 238,
-            'note': 't239 RELAY1 activation is now visible at actuator level while EV remains hard-off',
+            'note': 't238 RELAY1 activation is now visible at actuator level while EV remains hard-off',
             'set': {
                 ENT['required_power_consumption_kw']: 3.0,
                 ENT['rpnz_w']: 0.1,
@@ -412,7 +419,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 'surplus_freeze_until_ts': 239.0,               
                 'surplus_dispatch_decision': 'NOOP',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'EV',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'hard_off',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': True,
@@ -439,7 +446,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
         },
         {
             'at_s': 240,
-            'note': 't240 recovered PV and RPC remain below the EV activation threshold',
+            'note': 't240 recovered PV and RPC remain below the ADJUSTABLE activation threshold',
             'set': {
                 ENT['required_power_consumption_kw']: 4.0,
                 ENT['rpnz_w']: 0.15,
@@ -447,8 +454,8 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
             },
             'expect_policy': {
                 'surplus_dispatch_decision': 'NOOP',
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'hard_off',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': True,
@@ -468,16 +475,16 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
 
         {
             'at_s': 270,
-            'note': 't270 recovered PV and RPC cross the EV threshold so normal EV activation resumes',
+            'note': 't270 recovered PV and RPC cross the ADJUSTABLE threshold so normal EV activation resumes',
             'set': {
                 ENT['required_power_consumption_kw']: 5.8,
                 ENT['rpnz_w']: 0.19,
                 pv_ent: 5.9,
             },
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_EV',
-                'surplus_explanation': 'Raw RPC 5.800 kW >= EV threshold 5.520 kW',
-                'surplus_next_target': 'EV',
+                'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_explanation': 'Raw RPC 5.800 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'burn',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': False,
@@ -487,7 +494,7 @@ def test_net_zero_ev_stays_at_min_first_then_hard_off_when_low_pv_persists_spec(
                 ENT['policy_ev_current_a']: 28,
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_EV',
+                'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_writer_trace': {
                 'ev': {

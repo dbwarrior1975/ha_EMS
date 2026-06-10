@@ -242,8 +242,8 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
@@ -280,8 +280,8 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
                 ENT['grid_power_w']: 2500.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
@@ -309,7 +309,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             },
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
-                'surplus_next_target': 'EV',
+                'surplus_next_target': 'ADJUSTABLE',
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
@@ -548,7 +548,7 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'EV',
+                'surplus_next_target': 'ADJUSTABLE',
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
@@ -585,8 +585,8 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
                 ENT['grid_power_w']: 1500.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'Waiting for EV; raw RPC below threshold',
-                'surplus_next_target': 'EV',
+                'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
+                'surplus_next_target': 'ADJUSTABLE',
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },

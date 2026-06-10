@@ -26,6 +26,16 @@ def _set_freeze_until_ts(entity_id, ts):
     return True
 
 
+def _set_surplus_adjustable_active(target):
+    written = []
+
+    if get_bool(ENT['surplus_adjustable_active']) != target:
+        set_boolean(ENT['surplus_adjustable_active'], target)
+        written.append('adjustable_' + ('on' if target else 'off'))
+
+    return written
+
+
 def _apply_dispatch(decision):
     written = []
 
@@ -33,11 +43,6 @@ def _apply_dispatch(decision):
         if not get_bool(ENT['surplus_r1_active']):
             set_boolean(ENT['surplus_r1_active'], True)
             written.append('relay1_on')
-
-    elif decision == 'ACTIVATE_EV':
-        if not get_bool(ENT['surplus_ev_active']):
-            set_boolean(ENT['surplus_ev_active'], True)
-            written.append('ev_on')
 
     elif decision == 'ACTIVATE_RELAY2':
         if not get_bool(ENT['surplus_r2_active']):
@@ -49,10 +54,11 @@ def _apply_dispatch(decision):
             set_boolean(ENT['surplus_r1_active'], False)
             written.append('relay1_off')
 
-    elif decision == 'RELEASE_EV':
-        if get_bool(ENT['surplus_ev_active']):
-            set_boolean(ENT['surplus_ev_active'], False)
-            written.append('ev_off')
+    elif decision == 'ACTIVATE_ADJUSTABLE':
+        written.extend(_set_surplus_adjustable_active(True))
+
+    elif decision == 'RELEASE_ADJUSTABLE':
+        written.extend(_set_surplus_adjustable_active(False))
 
     elif decision == 'RELEASE_RELAY2':
         if get_bool(ENT['surplus_r2_active']):
@@ -63,9 +69,7 @@ def _apply_dispatch(decision):
         if get_bool(ENT['surplus_r1_active']):
             set_boolean(ENT['surplus_r1_active'], False)
             written.append('relay1_off')
-        if get_bool(ENT['surplus_ev_active']):
-            set_boolean(ENT['surplus_ev_active'], False)
-            written.append('ev_off')
+        written.extend(_set_surplus_adjustable_active(False))
         if get_bool(ENT['surplus_r2_active']):
             set_boolean(ENT['surplus_r2_active'], False)
             written.append('relay2_off')
@@ -88,6 +92,6 @@ def ems_dispatch_state_applier_loop():
         'freeze_written': freeze_written,
         'freeze_until_ts': freeze_until_ts,
         'relay1_active': get_bool(ENT['surplus_r1_active']),
-        'ev_active': get_bool(ENT['surplus_ev_active']),
+        'adjustable_active': get_bool(ENT['surplus_adjustable_active']),
         'relay2_active': get_bool(ENT['surplus_r2_active']),
     })
