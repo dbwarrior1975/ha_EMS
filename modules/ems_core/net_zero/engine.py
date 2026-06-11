@@ -85,8 +85,19 @@ def _normalized_adjustable_primary_load(cfg):
     return ''
 
 
+def _normalized_discharge_limit_w(cfg):
+    configured = float(getattr(cfg, 'max_battery_discharge_w', cfg.strict_limits_max_w))
+    # Canonical config is negative (export/discharge domain), but keep
+    # legacy positive magnitude values backward-compatible.
+    if configured < 0.0:
+        return int(round(abs(configured))), 'canonical_negative', configured
+    if configured > 0.0:
+        return int(round(configured)), 'legacy_positive', configured
+    return 0, 'zero_discharge', configured
+
+
 def _normal_limits_discharge_cap(raw, cfg):
-    limit = int(round(max(float(getattr(cfg, 'max_battery_discharge_w', cfg.strict_limits_max_w)), 0.0)))
+    limit, _, _ = _normalized_discharge_limit_w(cfg)
     return max(int(raw), -limit)
 
 
@@ -634,6 +645,7 @@ def compute_net_zero_engine_outputs(
         adjustable_surplus_active=adjustable_surplus_active,
         use_ev_primary_mode=use_ev_primary_mode,
     )
+    discharge_limit_w, discharge_limit_sign_mode, configured_discharge_limit_w = _normalized_discharge_limit_w(cfg)
 
     return NetZeroOutputs(
         battery_target_w=battery_target_w,
@@ -686,6 +698,9 @@ def compute_net_zero_engine_outputs(
             'primary_surplus_combo_warning': combo_fallback_warning,
             'battery_min_floor_w': battery_min_floor_w,
             'battery_min_floor_reason': battery_min_floor_reason,
+            'discharge_limit_w': int(discharge_limit_w),
+            'discharge_limit_sign_mode': discharge_limit_sign_mode,
+            'configured_discharge_limit_w': float(configured_discharge_limit_w),
             'surplus_adjustable_active': bool(adjustable_surplus_active_next),
             'prev_relay1_force_on': bool(relay1_force_on),
             'prev_relay2_force_on': bool(relay2_force_on),

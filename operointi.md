@@ -32,7 +32,15 @@ Keskeiset konfiguraatioentiteetit:
 15. `input_number.ems_haeo_stale_timeout_s`
 16. `input_number.ems_relay1_power_kw`
 17. `input_number.ems_relay2_power_kw`
-17. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+18. `input_number.ems_nz_battery_floor_default_w`
+19. `input_number.ems_nz_battery_floor_ev_active_w`
+20. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+
+Floor-semanttiikka NET_ZEROssa:
+
+1. `ems_nz_battery_floor_default_w` on yleinen akun minimi-floor.
+2. jos `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `ems_nz_battery_floor_ev_active_w`.
+3. EV-primary-polussa `ems_nz_battery_floor_ev_active_w` korvaa default-floorin.
 
 ## Kaytossa olevat komponentit
 

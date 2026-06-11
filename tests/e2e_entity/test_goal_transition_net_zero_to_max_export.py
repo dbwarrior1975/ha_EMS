@@ -30,6 +30,10 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
 
     # EV starts already enabled so the transition can prove hard-off behaviour.
     h.set_entities({
+        ENT['max_battery_discharge_w']: -4000,
+        ENT['ramp_max_w']: 1000,
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['adjustable_primary_load']: 'HOME_BATTERY',        
         ENT['actuator_ev_enabled']: True,
         ENT['actuator_ev_current_a']: 4,
         ENT['ev_min_current_a']: 4,
@@ -73,7 +77,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             'expect_policy': {
                 'goal': 'NET_ZERO',
                 'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 3.700 kW',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
             },
@@ -102,7 +106,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 'surplus_dispatch_decision': 'NOOP',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'restore_min',
+                'ev_policy_mode': 'burn',
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
@@ -113,8 +117,8 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_writer_trace': {
                 'ev': {
-                    'reason': 'already_released',
-                    'written': False,
+                    'reason': 'state_changed',
+                    'written': True,
                 },
             },
             'expect_values': {
@@ -134,10 +138,10 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 'surplus_dispatch_decision': 'NOOP',
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'restore_min',
+                'ev_policy_mode': 'burn',
             },
             'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
+                ENT['policy_ev_current_a']: 28,
                 ENT['policy_relay1_command']: 1,
             },
             'expect_dispatch_state': {
@@ -145,7 +149,7 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 28,
                 ENT['surplus_adjustable_active']: True,
             },
         },
@@ -162,11 +166,11 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 'surplus_dispatch_decision': 'CLEAR_ALL',
                 'surplus_explanation': 'Policy inactive -> clear all surplus states',
                 'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'hard_off',
+                'ev_policy_mode': 'burn',
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'CLEAR_ALL',
-                ENT['policy_ev_current_a']: 0,
+                ENT['policy_ev_current_a']: 28,
                 ENT['policy_relay1_command']: 0,
                 ENT['policy_relay2_command']: 0,
             },
@@ -175,9 +179,9 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             },
             'expect_writer_trace': {
                 'ev': {
-                    'reason': 'hard_off',
-                    'written': True,
-                    'target_current_a': 4,
+                    'reason': 'already_matching',
+                    'written': False,
+                    'target_current_a': 28,
                 },
                 'relay1': {
                     'reason': 'state_changed',
@@ -192,10 +196,11 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_enabled']: True,
+                ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
+                ENT['actuator_battery_setpoint_w']: -200,  
             },
         },
         {
@@ -204,6 +209,54 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 0.0,
+            },
+            'expect_policy': {
+                'goal': 'MAX_EXPORT',
+                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_explanation': 'Policy inactive -> clear all surplus states',
+                'surplus_next_target': 'RELAY1',
+                'ev_policy_mode': 'hard_off',
+            },
+            'expect_policy_values': {
+                ENT['policy_ev_current_a']: 0,
+                ENT['policy_relay1_command']: 0,
+                ENT['policy_relay2_command']: 0,
+            },
+            'expect_dispatch_state': {
+                'decision': 'CLEAR_ALL',
+            },
+            'expect_writer_trace': {
+                'ev': {
+                    'reason': 'hard_off',
+                    'written': True,
+                    'target_current_a': 4,
+                },
+                'relay1': {
+                    'reason': 'already_matching',
+                    'written': False,
+                },
+                'relay2': {
+                    'reason': 'already_matching',
+                    'written': False,
+                },
+            },
+            'expect_values': {
+                ENT['surplus_r1_active']: False,
+                ENT['surplus_adjustable_active']: False,
+                ENT['surplus_r2_active']: False,
+                ENT['actuator_ev_enabled']: False,
+                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_relay1']: False,
+                ENT['actuator_relay2']: False,
+                ENT['actuator_battery_setpoint_w']: -1200,  
+            },
+        },
+        {
+            'at_s': 150,
+            'note': 't150 MAX_EXPORT remains stable: EV stays off and dispatch states remain clear',
+            'set': {
+                ENT['required_power_consumption_kw']: 7.0,
+                ENT['rpnz_w']: 1000.0,
             },
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
@@ -243,8 +296,9 @@ def test_goal_transition_net_zero_ev_burn_to_max_export_hard_off_and_clear_latch
                 ENT['actuator_ev_current_a']: 4,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
+                ENT['actuator_battery_setpoint_w']: -2200,  
             },
-        },
+        },       
     ]
 
     for idx, step in enumerate(steps):

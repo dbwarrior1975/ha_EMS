@@ -267,7 +267,17 @@ Tarkemmat guard-vaikutukset:
 1. `DEGRADED` -> akkutarget `0`
 2. `BATTERY_PROTECT` -> akkutarget ei-negatiiviseksi
 3. `STRICT_LIMITS` -> akkutarget `[-strict_limits_max_w, +strict_limits_max_w]`
-4. `NORMAL_LIMITS` -> purkupuoli clampataan rajaan `-max_battery_discharge_w`
+4. `NORMAL_LIMITS` -> purkupuoli clampataan rajaan `-abs(max_battery_discharge_w)`
+
+`max_battery_discharge_w`-merkkisemantiikka:
+
+1. canonical syote on negatiivinen export-domainissa (esim. `-4000`)
+2. legacy-positiivinen syote (esim. `4000`) on edelleen sallittu backward compatibility -syista
+3. moottori normalisoi molemmat samaan clamp-rajaan `-abs(limit)`
+4. trace julkaisee normalisoinnin diagnostiset kentat:
+    - `discharge_limit_w`
+    - `discharge_limit_sign_mode`
+    - `configured_discharge_limit_w`
 
 ### `NET_ZERO`
 
@@ -281,11 +291,19 @@ Tarkemmat guard-vaikutukset:
 6. `max_solar_charge_w`-ylakattoa
 7. konfiguroitavaa minimi-flooria `nz_battery_floor_default_w`
 
+EV-primary poikkeus:
+
+1. jos `adjustable_primary_load = EV_CHARGER`, akun minimi-floor ei tule `nz_battery_floor_default_w`-arvosta
+2. silloin floor tulee erillisesta arvosta `nz_battery_floor_ev_active_w`
+3. kaytannossa EV-primary-polku siis yliajaa default-floorin
+
 ### `MAX_EXPORT`
 
 Ilman HAEO:ta akun paikallinen fallback on `-4000` W.
 
 Jos HAEO on tehokkaasti kaytossa, akun target tulee suoraan `haeo.battery_target_kw`-ennusteesta wattimuotoon muunnettuna.
+
+Kun guard on `NORMAL_LIMITS`, lopullinen target clampataan aina purkurajaan `-abs(max_battery_discharge_w)`.
 
 ### `CHEAP_GRID_CHARGE`
 

@@ -110,6 +110,30 @@ def test_engine_normal_limits_caps_discharge_with_max_battery_discharge_w():
 
 
 @pytest.mark.unit
+def test_engine_normal_limits_caps_discharge_with_negative_canonical_limit():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
+    cfg = make_cfg(max_battery_discharge_w=-4600, deadband_w=0, ramp_max_w=10000, max_solar_charge_w=10000)
+    m = make_m(grid_power_w=4000, current_battery_setpoint_w=-4500)
+    nz = make_nz(rpnz_w=-7000)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+    )
+
+    assert out.battery_target_w == -4600
+    assert out.attrs['discharge_limit_w'] == 4600
+    assert out.attrs['discharge_limit_sign_mode'] == 'canonical_negative'
+
+
+@pytest.mark.unit
 def test_engine_trace_attrs_contain_authority_flag():
     profiles = make_profiles(control=ControlProfile.MANUAL)
     cfg = make_cfg()

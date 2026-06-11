@@ -109,6 +109,14 @@ Keskeiset config-entiteetit:
 18. `input_number.ems_surplus_relay1_priority`
 19. `input_number.ems_surplus_relay2_priority`
 20. `input_number.ems_surplus_ev_priority`
+21. `input_number.ems_nz_battery_floor_default_w`
+22. `input_number.ems_nz_battery_floor_ev_active_w`
+
+NET_ZERO floor-semanttiikka:
+
+1. `ems_nz_battery_floor_default_w` on akun yleinen minimi-floor.
+2. Kun `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `ems_nz_battery_floor_ev_active_w`.
+3. EV-primary-polussa `ems_nz_battery_floor_ev_active_w` korvaa default-floorin.
 
 Surplus- ja aktuaattoritilat:
 

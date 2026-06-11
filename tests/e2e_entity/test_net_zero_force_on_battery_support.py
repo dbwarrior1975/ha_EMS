@@ -37,6 +37,9 @@ def test_net_zero_user_forces_relay2_with_freeze_hygiene(project_root):
     )
 
     h.set_entities({
+       ENT['ramp_max_w']: 1000,
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['adjustable_primary_load']: 'HOME_BATTERY',        
         ENT['goal_profile']: 'NET_ZERO',
         ENT['forecast_profile']: 'NONE',
         ENT['surplus_freeze_s']: 15,

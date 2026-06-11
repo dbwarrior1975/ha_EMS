@@ -12,7 +12,7 @@ ENT = {
     'ramp_max_w': 'input_number.ems_ramp_max_w',
     'strict_limits_max_w': 'input_number.ems_strict_limits_max_w',
     'max_battery_discharge_w': 'input_number.ems_max_battery_discharge_w',
-    'max_solar_charge_w': 'input_number.victron_maksimi_auringon_latausteho',
+    'max_solar_charge_w': 'input_number.ems_max_battery_charge_w',
 
     'ev_min_current_a': 'input_number.ems_ev_min_current_a',
     'ev_max_current_a': 'input_number.ems_ev_max_current_a',
@@ -25,7 +25,7 @@ ENT = {
     'nz_battery_floor_ev_active_w': 'input_number.ems_nz_battery_floor_ev_active_w',
     'adjustable_surplus_load': 'input_select.ems_adjustable_surplus_load',
     'adjustable_primary_load': 'input_select.ems_adjustable_primary_load',
-    'adjustable_surplus_activation': 'input_number.ems_adjustable_surplus_activation',
+    'adjustable_surplus_activation': 'input_number.ems_adjustable_surplus_activation_w',
     'adjustable_surplus_load_priority': 'input_number.ems_adjustable_surplus_load_priority',
     'pv_power_kw': 'sensor.pv_instant_power_2',
 
@@ -63,8 +63,8 @@ ENT = {
     'surplus_r1_active': 'input_boolean.ems_surplus_relay1_active',
     'surplus_r2_active': 'input_boolean.ems_surplus_relay2_active',
 
-    'relay1_surplus_allowed': 'input_boolean.ems_relay1_surplus_allowed',
-    'relay2_surplus_allowed': 'input_boolean.ems_relay2_surplus_allowed',
+    'relay1_surplus_allowed': 'input_boolean.ems_relay1_enabled_import_zero',
+    'relay2_surplus_allowed': 'input_boolean.ems_relay2_enabled_import_zero',
     'relay1_force_on': 'input_boolean.ems_relay1_force_on',
     'relay2_force_on': 'input_boolean.ems_relay2_force_on',
 
