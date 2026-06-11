@@ -671,7 +671,6 @@ def compute_net_zero_engine_outputs(
             'pv_power_kw': pv_power_kw,
             'ev_hard_off_pv_threshold_kw': cfg.ev_hard_off_pv_threshold_kw,
             'battery_to_ev_loop_risk': bool(battery_to_ev_loop_risk),
-            'ev_primary_charge_mode': bool(cfg.ev_primary_charge_mode),
             'ev_adjustable_mode': bool(use_ev_surplus_mode),
             'ev_primary_burn_active': bool(ev_primary_burn_active),
             'ev_surplus_burn_active': bool(ev_surplus_burn_active),

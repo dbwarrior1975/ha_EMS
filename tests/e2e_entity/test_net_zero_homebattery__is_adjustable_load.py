@@ -6,8 +6,7 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 
-# Proposed new control entities for EV-first behavior in NET_ZERO.
-EV_PRIMARY_CHARGE_MODE = 'input_boolean.ems_ev_primary_charge_mode'
+# Control entities for adjustable-combo behavior in NET_ZERO.
 NZ_BATTERY_FLOOR_DEFAULT_W = 'input_number.ems_nz_battery_floor_default_w'
 NZ_BATTERY_FLOOR_EV_ACTIVE_W = 'input_number.ems_nz_battery_floor_ev_active_w'
 ADJUSTABLE_SURPLUS_LOAD_PRIORITY = 'input_number.ems_adjustable_surplus_load_priority'
@@ -19,10 +18,10 @@ ADJUSTABLE_SURPLUS_LOAD_BATTERY = 'actuator_battery_setpoint_w'
 @pytest.mark.scenario
 #@pytest.mark.skip(reason='Long power/current assertion scenario temporarily skipped during primary envelope migration')
 #@pytest.mark.xfail(reason='Long legacy scenario under migration; non-blocking for ADJUSTABLE V2 unification', strict=False)
-def test_net_zero_ev_primary_charge_mode_spec(project_root):
+def test_net_zero_adjustable_combo_homebattery_primary_spec(project_root):
     """
     Spec-style NET_ZERO story for EV-first charging semantics:
-    - user enables EV-primary mode via dedicated feature flag
+    - user sets adjustable combo: surplus=EV_CHARGER, primary=HOME_BATTERY
     - when EV surplus state is active, battery min charge floor is lowered to 0 W
     - EV remains charge-only (never negative current), even when RPNZ collapses
     - 4 kW surplus -> EV should absorb practically all and battery target stays 0 W

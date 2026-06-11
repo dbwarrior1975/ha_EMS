@@ -67,7 +67,6 @@ class EmsConfig:
     ev_hard_off_low_pv_cycles: int = 2
     ev_hard_off_release_cycles: int = 2
     ev_current_step_a: int = 4
-    ev_primary_charge_mode: bool = False
     nz_battery_floor_default_w: float = 100.0
     nz_battery_floor_ev_active_w: float = 0.0
     adjustable_surplus_load: str = 'HOME_BATTERY'

@@ -30,7 +30,6 @@ def read_config():
         ev_hard_off_pv_threshold_kw=get_float(ENT['ev_hard_off_pv_threshold_kw'], 1.6),
         ev_hard_off_low_pv_cycles=get_int(ENT['ev_hard_off_low_pv_cycles'], 2),
         ev_current_step_a=get_int(ENT['ev_current_step_a'], 4),
-        ev_primary_charge_mode=get_bool(ENT['ev_primary_charge_mode']),
         nz_battery_floor_default_w=get_float(ENT['nz_battery_floor_default_w'], 100.0),
         nz_battery_floor_ev_active_w=get_float(ENT['nz_battery_floor_ev_active_w'], 0.0),
         adjustable_surplus_load=get_str(ENT['adjustable_surplus_load'], 'HOME_BATTERY'),

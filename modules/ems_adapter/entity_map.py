@@ -21,7 +21,6 @@ ENT = {
     'ev_hard_off_pv_threshold_kw': 'input_number.ems_ev_hard_off_pv_threshold_kw',
     'ev_hard_off_low_pv_cycles': 'input_number.ems_ev_hard_off_low_pv_cycles',
     'ev_current_step_a': 'input_number.ems_ev_current_step_a',
-    'ev_primary_charge_mode': 'input_boolean.ems_ev_primary_charge_mode',
     'nz_battery_floor_default_w': 'input_number.ems_nz_battery_floor_default_w',
     'nz_battery_floor_ev_active_w': 'input_number.ems_nz_battery_floor_ev_active_w',
     'adjustable_surplus_load': 'input_select.ems_adjustable_surplus_load',
