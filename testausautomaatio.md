@@ -24,6 +24,14 @@ Projektissa on seuraavat testiajoon liittyvat tiedostot:
 pytest -q tests
 ```
 
+Nykyinen koko testisetti ajetaan samalla komennolla:
+
+```bash
+pytest -q tests
+```
+
+Viimeisin paikallinen tarkistus tassa tyopuussa: `116 passed`.
+
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
 ## Testikokonaisuuden rakenne
@@ -141,18 +149,21 @@ Tiedosto `test_entity_map_contract.py` varmistaa perustason entity-map-sopimusta
 
 ### Quarter-skenaariot
 
-Aidosti toteutettuja e2e/skenaariotesteja ovat ainakin:
+Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 
-1. `test_non_net_zero_modes_quarter.py`
-2. `test_goal_transition_net_zero_to_max_export.py`
-3. `test_net_zero_quarter_datadriven.py`
-4. `test_net_zero_priority_order_quarter.py`
-5. `test_net_zero_ev_release_min_restore_quarter.py`
-6. `test_net_zero_quarter_with_internal_latches.py`
-7. `test_battery_protect_min_cell_recovery_quarter.py`
-8. `test_battery_protect_min_cell_recovery_quarter2.py`
-9. `tests/scenarios/test_net_zero_priority_squence_e2e.py`
-10. `tests/scenarios/test_regressions.py`
+1. `tests/e2e_entity/battery_protect_min_cell_recovery/`
+2. `tests/e2e_entity/goal_transition_net_zero_to_max_export/`
+3. `tests/e2e_entity/hard_off_on_low_pv/`
+4. `tests/e2e_entity/net_zero_ev_adjustable_load/`
+5. `tests/e2e_entity/net_zero_force_on_battery_support/`
+6. `tests/e2e_entity/net_zero_homebattery_adjustable_load/`
+7. `tests/e2e_entity/net_zero_priority_order_quarter/`
+8. `tests/e2e_entity/optimizer_degraded_fallback/`
+9. `tests/e2e_entity/system_degraded_safe_mode/`
+10. `tests/scenarios/test_net_zero_priority_squence_e2e.py`
+11. `tests/scenarios/test_regressions.py`
+
+Jokaisessa splitatussa e2e-kansiossa on oma `scenario_overview.md`, joka kertoo vaihejakojen tarkoituksen.
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 
@@ -169,7 +180,7 @@ Nykyiset testit kattavat esimerkiksi:
 
 ### HAEO-integraatio
 
-`haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
+`modules/ems_core/integrations/haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
 
 ### Contract-kattavuus
 
@@ -183,13 +194,13 @@ Nykyiset testit kattavat esimerkiksi:
 
 Lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 
-1. stale-data safe mode -ketjulle e2e-tasolla
-2. hysteresis- ja anti-flap-kayttaytymiselle
+1. stale-data safe mode -ketjun lisabranchit e2e-tasolla
+2. hysteresis- ja anti-flap-kayttaytymisen reunatapaukset
 
 ## Suositeltu korjausjarjestys testien kehitykselle
 
 1. Arvioi tarvitaanko erillinen `SAFE_OFF`- tai `PAUSED`-tila ja lisaa sille testit vain jos sellainen otetaan myohemmin kayttoon.
-2. Lisaa writerille eksplisiittinen testi, joka erottaa:
+2. Lisaa writerille tarvittaessa lisaedge-testeja, jotka erottavat:
    `NET_ZERO` release-to-min-current
    ja `MAX_EXPORT` hard-off -semantiikan.
 

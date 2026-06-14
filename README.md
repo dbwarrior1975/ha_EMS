@@ -8,6 +8,18 @@ Nykyiset tuetut goal-profiilit ovat:
 2. `MAX_EXPORT`
 3. `CHEAP_GRID_CHARGE`
 
+Tuetut control-profiilit ovat:
+
+1. `MANUAL`
+2. `MANUAL_SAFE`
+3. `AUTOMATIC`
+4. `HORIZON_BY_HAEO`
+
+Tuetut forecast-profiilit ovat:
+
+1. `NONE`
+2. `HAEO`
+
 ## Paaosat
 
 Top-level tuotantoketju koostuu kolmesta paakomponentista:
@@ -44,8 +56,16 @@ Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
 Paikallinen quarter-balancing -tila.
 
 1. akulle lasketaan net-zero-target
-2. surplus-policy voi aktivoida releita ja EV:n prioriteettien mukaan
-3. EV voi menna low-PV-tilanteessa `hard_off`-polkuun nykyisen policy-attribuutin kautta
+2. surplus-policy aktivoi kohteita prioriteettien mukaan (`ADJUSTABLE`, `RELAY1`, `RELAY2`)
+3. `ADJUSTABLE` voi olla EV-laturi tai kotiakku konfiguraation mukaan
+4. EV voi menna low-PV-tilanteessa `hard_off`-polkuun nykyisen policy-attribuutin kautta
+
+Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
+
+1. `control_profile = AUTOMATIC`
+2. `goal_profile = NET_ZERO`
+3. `guard_profile = NORMAL_LIMITS`
+4. effective forecast on `NONE`
 
 ### `MAX_EXPORT`
 
@@ -65,71 +85,150 @@ Latauspainotteinen tila.
 3. HAEO voi syottaa battery- ja EV-targetteja, jos forecast on tuore
 4. releet ovat pois paalta
 
+HAEO:n rooli on nykykoodissa rajattu:
+
+1. HAEO voi vaikuttaa akkutargettiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
+2. HAEO voi vaikuttaa EV-targettiin `CHEAP_GRID_CHARGE`-tilassa
+3. HAEO ei tee taytta `NET_ZERO`-optimointia, vaikka forecast olisi nakyvissa
+4. HAEO on tehokkaasti kaytossa vain, jos forecast on konfiguroitu ja freshness-lahteet ovat tuoreita
+
 ## Tarkeat entiteetit
 
-Nykyinen mappaus on tiedostossa `modules/ems_adapter/entity_map.py`.
+README kuvaa EMS:n kayttorajapinnan ensisijaisesti EMS-avaimilla.
+Home Assistant -entity_id-mappaus loytyy tiedostosta `modules/ems_adapter/entity_map.py`.
 
-Keskeiset profiilit:
+Nopea mappausperiaate:
 
-1. `input_select.ems_control_profile`
-2. `input_select.ems_goal_profile`
-3. `input_select.ems_forecast_profile`
-4. `input_select.ems_guard_profile`
+1. dokumentaatio ja operointi = EMS-avaimet
+2. runtime-integraatio = entity_mapin HA entity_id:t
 
-Keskeiset mittaukset:
+Keskeiset profiiliavaimet (EMS):
 
-1. `sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc`
-2. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage`
-3. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_power`
-4. `sensor.average_active_power_2`
-5. `sensor.hourly_energy_balance`
-6. `sensor.required_power_consumption`
-7. `sensor.ems_calculated_required_power_for_net_zero`
-8. `sensor.pv_instant_power_2`
+1. `control_profile`
+2. `goal_profile`
+3. `forecast_profile`
+4. `guard_profile`
 
-Keskeiset config-entiteetit:
+Keskeiset mittausavaimet (EMS):
 
-1. `input_number.ems_deadband_w`
-2. `input_number.ems_ramp_max_w`
-3. `input_number.ems_strict_limits_max_w`
-4. `input_number.ems_max_battery_discharge_w`
-5. `input_number.ems_max_battery_charge_w`
-6. `input_number.ems_battery_protect_soc`
-7. `input_number.ems_battery_protect_soc_recovery_margin`
-8. `input_number.ems_battery_protect_min_cell_voltage_v`
-9. `input_number.ems_ev_min_current_a`
-10. `input_number.ems_ev_max_current_a`
-11. `input_number.ems_ev_charger_phases`
-12. `input_number.ems_ev_force_current_a`
-13. `input_number.ems_ev_hard_off_pv_threshold_kw`
-14. `input_number.ems_ev_hard_off_low_pv_cycles`
-15. `input_number.ems_ev_hard_off_release_cycles`
-16. `input_number.ems_haeo_stale_timeout_s`
-17. `input_number.ems_relay1_power_kw`
-18. `input_number.ems_relay2_power_kw`
-19. `input_number.ems_surplus_relay1_priority`
-20. `input_number.ems_surplus_relay2_priority`
-21. `input_number.ems_surplus_ev_priority`
-22. `input_number.ems_nz_battery_floor_default_w`
-23. `input_number.ems_nz_battery_floor_ev_active_w`
+1. `soc`
+2. `min_cell_voltage_v`
+3. `battery_heartbeat`
+4. `grid_power_w`
+5. `current_battery_sp`
+6. `hourly_energy_balance`
+7. `charger_control`
+8. `charger_current`
+9. `required_power_consumption_kw`
+10. `rpnz_w`
+11. `pv_power_kw`
 
-NET_ZERO floor-semanttiikka:
+Keskeiset config-avaimet (EMS):
 
-1. `ems_nz_battery_floor_default_w` on akun yleinen minimi-floor.
-2. Kun `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `ems_nz_battery_floor_ev_active_w`.
-3. EV-primary-polussa `ems_nz_battery_floor_ev_active_w` korvaa default-floorin.
+1. `deadband_w`
+2. `ramp_max_w`
+3. `strict_limits_max_w`
+4. `max_battery_discharge_w`
+5. `max_solar_charge_w`
+6. `battery_protect_soc`
+7. `battery_protect_soc_recovery_margin`
+8. `battery_protect_min_cell_voltage_v`
+9. `battery_protect_charge_floor_w`
+10. `ev_min_current_a`
+11. `ev_max_current_a`
+12. `ev_charger_phases`
+13. `ev_force_current_a`
+14. `ev_hard_off_pv_threshold_kw`
+15. `ev_hard_off_low_pv_cycles`
+16. `ev_hard_off_release_cycles`
+17. `ev_current_step_a`
+18. `nz_battery_floor_default_w`
+19. `nz_battery_floor_ev_active_w`
+20. `adjustable_surplus_load`
+21. `adjustable_primary_load`
+22. `adjustable_surplus_activation`
+23. `adjustable_surplus_load_priority`
+24. `relay1_power_kw`
+25. `relay2_power_kw`
+26. `relay1_priority`
+27. `relay2_priority`
+28. `ev_priority`
+29. `surplus_freeze_s`
+30. `haeo_stale_timeout_s`
 
-Surplus- ja aktuaattoritilat:
+Keskeiset surplus-state-avaimet (EMS):
 
-1. `input_datetime.ems_surplus_freeze_until`
-2. `input_boolean.ems_surplus_adjustable_active`
-3. `input_boolean.ems_surplus_relay1_active`
-4. `input_boolean.ems_surplus_relay2_active`
-5. `switch.charger_control`
-6. `number.charger_current_level`
-7. `switch.relay_1_2`
-8. `switch.relay_2_2`
-9. `number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point`
+1. `surplus_freeze_until`
+2. `surplus_adjustable_active`
+3. `surplus_r1_active`
+4. `surplus_r2_active`
+
+Keskeiset releiden override- ja sallinta-avaimet (EMS):
+
+1. `relay1_surplus_allowed`
+2. `relay2_surplus_allowed`
+3. `relay1_force_on`
+4. `relay2_force_on`
+
+Keskeiset HAEO-avaimet (EMS):
+
+1. `haeo_battery_power_active`
+2. `haeo_ev_battery_power_active`
+3. `haeo_battery_active_power_fresh_source`
+4. `haeo_ev_active_power_fresh_source`
+
+HAEO freshness arvioidaan seka battery- etta EV-freshness-lahteiden iasta. Molempien tulee olla alle `haeo_stale_timeout_s`, jotta effective forecast voi olla `HAEO`.
+
+Keskeiset policy-ulostuloavaimet (EMS):
+
+1. `policy_battery_target_w`
+2. `policy_ev_current_a`
+3. `policy_relay1_command`
+4. `policy_relay2_command`
+5. `policy_decision_trace`
+6. `surplus_policy_active_pys`
+7. `surplus_next_target_pys`
+8. `surplus_next_threshold_pys`
+9. `surplus_release_candidate_pys`
+10. `surplus_explanation_pys`
+11. `surplus_dispatch_decision_pys`
+
+Keskeiset actuator-avaimet (EMS):
+
+1. `actuator_battery_setpoint_w`
+2. `actuator_ev_enabled`
+3. `actuator_ev_current_a`
+4. `actuator_relay1`
+5. `actuator_relay2`
+
+Adjustable-combo: suositus ja runtime-oletukset
+
+Suositus uudelle kayttoonotolle:
+
+1. aseta aina eksplisiittisesti:
+	- `adjustable_surplus_load`
+	- `adjustable_primary_load`
+2. kayta ristiinkytkettya kombinaatiota
+3. suositeltu oletus:
+	- `adjustable_surplus_load = EV_CHARGER`
+	- `adjustable_primary_load = HOME_BATTERY`
+
+Tuetut kombinaatiot:
+
+1. `adjustable_primary_load = HOME_BATTERY` ja `adjustable_surplus_load = EV_CHARGER`
+2. `adjustable_primary_load = EV_CHARGER` ja `adjustable_surplus_load = HOME_BATTERY`
+
+Nykyinen runtime-yhteensopivuus:
+
+1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa legacy-oletusta (`implicit_legacy_default`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
+2. trace raportoi taman syylla `primary_surplus_combo_reason = implicit_legacy_default`
+3. tata ei suositella uudessa kayttoonotossa
+
+### NET_ZERO floor-semanttiikka
+
+1. `nz_battery_floor_default_w` on akun yleinen minimi-floor.
+2. Kun `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `nz_battery_floor_ev_active_w`.
+3. EV-primary-polussa `nz_battery_floor_ev_active_w` korvaa default-floorin.
 
 ## Guardit ja turvallisuuskayttaytyminen
 
@@ -166,6 +265,12 @@ Pytest-markerit:
 2. `scenario`
 3. `smoke`
 
+Huomio contract-testeista:
+
+1. `contract` ei ole erillinen marker `pytest.ini`:ssa
+2. contract-testit ovat kansiossa `tests/contract/` (esim. `tests/contract/test_entity_map_contract.py`)
+3. aja contract-testit suoraan polulla tai `-k contract`-suodatuksella
+
 Projektin testikomento:
 
 ```bash
@@ -196,8 +301,8 @@ Ennen kayttoonottoa varmista ainakin:
 
 1. kaikki `entity_map.py`-mappauksen vaatimukset on provisioitu
 2. Pyscript on saatavilla ja top-level scriptit voidaan suorittaa
-3. goal- ja control-profiilien arvot vastaavat projektin tukemia tiloja
-4. HAEO-entiteetit ovat olemassa, jos forecast-kayttoa halutaan
+3. goal-, control-, forecast- ja guard-profiilien arvot vastaavat projektin tukemia tiloja
+4. HAEO forecast- ja freshness-entiteetit ovat olemassa, jos forecast-kayttoa halutaan
 5. diagnostiikkaentiteetit ovat seurattavissa Home Assistantissa
 
 Suositeltu ensikayttoonottojarjestys:

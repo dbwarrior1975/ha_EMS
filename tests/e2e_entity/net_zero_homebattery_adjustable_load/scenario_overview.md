@@ -1,8 +1,8 @@
 # Story: NET_ZERO home-battery primary with EV adjustable surplus load
 
 ## What this folder contains
-- tests/e2e_entity/net_zero_homebattery_adjustable_load/test_01_pre_activation_and_adjustable_entry.py
-- tests/e2e_entity/net_zero_homebattery_adjustable_load/test_02_low_pv_release_and_hard_off_path.py
+- tests/e2e_entity/net_zero_homebattery_adjustable_load/test_01_baseline_to_adjustable_activation.py
+- tests/e2e_entity/net_zero_homebattery_adjustable_load/test_02_release_and_low_pv_hard_off_path.py
 - tests/e2e_entity/net_zero_homebattery_adjustable_load/test_03_recovery_and_reactivation.py
 - tests/e2e_entity/net_zero_homebattery_adjustable_load/scenario_steps.py
 

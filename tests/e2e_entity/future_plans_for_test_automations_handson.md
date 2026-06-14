@@ -1,5 +1,15 @@
 # Future Plans For Test Automations Hands-On
 
+## Dokumentin status
+
+Tama on suunnittelumuistio E2E-kattavuuden laajentamiseen. Coverage-prosentit ovat ajon hetkellinen snapshot, eivat pysyva totuus nykytilasta.
+
+Ennen kuin kaytat tassa dokumentissa ehdotettuja prosentteja tai prioriteetteja paatosperusteena, aja coverage uudelleen:
+
+```bash
+pytest -q tests/e2e_entity --cov=. --cov-report=term-missing
+```
+
 ## 1. Tavoite
 Taman dokumentin tarkoitus on antaa seuraavaan sessioon suoraan kaytettava suunnitelma, jolla E2E-testausta laajennetaan business-logiikan katvealueisiin ja nostetaan kattavyytta hallitusti.
 

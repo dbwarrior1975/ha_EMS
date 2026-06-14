@@ -1,5 +1,11 @@
 # E2E Refactor Handover (Next Session)
 
+## Dokumentin status
+
+Tama on historiallinen handover-dokumentti E2E-refaktoroinnin ajalta. Useat alla mainitut monoliittiset `tests/e2e_entity/test_*.py`-tiedostot on jo poistettu ja korvattu story-kansioilla.
+
+Nykyinen E2E-rakenne löytyy kansioista `tests/e2e_entity/<story>/`, ja jokaisen storyn tarkin kuvaus on sen omassa `scenario_overview.md`-tiedostossa.
+
 ## Tavoite
 Refaktoroi e2e testit vaiheittain samaan malliin, joka on toteutettu kansiossa:
 - tests/e2e_entity/hard_off_on_low_pv/
@@ -162,19 +168,19 @@ Tärkeä oppi seuraavaan sessioon:
 3. Aja lopuksi koko e2e_entity alikansio tai relevantti subset:
 - pytest -q tests/e2e_entity -q
 
-## Candidate tiedostot seuraavaan aaltoon
-- tests/e2e_entity/test_net_zero_ev_hard_off_on_low_pv_spec.py
-- tests/e2e_entity/test_net_zero_ev_hard_off_on_low_pv_newFromat.py
-- tests/e2e_entity/test_goal_transition_net_zero_to_max_export.py
-- tests/e2e_entity/test_optimizer_degraded_fallback.py
-- tests/e2e_entity/test_system_degraded_safe_mode.py
+## Nykytila candidate-listan sijaan
 
-Suositeltu prioriteetti seuraavalle sessiolle:
-1. tests/e2e_entity/test_goal_transition_net_zero_to_max_export.py
-2. tests/e2e_entity/test_optimizer_degraded_fallback.py
-3. tests/e2e_entity/test_system_degraded_safe_mode.py
-4. tests/e2e_entity/test_net_zero_ev_hard_off_on_low_pv_spec.py
-5. tests/e2e_entity/test_net_zero_ev_hard_off_on_low_pv_newFromat.py
+Alkuperainen seuraavan aallon kandidaattilista on vanhentunut. Nykyiset refaktoroidut E2E-storyt ovat:
+
+1. `tests/e2e_entity/battery_protect_min_cell_recovery/`
+2. `tests/e2e_entity/goal_transition_net_zero_to_max_export/`
+3. `tests/e2e_entity/hard_off_on_low_pv/`
+4. `tests/e2e_entity/net_zero_ev_adjustable_load/`
+5. `tests/e2e_entity/net_zero_force_on_battery_support/`
+6. `tests/e2e_entity/net_zero_homebattery_adjustable_load/`
+7. `tests/e2e_entity/net_zero_priority_order_quarter/`
+8. `tests/e2e_entity/optimizer_degraded_fallback/`
+9. `tests/e2e_entity/system_degraded_safe_mode/`
 
 ## Refaktorointi-runbook (copy-paste)
 1. Valitse kohde ja nimeä uusi kansio:

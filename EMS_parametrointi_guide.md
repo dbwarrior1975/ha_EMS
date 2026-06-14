@@ -1,4 +1,4 @@
-# EMS parametroitnin opas
+# EMS parametroinnin opas
 
 Taman oppaan tavoite on antaa kaytannonlaheiset aloitusarvot ja viritysohjeet kahdelle tuetulle V2-kombolle.
 
@@ -16,7 +16,7 @@ Valitse kombinaatio kayttotavoitteen mukaan:
 
 ## 2. Yhteiset perusparametrit
 
-Namma kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
+Nama kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
 
 - ems_ramp_max_w
   - Mita tekee: rajoittaa setpointin muutoksen nopeutta per sykli.
@@ -60,7 +60,7 @@ Namma kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
 
 - ems_adjustable_primary_load = EV_CHARGER
 - ems_adjustable_surplus_load = HOME_BATTERY
-- ems_adjustable_surplus_activation_kw = 2500 W
+- ems_adjustable_surplus_activation_w = 2500 W
 - ems_adjustable_surplus_load_priority = 4
 - ems_ev_priority = 3
 - ems_surplus_relay1_priority = 2
@@ -77,7 +77,8 @@ Selvennys floor-parametreihin (tarkea):
 
 Selvennys activation-parametriin (tarkea):
 
-- HA-helperin nimi on `ems_adjustable_surplus_activation_kw`.
+- HA-helperin nimi on `ems_adjustable_surplus_activation_w`.
+- EMS-avain on `adjustable_surplus_activation`.
 - Nykyinen saadin kasittelee activation-arvon watteina (W), joten kayta W-tasoa (esim. 2000-3000), ei pienta kW-lukua.
 
 ### 3.3 Mitä odottaa kaytannossa
@@ -95,10 +96,10 @@ Selvennys activation-parametriin (tarkea):
 
 - EV ei palaudu hard_offista toivotusti:
   - Tarkista etta PV on pysyvasti thresholdin ylapuolella.
-  - Laske ems_adjustable_surplus_activation_kw arvoa, jos release-kynnys on kaytannossa liian korkea.
+  - Laske ems_adjustable_surplus_activation_w arvoa, jos release-kynnys on kaytannossa liian korkea.
 
 - Akusto osallistuu liian aikaisin:
-  - Nosta ems_adjustable_surplus_activation_kw arvoa, esim 2500 -> 3000 W.
+  - Nosta ems_adjustable_surplus_activation_w arvoa, esim 2500 -> 3000 W.
 
 ## 4. Combo B: primary HOME_BATTERY, surplus EV_CHARGER
 
@@ -111,7 +112,7 @@ Selvennys activation-parametriin (tarkea):
 
 - ems_adjustable_primary_load = HOME_BATTERY
 - ems_adjustable_surplus_load = EV_CHARGER
-- ems_adjustable_surplus_activation_kw = 2000-2600 W
+- ems_adjustable_surplus_activation_w = 2000-2600 W
 - ems_adjustable_surplus_load_priority = 3 tai 4
 - ems_ev_priority = 2 tai 3
 - ems_surplus_relay1_priority = 2
@@ -128,11 +129,11 @@ Selvennys activation-parametriin (tarkea):
 ### 4.4 Ongelma -> toimenpide
 
 - EV ei aktivoidu vaikka tuotantoa on:
-  - Laske ems_adjustable_surplus_activation_kw arvoa, esim 2500 -> 2000 W.
+  - Laske ems_adjustable_surplus_activation_w arvoa, esim 2500 -> 2000 W.
   - Tarkista että required power consumption ylittaa activation-rajan riittavan pitkaan.
 
 - EV aktivoituu liian herkästi:
-  - Nosta ems_adjustable_surplus_activation_kw arvoa.
+  - Nosta ems_adjustable_surplus_activation_w arvoa.
   - Laske ems_adjustable_surplus_load_priority, jos releiden halutaan aktivoituvan ensin.
 
 ## 5. Kaytannon viritysjärjestys

@@ -13,6 +13,13 @@ Keskeiset profiilientiteetit:
 3. `input_select.ems_forecast_profile`
 4. `input_select.ems_guard_profile`
 
+Tuetut profiiliarvot:
+
+1. control: `MANUAL`, `MANUAL_SAFE`, `AUTOMATIC`, `HORIZON_BY_HAEO`
+2. goal: `NET_ZERO`, `MAX_EXPORT`, `CHEAP_GRID_CHARGE`
+3. forecast: `NONE`, `HAEO`
+4. guard: `NORMAL_LIMITS`, `STRICT_LIMITS`, `BATTERY_PROTECT`, `DEGRADED`
+
 Keskeiset konfiguraatioentiteetit:
 
 1. `input_number.ems_deadband_w`
@@ -30,12 +37,17 @@ Keskeiset konfiguraatioentiteetit:
 13. `input_number.ems_ev_hard_off_pv_threshold_kw`
 14. `input_number.ems_ev_hard_off_low_pv_cycles`
 15. `input_number.ems_ev_hard_off_release_cycles`
-16. `input_number.ems_haeo_stale_timeout_s`
-17. `input_number.ems_relay1_power_kw`
-18. `input_number.ems_relay2_power_kw`
-19. `input_number.ems_nz_battery_floor_default_w`
-20. `input_number.ems_nz_battery_floor_ev_active_w`
-21. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+16. `input_number.ems_ev_current_step_a`
+17. `input_number.ems_haeo_stale_timeout_s`
+18. `input_number.ems_relay1_power_kw`
+19. `input_number.ems_relay2_power_kw`
+20. `input_number.ems_nz_battery_floor_default_w`
+21. `input_number.ems_nz_battery_floor_ev_active_w`
+22. `input_select.ems_adjustable_surplus_load`
+23. `input_select.ems_adjustable_primary_load`
+24. `input_number.ems_adjustable_surplus_activation_w`
+25. `input_number.ems_adjustable_surplus_load_priority`
+26. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
 
 Floor-semanttiikka NET_ZEROssa:
 
@@ -63,10 +75,31 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 1. `sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc`
 2. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage`
-3. `sensor.average_active_power_2`
-4. `sensor.hourly_energy_balance`
-5. `sensor.required_power_consumption`
-6. `sensor.ems_calculated_required_power_for_net_zero`
+3. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_power`
+4. `sensor.average_active_power_2`
+5. `number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point`
+6. `sensor.hourly_energy_balance`
+7. `switch.charger_control`
+8. `number.charger_current_level`
+9. `sensor.required_power_consumption`
+10. `sensor.ems_calculated_required_power_for_net_zero`
+11. `sensor.pv_instant_power_2`
+
+### Releiden override- ja sallintaentiteetit
+
+1. `input_boolean.ems_relay1_enabled_import_zero`
+2. `input_boolean.ems_relay2_enabled_import_zero`
+3. `input_boolean.ems_relay1_force_on`
+4. `input_boolean.ems_relay2_force_on`
+
+### HAEO-entiteetit
+
+1. `sensor.haeo_battery_power_active`
+2. `sensor.haeo_ev_battery_power_active`
+3. `sensor.battery_active_power`
+4. `sensor.ev_akut_active_power`
+
+HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ovat alle `ems_haeo_stale_timeout_s` -rajan.
 
 ### Policy-ulostulot
 
