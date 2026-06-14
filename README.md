@@ -277,21 +277,7 @@ Projektin testikomento:
 pytest -q tests
 ```
 
-WSL-esimerkki:
 
-```bash
-cd "/mnt/c/Users/virtamik/OneDrive - Accountor Holding Oy/HA/EMS/ha_EMS"
-pytest -q
-```
-
-Jos WSL:ssa halutaan oma Linux-venv, suositeltu tapa on:
-
-```bash
-python3 -m venv .venv-wsl
-source .venv-wsl/bin/activate
-pip install -U pip pytest
-pytest -q
-```
 
 ## Kayttoonotto
 
