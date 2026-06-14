@@ -52,7 +52,7 @@ def test_01_activation_and_burn(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 45.0,
                 'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
                 'ev_low_pv_cycles': 0,

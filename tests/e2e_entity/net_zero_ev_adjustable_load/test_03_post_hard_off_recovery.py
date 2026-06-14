@@ -17,8 +17,9 @@ def test_03_post_hard_off_recovery(project_root):
         ENT['surplus_r2_active']: False,
         ENT['surplus_freeze_until']: 104.0,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['actuator_battery_setpoint_w']: 500,
+        ENT['ev_hard_off_release_cycles']: 2,
     })
     h.set_attrs(ENT['policy_ev_current_a'], {
         'ev_policy_mode': 'hard_off',
@@ -30,9 +31,9 @@ def test_03_post_hard_off_recovery(project_root):
     steps = [
         {
             'at_s': 240,
-            'note': 't240 post-release: baseline floor semantics continue with hard-off still active.',
+            'note': 't240 IF only RPC is abouve threshold but PV is below, remain in hard-off and do not count towards release-ready.',
             'set': {
-                ENT['required_power_consumption_kw']: 1.95,
+                ENT['required_power_consumption_kw']: 1.45,
                 ENT['rpnz_w']: -5.0,
                 ENT['grid_power_w']: -2300.0,
                 ENT['pv_power_kw']: 0.0,
@@ -43,6 +44,7 @@ def test_03_post_hard_off_recovery(project_root):
                 ENT['policy_battery_target_w']: 500,
             },
             'expect_policy': {
+                'ev_hard_off_release_ready_cycles': 0,
                 'ev_hard_off_active': True,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'activation_gate_hold',
@@ -52,18 +54,18 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 270,
-            'note': 't270 post-release: controller remains stable with NOOP dispatch.',
+            'note': 't270 conter not count if only PV is over threshold; remain in hard-off',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
                 ENT['rpnz_w']: 1.0,
                 ENT['grid_power_w']: -10.0,
-                ENT['pv_power_kw']: 0.0,
+                ENT['pv_power_kw']: 1.7,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
@@ -71,6 +73,7 @@ def test_03_post_hard_off_recovery(project_root):
                 ENT['policy_ev_current_a']: 0,
             },
             'expect_policy': {
+                'ev_hard_off_release_ready_cycles': 0,
                 'ev_hard_off_active': True,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': None,
@@ -82,11 +85,12 @@ def test_03_post_hard_off_recovery(project_root):
         },
         {
             'at_s': 275,
-            'note': 't275 PV 1.5 kW',
+            'note': 't275 PV 1.5 kW: When both RPC and PV are above threshold, count towards release-ready and remain in hard-off until release-ready cycles met.',
             'set': {
-                ENT['required_power_consumption_kw']: 2.49,
-                ENT['rpnz_w']: 2501.0,
+                ENT['required_power_consumption_kw']: 1.385,
+                ENT['rpnz_w']: 100.0,
                 ENT['grid_power_w']: -1100.0,
+                ENT['ev_hard_off_low_pv_cycles']: 3,
                 ENT['pv_power_kw']: 1.7,
             },
             'expect_policy_values': {
@@ -95,6 +99,7 @@ def test_03_post_hard_off_recovery(project_root):
                 ENT['policy_ev_current_a']: 0,
             },
             'expect_policy': {
+                'ev_hard_off_release_ready_cycles': 1,                
                 'surplus_freeze_until_ts': 104,
                 'ev_hard_off_active': True,
                 'battery_min_floor_reason': 'ev_active_floor_override',
@@ -108,31 +113,90 @@ def test_03_post_hard_off_recovery(project_root):
             },
         },
         {
-            'at_s': 295,
-            'note': 't295 PV 2.5 kW',
+            'at_s': 280,
+            'note': 't280 PV 2.5 kW',
             'set': {
                 ENT['required_power_consumption_kw']: 2.49,
-                ENT['rpnz_w']: 2501,
-                ENT['grid_power_w']: -1900.0,
+                ENT['rpnz_w']: -10,
+                ENT['grid_power_w']: 1900.0,
                 ENT['pv_power_kw']: 1.7,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
                 ENT['policy_battery_target_w']: 0,
-                ENT['policy_ev_current_a']: 8,
+                ENT['policy_ev_current_a']: 6,
             },
             'expect_policy': {
+                'ev_hard_off_release_ready_cycles': 2,
                 'ev_hard_off_active': False,
                 'battery_min_floor_reason': 'ev_active_floor_override',
-                'primary_power_envelope_w': 1920,
+                'primary_power_envelope_w': 380,
             },
             'expect_dispatch_state': {
                 'decision': 'NOOP',
             },
             'expect_values': {
                 ENT['actuator_battery_setpoint_w']: 0,
+                ENT['surplus_adjustable_active']: False,
+                ENT['actuator_ev_enabled']: True,
             },
         },
+
+        {
+            'at_s': 285,
+            'note': 't285 PV 2.5 kW',
+            'set': {
+                ENT['required_power_consumption_kw']: -2.49,
+                ENT['rpnz_w']: -15,
+                ENT['grid_power_w']: 2900.0,
+                ENT['pv_power_kw']: 1.7,
+            },
+            'expect_policy_values': {
+                ENT['surplus_dispatch_decision_pys']: 'NOOP',
+                ENT['policy_battery_target_w']: 0,
+                ENT['policy_ev_current_a']: 6,
+            },
+            'expect_policy': {
+                'ev_hard_off_active': False,
+                'battery_min_floor_reason': 'ev_active_floor_override',
+                'primary_power_envelope_w': None,
+            },
+            'expect_dispatch_state': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
+                ENT['actuator_battery_setpoint_w']: 0,
+                ENT['actuator_ev_current_a']: 6,
+            },
+        },   
+
+        {
+            'at_s': 295,
+            'note': 't295 PV 5.5 kW',
+            'set': {
+                ENT['required_power_consumption_kw']: 2.49,
+                ENT['rpnz_w']: 45,
+                ENT['grid_power_w']: -2900.0,
+                ENT['pv_power_kw']: 1.7,
+            },
+            'expect_policy_values': {
+                ENT['surplus_dispatch_decision_pys']: 'NOOP',
+                ENT['policy_battery_target_w']: 0,
+                ENT['policy_ev_current_a']: 10,
+            },
+            'expect_policy': {
+                'ev_hard_off_active': False,
+                'battery_min_floor_reason': 'ev_active_floor_override',
+                'primary_power_envelope_w': 2380,
+            },
+            'expect_dispatch_state': {
+                'decision': 'NOOP',
+            },
+            'expect_values': {
+                ENT['actuator_battery_setpoint_w']: 0,
+                ENT['actuator_ev_current_a']: 10,
+            },
+        },              
     ]
 
     run_steps(h, steps)

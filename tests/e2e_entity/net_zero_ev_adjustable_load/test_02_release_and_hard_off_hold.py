@@ -38,7 +38,7 @@ def test_02_release_and_hard_off_hold(project_root):
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
-                ENT['policy_ev_current_a']: 4,
+                ENT['policy_ev_current_a']: 6,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -50,7 +50,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_dispatch_state': {'decision': 'RELEASE_RELAY1'},
             'expect_values': {
                 ENT['surplus_adjustable_active']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 1500,
             },
         },
@@ -61,11 +61,13 @@ def test_02_release_and_hard_off_hold(project_root):
                 ENT['required_power_consumption_kw']: -4.0,
                 ENT['rpnz_w']: -100.0,
                 ENT['grid_power_w']: 2320.0,
+                
+
                 ENT['pv_power_kw']: 1.5,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'RELEASE_ADJUSTABLE',
-                ENT['policy_ev_current_a']: 4,
+                ENT['policy_ev_current_a']: 6,
                 ENT['policy_battery_target_w']: 500,
             },
             'expect_policy': {
@@ -78,7 +80,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_dispatch_state': {'decision': 'RELEASE_ADJUSTABLE'},
             'expect_values': {
                 ENT['surplus_adjustable_active']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },
@@ -132,7 +134,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
                 ENT['surplus_adjustable_active']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },
@@ -151,6 +153,7 @@ def test_02_release_and_hard_off_hold(project_root):
                 ENT['policy_battery_target_w']: 500,
             },
             'expect_policy': {
+                'ev_hard_off_active': True,                
                 'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'activation_gate_hold',
@@ -158,7 +161,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_dispatch_state': {'decision': 'NOOP'},
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },
@@ -184,7 +187,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_dispatch_state': {'decision': 'NOOP'},
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },
@@ -210,7 +213,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_dispatch_state': {'decision': 'NOOP'},
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 500,
             },
         },

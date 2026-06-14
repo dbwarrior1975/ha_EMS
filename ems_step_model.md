@@ -14,7 +14,7 @@ Tasta seuraa perusmalli:
 
 1. Policy laskee paatokset stepin alun tilasta.
 2. Dispatch state applier toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
-3. Actuator applier kirjoittaa actuatorit policy-outputtien perusteella.
+3. Actuator writer loop kirjoittaa actuatorit policy-outputtien perusteella.
 
 ## Tarkein seuraus
 
@@ -46,7 +46,7 @@ Tyypillinen EV-polku:
 2. Step A: dispatch state asettaa `surplus_adjustable_active = False`
 3. Step A: writer voi silti nahda `policy_ev_current_a = 28`, koska se laskettiin ennen dispatch state-muutosta
 4. Step B: policy nakee nyt `surplus_adjustable_active = False`
-5. Step B: policy tuottaa `policy_ev_current_a = 0` ja esimerkiksi `ev_policy_mode = 'restore_min'`
+5. Step B: policy tuottaa `ev_policy_mode = 'restore_min'`; `policy_ev_current_a` on polkukohtainen (EV-primaryssa usein `ev_min_current_a`, muissa release-polussa voi olla `0`)
 6. Step B: writer laskee EV-currentin minimiin
 
 Siksi on mahdollista, etta samassa stepissa ovat kaikki totta:

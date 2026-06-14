@@ -43,7 +43,7 @@ def test_writer_freeze_in_system_degraded(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 0.0,
             },
             'expect_writer_trace': {

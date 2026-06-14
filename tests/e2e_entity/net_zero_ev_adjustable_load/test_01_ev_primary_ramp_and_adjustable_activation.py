@@ -16,12 +16,13 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
             'note': 't0 PV 0.5 kW: no surplus yet; battery target stays 0 W and EV remains at minimum charge current.',
             'set': {
                 ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: -10.0,
-                ENT['grid_power_w']: -20.0,
+                ENT['rpnz_w']: 0.0,
+                ENT['grid_power_w']: 20.0,
+                ENT['pv_power_kw']: 0.5,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_battery_target_w']: 0,
+                ENT['policy_battery_target_w']: -700,
             },
             'expect_policy': {
                 'ev_hard_off_active': False,
@@ -38,17 +39,18 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
-                ENT['actuator_battery_setpoint_w']: 0,
+                ENT['actuator_ev_current_a']: 6,
+                ENT['actuator_battery_setpoint_w']: -700,
             },
         },
         {
             'at_s': 10,
-            'note': 't10 PV 1.5 kW: EV ramps up while battery target remains near 0 W (RPC below threshold).',
+            'note': 't10 PV 2.2 kW: EV ramps up while battery target remains near 0 W (RPC below threshold).',
             'set': {
                 ENT['required_power_consumption_kw']: 2.1,
                 ENT['rpnz_w']: 100.0,
                 ENT['grid_power_w']: -2000.0,
+                ENT['pv_power_kw']: 1.7,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
@@ -68,7 +70,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 8,
+                ENT['actuator_ev_current_a']: 10,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
         },
@@ -79,10 +81,11 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 2,
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: -2200.0,
+                ENT['pv_power_kw']: 1.7,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 12,
+                ENT['policy_ev_current_a']: 14,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -91,7 +94,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'battery_min_floor_w': 0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'ev_policy_mode': 'burn',
-                'primary_power_envelope_w': 2840,
+                'primary_power_envelope_w': 3300,
             },
             'expect_dispatch_state': {
                 'decision': 'NOOP',
@@ -100,7 +103,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 12,
+                ENT['actuator_ev_current_a']: 14,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
         },
@@ -111,10 +114,11 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 2,
                 ENT['rpnz_w']: 550.0,
                 ENT['grid_power_w']: -2800.0,
+                ENT['pv_power_kw']: 3.0,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 16,
+                ENT['policy_ev_current_a']: 18,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -131,7 +135,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 16,
+                ENT['actuator_ev_current_a']: 18,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
         },
@@ -142,10 +146,11 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 2.1,
                 ENT['rpnz_w']: 530.0,
                 ENT['grid_power_w']: -1120.0,
+                ENT['pv_power_kw']: 2.0,
             },
             'expect_policy_values': {
                 ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 19,
+                ENT['policy_ev_current_a']: 21,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -162,7 +167,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 19,
+                ENT['actuator_ev_current_a']: 21,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
         },
@@ -173,9 +178,10 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 0.1,
                 ENT['rpnz_w']: 340.0,
                 ENT['grid_power_w']: -1843.0,
+                ENT['pv_power_kw']: 4.0,
             },
             'expect_policy_values': {
-                ENT['policy_ev_current_a']: 23,
+                ENT['policy_ev_current_a']: 25,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -187,7 +193,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['actuator_ev_current_a']: 23,
+                ENT['actuator_ev_current_a']: 25,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
@@ -199,9 +205,10 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 0.9,
                 ENT['rpnz_w']: 50.0,
                 ENT['grid_power_w']: -3140.0,
+                ENT['pv_power_kw']: 6.4,
             },
             'expect_policy_values': {
-                ENT['policy_ev_current_a']: 27,
+                ENT['policy_ev_current_a']: 28,
                 ENT['policy_battery_target_w']: 0,
             },
             'expect_policy': {
@@ -214,7 +221,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['actuator_ev_current_a']: 27,
+                ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_battery_setpoint_w']: 0,
             },
@@ -226,6 +233,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 1.5,
                 ENT['rpnz_w']: 50.0,
                 ENT['grid_power_w']: -1840.0,
+                ENT['pv_power_kw']: 6.4,
             },
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
@@ -253,6 +261,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 1.0,
                 ENT['rpnz_w']: 250.0,
                 ENT['grid_power_w']: -4140.0,
+                ENT['pv_power_kw']: 8.0,
             },
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
@@ -281,6 +290,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 2.6,
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: -1500.0,
+                ENT['pv_power_kw']: 8.0,
             },
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
@@ -310,6 +320,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: -100.0,
                 ENT['rpnz_w']: 450.0,
                 ENT['grid_power_w']: -40.0,
+                ENT['pv_power_kw']: 8.0,
             },
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,
@@ -338,6 +349,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 ENT['required_power_consumption_kw']: 2.4,
                 ENT['rpnz_w']: 450.0,
                 ENT['grid_power_w']: -40.0,
+                ENT['pv_power_kw']: 10.0,
             },
             'expect_policy_values': {
                 ENT['policy_ev_current_a']: 28,

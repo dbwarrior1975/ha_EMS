@@ -33,7 +33,7 @@ def test_02_recovery_gate_then_restore(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 600,
             },
         },
@@ -51,7 +51,7 @@ def test_02_recovery_gate_then_restore(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 800,
             },
         },

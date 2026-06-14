@@ -35,7 +35,7 @@ def test_soc_stale_enters_safe_mode(project_root):
                 ENT['policy_battery_target_w']: 0,
                 ENT['policy_ev_current_a']: -1,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 0.0,
             },
         },

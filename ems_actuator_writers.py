@@ -85,7 +85,7 @@ def _write_ev_actuator():
     strategy_a = get_int(ENT['policy_ev_current_a'], -1)
     current_on = get_bool(ENT['actuator_ev_enabled'])
     current_level = get_int(ENT['actuator_ev_current_a'], 0)
-    min_a = get_int(_ent('ev_min_current_a', 'input_number.ems_ev_min_current_a'), 4)
+    min_a = get_int(_ent('ev_min_current_a', 'input_number.ems_ev_min_current_a'), 6)
     get_attr_fn = globals().get('get_attr')
     if get_attr_fn is None:
         ev_policy_mode = ''

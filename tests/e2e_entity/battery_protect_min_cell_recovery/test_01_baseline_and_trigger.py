@@ -15,6 +15,9 @@ def test_01_baseline_and_trigger(project_root):
             'at_s': 0,
             'note': 't0 normal baseline',
             'set': {
+                ENT['required_power_consumption_kw']: 0.0,
+                ENT['rpnz_w']: -1.0,
+                ENT['grid_power_w']: 200.0,                
                 ENT['guard_profile']: 'NORMAL_LIMITS',
                 ENT['soc']: 10.0,
                 ENT['min_cell_voltage_v']: 3.2,
@@ -24,12 +27,56 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
-                ENT['actuator_battery_setpoint_w']: 200,
+                ENT['actuator_ev_current_a']: 6,
+                ENT['actuator_battery_setpoint_w']: -100,
             },
         },
         {
             'at_s': 30,
+            'note': 't30 SOC and min-cell both below thresholds -> battery protect',
+            'set': {
+                ENT['required_power_consumption_kw']: 0.0,
+                ENT['rpnz_w']: -1.0,
+                ENT['grid_power_w']: 200.0,    
+                ENT['soc']: 0.0,
+                ENT['min_cell_voltage_v']: 3.04,
+            },
+            'expect_policy': {
+                'guard': 'BATTERY_PROTECT',
+                'guard_reason': 'Battery protect active: SOC and minimum cell voltage below thresholds',
+                'dominant_limitation': 'BATTERY_SOC_LIMIT',
+            },
+            'expect_values': {
+                ENT['actuator_ev_enabled']: False,
+                ENT['actuator_ev_current_a']: 6,
+                ENT['actuator_battery_setpoint_w']: 100,
+            },
+        },
+
+        {
+            'at_s': 35,
+            'note': 't30 SOC and min-cell both below thresholds -> battery protect',
+            'set': {
+                ENT['required_power_consumption_kw']: 0.0,
+                ENT['rpnz_w']: -1.0,
+                ENT['grid_power_w']: 200.0,                    
+                ENT['soc']: 0.0,
+                ENT['min_cell_voltage_v']: 3.04,
+            },
+            'expect_policy': {
+                'guard': 'BATTERY_PROTECT',
+                'guard_reason': 'Battery protect active: SOC and minimum cell voltage below thresholds',
+                'dominant_limitation': 'BATTERY_SOC_LIMIT',
+            },
+            'expect_values': {
+                ENT['actuator_ev_enabled']: False,
+                ENT['actuator_ev_current_a']: 6,
+                ENT['actuator_battery_setpoint_w']: 100,
+            },
+        },
+
+        {
+            'at_s': 35,
             'note': 't30 SOC and min-cell both below thresholds -> battery protect',
             'set': {
                 ENT['soc']: 0.0,
@@ -42,10 +89,10 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
-                ENT['actuator_battery_setpoint_w']: 400,
+                ENT['actuator_ev_current_a']: 6,
+                ENT['actuator_battery_setpoint_w']: 100,
             },
-        },
+        },       
     ]
 
     run_steps(h, steps)

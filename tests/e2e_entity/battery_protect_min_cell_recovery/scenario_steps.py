@@ -10,6 +10,7 @@ def build_harness(project_root):
         ENT['battery_protect_soc']: 1.0,
         ENT['battery_protect_soc_recovery_margin']: 1.0,
         ENT['battery_protect_min_cell_voltage_v']: 3.05,
+        ENT['battery_protect_charge_floor_w']: 100.0,
     })
     return h
 

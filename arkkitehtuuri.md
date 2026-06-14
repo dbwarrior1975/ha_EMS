@@ -8,7 +8,7 @@ Projektin ydin on kolmen paakomponentin ketju:
 
 1. policy engine laskee EMS:n tavoiteohjaukset
 2. surplus dispatch state applier paivittaa sisaiset aktiivisuuslukot
-3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
+3. actuator writer loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Nykyinen tuotantotila perustuu `policy_*`, `actuator_*` ja `surplus_*`-entiteetteihin.
 
@@ -22,7 +22,7 @@ flowchart LR
     P --> POL[policy_* sensorit]
     POL --> L[ems_dispatch_state_applier.py\ndispatch state applier]
     L --> SUR[surplus_* tilat\n+ freeze_until]
-    POL --> W[ems_actuator_writers.py\nactuator applier]
+    POL --> W[ems_actuator_writers.py\nactuator writer loop]
     SUR --> W
     W --> ACT[actuator_* entiteetit]
     P --> TRACE[policy_decision_trace]
@@ -110,7 +110,7 @@ Vastuut:
 
 Tama komponentti ei tee optimointia itse, vaan toteuttaa policy engine -komponentin paatoksen tilamuutoksiksi.
 
-### 3. Actuator Applier
+### 3. Actuator Writer Loop
 
 Tiedosto: `ems_actuator_writers.py`
 
@@ -121,7 +121,7 @@ Vastuut:
 3. kirjoittaa releiden paalle/pois-komennot `actuator_relay1` ja `actuator_relay2` -entiteetteihin
 4. julkaisee `sensor.ems_actuator_writer_trace`-diagnostiikan
 
-Actuator applier toimii policy-entiteettien perusteella. Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on erityisen tarkea.
+Actuator writer loop toimii policy-entiteettien perusteella. Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on erityisen tarkea.
 
 EV-writerissa policy-attribuutti `ev_policy_mode` erottaa kaksi eri `0 A`-semantiikkaa:
 
@@ -253,7 +253,7 @@ Moottori julkaisee `dominant_limitation`-kenttan, jonka mahdollisia arvoja ovat 
 
 ### `MANUAL`
 
-`MANUAL`-tilassa moottori palauttaa nykyisen akun setpointin, mutta `battery_write_enabled` on `False`. Actuator applier ei siis kirjoita akulle.
+`MANUAL`-tilassa moottori palauttaa nykyisen akun setpointin, mutta `battery_write_enabled` on `False`. Actuator writer loop ei siis kirjoita akulle.
 
 ### `MANUAL_SAFE`
 

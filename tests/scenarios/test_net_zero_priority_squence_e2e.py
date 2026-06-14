@@ -158,7 +158,7 @@ def test_net_zero_loads_activate_and_release_in_correct_order_with_ev_min_restor
     )
 
     cfg = make_cfg(
-        ev_min_current_a=4,
+        ev_min_current_a=6,
         ev_max_current_a=28,
         ev_force_current_a=0,
         ev_priority=2,

@@ -18,7 +18,7 @@ def test_03_release_relay1_then_restart(project_root):
         ENT['actuator_relay1']: True,
         ENT['actuator_relay2']: False,
         ENT['actuator_ev_enabled']: True,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
     })
 
     steps = [
@@ -47,7 +47,7 @@ def test_03_release_relay1_then_restart(project_root):
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
         {

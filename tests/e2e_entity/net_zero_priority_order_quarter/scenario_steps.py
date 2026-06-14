@@ -16,7 +16,7 @@ def build_harness(project_root):
         ENT['adjustable_surplus_load_priority']: 2,
         ENT['surplus_adjustable_active']: False,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['ev_max_current_a']: 28,
         ENT['relay1_priority']: 3,
         ENT['relay2_priority']: 1,

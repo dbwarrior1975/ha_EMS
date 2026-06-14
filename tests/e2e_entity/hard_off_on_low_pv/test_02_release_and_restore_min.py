@@ -54,12 +54,12 @@ def test_02_release_and_restore_min(project_root):
                 'ev': {
                     'reason': 'restore_min_current',
                     'written': True,
-                    'target_current_a': 4,
+                    'target_current_a': 6,
                 },
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['surplus_adjustable_active']: False,
             },
         },
@@ -95,7 +95,7 @@ def test_02_release_and_restore_min(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['surplus_adjustable_active']: False,
             },
         },

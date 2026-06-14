@@ -26,7 +26,7 @@ def test_entity_map_has_required_wiring(project_root):
     src = path.read_text(encoding='utf-8')
     assert 'REPLACE_WITH_MIN_CELL_VOLTAGE_ENTITY' not in src, 'min cell voltage entity placeholder still present'
     assert 'max_solar_charge_w' in src, 'missing max_solar_charge_w mapping'
-    assert 'input_number.victron_maksimi_auringon_latausteho' in src, 'expected max solar charge helper mapping missing'
+    assert 'input_number.ems_max_battery_charge_w' in src, 'expected max solar charge helper mapping missing'
 
 
 @pytest.mark.smoke

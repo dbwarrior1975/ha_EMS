@@ -7,6 +7,7 @@ ENT = {
     'battery_protect_soc': 'input_number.ems_battery_protect_soc',
     'battery_protect_soc_recovery_margin': 'input_number.ems_battery_protect_soc_recovery_margin',
     'battery_protect_min_cell_voltage_v': 'input_number.ems_battery_protect_min_cell_voltage_v',
+    'battery_protect_charge_floor_w': 'input_number.ems_battery_protect_charge_floor_w',
 
     'deadband_w': 'input_number.ems_deadband_w',
     'ramp_max_w': 'input_number.ems_ramp_max_w',
@@ -20,6 +21,7 @@ ENT = {
     'ev_force_current_a': 'input_number.ems_ev_force_current_a',
     'ev_hard_off_pv_threshold_kw': 'input_number.ems_ev_hard_off_pv_threshold_kw',
     'ev_hard_off_low_pv_cycles': 'input_number.ems_ev_hard_off_low_pv_cycles',
+    'ev_hard_off_release_cycles': 'input_number.ems_ev_hard_off_release_cycles',
     'ev_current_step_a': 'input_number.ems_ev_current_step_a',
     'nz_battery_floor_default_w': 'input_number.ems_nz_battery_floor_default_w',
     'nz_battery_floor_ev_active_w': 'input_number.ems_nz_battery_floor_ev_active_w',

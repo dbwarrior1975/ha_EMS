@@ -14,7 +14,7 @@ def test_05_recovery_and_reactivation(project_root):
     # Seed a hard-off post-state so this phase is independent from phases 1-4.
     h.set_entities({
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['relay1']: False,
         ENT['surplus_r1_active']: False,
         ENT['surplus_r2_active']: False,
@@ -58,7 +58,7 @@ def test_05_recovery_and_reactivation(project_root):
                 ENT['relay1']: False,
                 ENT['surplus_r1_active']: True,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
         {
@@ -95,7 +95,7 @@ def test_05_recovery_and_reactivation(project_root):
                 ENT['relay1']: True,
                 ENT['surplus_r1_active']: True,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
         {
@@ -123,7 +123,7 @@ def test_05_recovery_and_reactivation(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
         {
@@ -136,7 +136,7 @@ def test_05_recovery_and_reactivation(project_root):
             },
             'expect_policy': {
                 'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_explanation': 'Raw RPC 5.800 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_explanation': 'Raw RPC 5.800 kW >= ADJUSTABLE threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'burn',
                 'ev_low_pv_cycles': 0,

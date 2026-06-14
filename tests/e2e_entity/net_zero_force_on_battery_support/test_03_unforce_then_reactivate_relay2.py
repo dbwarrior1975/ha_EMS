@@ -18,7 +18,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
         ENT['actuator_relay1']: False,
         ENT['actuator_relay2']: True,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
     })
 
     steps = [

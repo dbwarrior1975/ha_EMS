@@ -19,7 +19,7 @@ Keskeiset konfiguraatioentiteetit:
 2. `input_number.ems_ramp_max_w`
 3. `input_number.ems_strict_limits_max_w`
 4. `input_number.ems_max_battery_discharge_w`
-5. `input_number.victron_maksimi_auringon_latausteho`
+5. `input_number.ems_max_battery_charge_w`
 6. `input_number.ems_battery_protect_soc`
 7. `input_number.ems_battery_protect_soc_recovery_margin`
 8. `input_number.ems_battery_protect_min_cell_voltage_v`
@@ -29,12 +29,13 @@ Keskeiset konfiguraatioentiteetit:
 12. `input_number.ems_ev_force_current_a`
 13. `input_number.ems_ev_hard_off_pv_threshold_kw`
 14. `input_number.ems_ev_hard_off_low_pv_cycles`
-15. `input_number.ems_haeo_stale_timeout_s`
-16. `input_number.ems_relay1_power_kw`
-17. `input_number.ems_relay2_power_kw`
-18. `input_number.ems_nz_battery_floor_default_w`
-19. `input_number.ems_nz_battery_floor_ev_active_w`
-20. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+15. `input_number.ems_ev_hard_off_release_cycles`
+16. `input_number.ems_haeo_stale_timeout_s`
+17. `input_number.ems_relay1_power_kw`
+18. `input_number.ems_relay2_power_kw`
+19. `input_number.ems_nz_battery_floor_default_w`
+20. `input_number.ems_nz_battery_floor_ev_active_w`
+21. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
 
 Floor-semanttiikka NET_ZEROssa:
 
@@ -182,7 +183,7 @@ Operatiivinen vaikutus:
 2. EV strategy palauttaa `-1`
 3. relay strategy palauttaa `-1`
 4. `dominant_limitation` on `SYSTEM_DEGRADED`
-5. dispatch state applier voi clearata aktiiviset surplus-stateit, mutta actuator applier skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
+5. dispatch state applier voi clearata aktiiviset surplus-stateit, mutta actuator writer loop skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
 
 ### `STRICT_LIMITS`
 
@@ -278,6 +279,12 @@ Tyypillinen selitys nykykoodissa:
 
 1. NET_ZERO release -polussa writer palauttaa currentin minimiin
 2. `hard_off`-polussa writer sammuttaa laturin mutta jattaa selectorin minimiin
+
+Restore_min-haaran tarkennus (EV-primary + HOME_BATTERY):
+
+1. jos `ev_policy_mode = restore_min` ja `charger_on = false`, battery-target voi jatkaa normaalia NET_ZERO-saatoa (purku sallittu)
+2. jos `ev_policy_mode = restore_min` ja `charger_on = true`, battery floor-hold voi aktivoitua ja battery-target lukittuu flooriin
+3. tarkista aina yhdessa: `ev_policy_mode`, `policy_ev_current_a`, `switch.charger_control` (`charger_on`) ja `battery_min_floor_reason`
 
 ### Releet eivat aktivoidu
 

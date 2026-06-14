@@ -49,7 +49,7 @@ def test_01_activation_chain(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 45.0,
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
             },
             'expect_policy_values': {

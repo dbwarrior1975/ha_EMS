@@ -21,7 +21,7 @@ def build_harness(project_root):
         ENT['relay1_surplus_allowed']: True,
         ENT['relay2_surplus_allowed']: True,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['ev_current_step_a']: 1,
         ENT['ev_charger_phases']: 1,
         ENT['ev_max_current_a']: 28,

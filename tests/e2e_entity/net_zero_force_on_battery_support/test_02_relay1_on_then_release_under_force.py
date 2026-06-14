@@ -18,7 +18,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
         ENT['actuator_relay1']: False,
         ENT['actuator_relay2']: True,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['surplus_freeze_until']: 105.0,
     })
     h.set_attrs(ENT['policy_decision_trace'], {

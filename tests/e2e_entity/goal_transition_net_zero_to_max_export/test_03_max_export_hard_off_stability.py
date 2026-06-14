@@ -50,7 +50,7 @@ def test_max_export_hard_off_stability(project_root):
                 'ev': {
                     'reason': 'hard_off',
                     'written': True,
-                    'target_current_a': 4,
+                    'target_current_a': 6,
                 },
                 'relay1': {
                     'reason': 'already_matching',
@@ -66,7 +66,7 @@ def test_max_export_hard_off_stability(project_root):
                 ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_battery_setpoint_w']: -1200,
@@ -98,7 +98,7 @@ def test_max_export_hard_off_stability(project_root):
                 'ev': {
                     'reason': 'hard_off',
                     'written': False,
-                    'target_current_a': 4,
+                    'target_current_a': 6,
                 },
                 'relay1': {
                     'reason': 'already_matching',
@@ -114,7 +114,7 @@ def test_max_export_hard_off_stability(project_root):
                 ENT['surplus_adjustable_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_battery_setpoint_w']: -2200,

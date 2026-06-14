@@ -107,7 +107,7 @@ def test_02_release_relay2_then_adjustable(project_root):
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
     ]

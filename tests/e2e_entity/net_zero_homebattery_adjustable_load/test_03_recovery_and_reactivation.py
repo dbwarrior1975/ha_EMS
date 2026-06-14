@@ -16,7 +16,7 @@ def test_03_recovery_and_reactivation(project_root):
         ENT['surplus_r1_active']: False,
         ENT['surplus_r2_active']: False,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['actuator_battery_setpoint_w']: -1200,
     })
     h.set_attrs(ENT['policy_ev_current_a'], {
@@ -50,7 +50,7 @@ def test_03_recovery_and_reactivation(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -1800,
             },
             'expect_battery_negative': True,
@@ -79,7 +79,7 @@ def test_03_recovery_and_reactivation(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -2200,
             },
             'expect_battery_negative': True,
@@ -107,7 +107,7 @@ def test_03_recovery_and_reactivation(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -1200,
             },
         },
@@ -135,7 +135,7 @@ def test_03_recovery_and_reactivation(project_root):
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -200,
             },
         },
@@ -164,7 +164,7 @@ def test_03_recovery_and_reactivation(project_root):
             'expect_values': {
                 ENT['policy_ev_current_a']: 0,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 800,
             },
         },

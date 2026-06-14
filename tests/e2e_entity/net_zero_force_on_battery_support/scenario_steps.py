@@ -30,7 +30,7 @@ def build_harness(project_root):
         ENT['actuator_relay1']: False,
         ENT['actuator_relay2']: False,
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['grid_power_w']: 0.0,
         ENT['current_battery_sp']: 0.0,
         ENT['haeo_stale_timeout_s']: 300,

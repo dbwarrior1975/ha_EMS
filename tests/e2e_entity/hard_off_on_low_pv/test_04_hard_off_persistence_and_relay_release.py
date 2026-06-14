@@ -14,7 +14,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
     # Seed end-of-phase-3 state so phase 4 is independent from warmup chains.
     h.set_entities({
         ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['relay1']: True,
         ENT['surplus_r1_active']: True,
         ENT['surplus_r2_active']: False,
@@ -64,7 +64,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
         {
@@ -101,7 +101,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 ENT['surplus_r1_active']: False,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
             },
         },
     ]

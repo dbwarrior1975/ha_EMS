@@ -20,7 +20,7 @@ Vastuut lyhyesti:
 
 1. policy engine laskee akun, EV:n ja releiden policy-ulostulot
 2. dispatch state applier muuntaa surplus-dispatch-paatokset sisaisiksi dispatch state-tiloiksi
-3. actuator applier kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
+3. actuator writer loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Lisadokumentaatio:
 
@@ -93,7 +93,7 @@ Keskeiset config-entiteetit:
 2. `input_number.ems_ramp_max_w`
 3. `input_number.ems_strict_limits_max_w`
 4. `input_number.ems_max_battery_discharge_w`
-5. `input_number.victron_maksimi_auringon_latausteho`
+5. `input_number.ems_max_battery_charge_w`
 6. `input_number.ems_battery_protect_soc`
 7. `input_number.ems_battery_protect_soc_recovery_margin`
 8. `input_number.ems_battery_protect_min_cell_voltage_v`
@@ -103,14 +103,15 @@ Keskeiset config-entiteetit:
 12. `input_number.ems_ev_force_current_a`
 13. `input_number.ems_ev_hard_off_pv_threshold_kw`
 14. `input_number.ems_ev_hard_off_low_pv_cycles`
-15. `input_number.ems_haeo_stale_timeout_s`
-16. `input_number.ems_relay1_power_kw`
-17. `input_number.ems_relay2_power_kw`
-18. `input_number.ems_surplus_relay1_priority`
-19. `input_number.ems_surplus_relay2_priority`
-20. `input_number.ems_surplus_ev_priority`
-21. `input_number.ems_nz_battery_floor_default_w`
-22. `input_number.ems_nz_battery_floor_ev_active_w`
+15. `input_number.ems_ev_hard_off_release_cycles`
+16. `input_number.ems_haeo_stale_timeout_s`
+17. `input_number.ems_relay1_power_kw`
+18. `input_number.ems_relay2_power_kw`
+19. `input_number.ems_surplus_relay1_priority`
+20. `input_number.ems_surplus_relay2_priority`
+21. `input_number.ems_surplus_ev_priority`
+22. `input_number.ems_nz_battery_floor_default_w`
+23. `input_number.ems_nz_battery_floor_ev_active_w`
 
 NET_ZERO floor-semanttiikka:
 
@@ -205,7 +206,7 @@ Suositeltu ensikayttoonottojarjestys:
 2. varmista config-entiteetit ja oletusarvot
 3. kaynnista policy engine
 4. kaynnista dispatch state applier
-5. kaynnista actuator applier
+5. kaynnista actuator writer loop
 6. seuraa trace-entiteetteja ennen kuin luotat aktuaattorikirjoituksiin
 
 ## Diagnostiikka

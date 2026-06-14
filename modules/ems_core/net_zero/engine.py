@@ -101,6 +101,10 @@ def _normal_limits_discharge_cap(raw, cfg):
     return max(int(raw), -limit)
 
 
+def _battery_protect_charge_floor_w(cfg):
+    return int(round(max(float(getattr(cfg, 'battery_protect_charge_floor_w', 0.0)), 0.0)))
+
+
 def _battery_target_and_authority(
     profiles,
     cfg,
@@ -123,12 +127,13 @@ def _battery_target_and_authority(
 
     if profiles.control == ControlProfile.MANUAL_SAFE:
         current = int(round(m.current_battery_setpoint_w))
+        battery_protect_floor = _battery_protect_charge_floor_w(cfg)
 
         if profiles.guard == GuardProfile.DEGRADED:
             return 0, True, battery_min_floor_w, battery_min_floor_reason, False
 
         if profiles.guard == GuardProfile.BATTERY_PROTECT:
-            return max(current, 0), True, battery_min_floor_w, battery_min_floor_reason, False
+            return max(current, battery_protect_floor), True, battery_min_floor_w, battery_min_floor_reason, False
 
         if profiles.guard == GuardProfile.STRICT_LIMITS:
             limit = int(cfg.strict_limits_max_w)
@@ -231,7 +236,7 @@ def _battery_target_and_authority(
         return 0, True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.BATTERY_PROTECT:
-        return max(raw, 0), True, battery_min_floor_w, battery_min_floor_reason, False
+        return max(raw, _battery_protect_charge_floor_w(cfg)), True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.STRICT_LIMITS:
         limit = int(cfg.strict_limits_max_w)
@@ -629,6 +634,7 @@ def compute_net_zero_engine_outputs(
         or (
             use_ev_primary_mode
             and ev_policy_mode == 'restore_min'
+            and bool(m.charger_on)
             and int(max(ev_current_a, 0)) > 0
             and not battery_to_ev_loop_risk
         )

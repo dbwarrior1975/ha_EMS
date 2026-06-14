@@ -43,6 +43,11 @@ Namma kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
   - Aloitus: 2.
   - Nosta jos haluat hitaamman hard_off-aktivoinnin.
 
+- ems_ev_hard_off_release_cycles
+  - Mita tekee: montako perakkaista release-ehdon tayttavaa sykliä vaaditaan ennen hard_off-vapautusta.
+  - Aloitus: 2.
+  - Nosta jos haluat vakaamman hard_off-vapautuksen ja vahemman sahaysta kynnyksen tuntumassa.
+
 ## 3. Combo A: primary EV_CHARGER, surplus HOME_BATTERY
 
 ### 3.1 Tyypillinen kayttotapaus
@@ -111,7 +116,7 @@ Selvennys activation-parametriin (tarkea):
 - ems_ev_priority = 2 tai 3
 - ems_surplus_relay1_priority = 2
 - ems_surplus_relay2_priority = 1
-- ems_ev_min_current_a = 4 A
+- ems_ev_min_current_a = 6 A
 - ems_ev_max_current_a = 28 A
 
 ### 4.3 Mitä odottaa kaytannossa

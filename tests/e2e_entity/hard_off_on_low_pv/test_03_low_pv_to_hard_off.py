@@ -14,7 +14,7 @@ def test_03_low_pv_to_hard_off(project_root):
     # Seed end-of-phase-2 state so phase 3 is independent from warmup chains.
     h.set_entities({
         ENT['actuator_ev_enabled']: True,
-        ENT['actuator_ev_current_a']: 4,
+        ENT['actuator_ev_current_a']: 6,
         ENT['relay1']: True,
         ENT['surplus_r1_active']: True,
         ENT['surplus_r2_active']: False,
@@ -57,14 +57,14 @@ def test_03_low_pv_to_hard_off(project_root):
                 'ev': {
                     'reason': 'hard_off',
                     'written': True,
-                    'target_current_a': 4,
+                    'target_current_a': 6,
                 },
             },
             'expect_values': {
                 ENT['surplus_r1_active']: True,
                 ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['surplus_adjustable_active']: False,
             },
         },

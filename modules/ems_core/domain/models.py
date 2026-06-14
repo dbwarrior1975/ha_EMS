@@ -57,9 +57,10 @@ class EmsConfig:
     battery_protect_soc: float = 2.0
     battery_protect_soc_recovery_margin: float = 1.0
     battery_protect_min_cell_voltage_v: float = 3.030
+    battery_protect_charge_floor_w: float = 0.0
     battery_heartbeat_timeout_s: float = 360.0
     haeo_stale_timeout_s: float = 300.0
-    ev_min_current_a: int = 4
+    ev_min_current_a: int = 6
     ev_max_current_a: int = 28
     ev_charger_phases: int = 1
     ev_force_current_a: int = 0

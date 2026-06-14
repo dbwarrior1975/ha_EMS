@@ -66,6 +66,29 @@ def test_engine_manual_safe_clamps_in_battery_protect():
 
 
 @pytest.mark.unit
+def test_engine_battery_protect_applies_configured_charge_floor():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.BATTERY_PROTECT)
+    cfg = make_cfg(battery_protect_charge_floor_w=100, deadband_w=0, ramp_max_w=10000)
+    m = make_m(grid_power_w=200, current_battery_setpoint_w=-100)
+    nz = make_nz(rpnz_w=-1)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+    )
+
+    assert out.battery_target_w == 100
+    assert out.battery_write_enabled is True
+
+
+@pytest.mark.unit
 def test_engine_respects_max_solar_charge_limit_in_net_zero():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(max_solar_charge_w=500, deadband_w=0, ramp_max_w=5000)
@@ -612,8 +635,9 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=4)
-    nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=1.0)
+    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg.ev_min_current_a)
+    release_rpc_kw = (cfg.ev_min_current_a * max(cfg.ev_charger_phases, 1) * 230) / 1000.0
+    nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
     first = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 275.0,
@@ -668,8 +692,9 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=4)
-    nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=1.0)
+    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg.ev_min_current_a)
+    release_rpc_kw = (cfg.ev_min_current_a * max(cfg.ev_charger_phases, 1) * 230) / 1000.0
+    nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
     first = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 335.0,
@@ -711,3 +736,77 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
     assert broken.attrs['ev_hard_off_release_ready_cycles'] == 0
     assert broken.attrs['ev_hard_off_active'] is True
     assert broken.ev_current_a == 0
+
+
+@pytest.mark.unit
+def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+    )
+    m = make_m(
+        charger_on=False,
+        charger_current_a=cfg.ev_min_current_a,
+        current_battery_setpoint_w=-1000,
+        grid_power_w=2900.0,
+    )
+    nz = make_nz(rpnz_w=-15.0, required_power_consumption_kw=-2.49)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+        pv_power_kw=1.7,
+        ev_hard_off_active=False,
+        ev_low_pv_cycles=0,
+    )
+
+    assert out.attrs['ev_policy_mode'] == 'restore_min'
+    assert out.ev_current_a == cfg.ev_min_current_a
+    assert out.attrs['ev_hard_off_active'] is False
+    assert out.battery_target_w == -2000
+
+
+@pytest.mark.unit
+def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+    )
+    m = make_m(
+        charger_on=True,
+        charger_current_a=cfg.ev_min_current_a,
+        current_battery_setpoint_w=-1000,
+        grid_power_w=2900.0,
+    )
+    nz = make_nz(rpnz_w=-15.0, required_power_consumption_kw=-2.49)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+        pv_power_kw=1.7,
+        ev_hard_off_active=False,
+        ev_low_pv_cycles=0,
+    )
+
+    assert out.attrs['ev_policy_mode'] == 'restore_min'
+    assert out.ev_current_a == cfg.ev_min_current_a
+    assert out.attrs['ev_hard_off_active'] is False
+    assert out.battery_target_w == 0

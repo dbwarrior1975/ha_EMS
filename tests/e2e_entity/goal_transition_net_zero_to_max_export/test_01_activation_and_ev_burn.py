@@ -32,7 +32,7 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_values': {
                 ENT['surplus_r1_active']: True,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 200,
             },
         },
@@ -46,7 +46,7 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_policy': {
                 'goal': 'NET_ZERO',
                 'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.520 kW',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_policy_mode': 'restore_min',
             },
@@ -61,7 +61,7 @@ def test_activation_and_ev_burn_window(project_root):
                 ENT['surplus_adjustable_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 400,
             },
         },

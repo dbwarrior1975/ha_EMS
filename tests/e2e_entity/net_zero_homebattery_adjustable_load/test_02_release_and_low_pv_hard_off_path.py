@@ -162,7 +162,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -1200,
             },
         },
@@ -190,7 +190,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -1800,
             },
             'expect_battery_negative': True,
@@ -219,7 +219,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 4,
+                ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: -2200,
             },
             'expect_battery_negative': True,
