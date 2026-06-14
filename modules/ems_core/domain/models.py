@@ -107,6 +107,19 @@ class HaeoTargets:
 
 
 @dataclass(frozen=True)
+class HaeoNetZeroPlan:
+    active: bool
+    quarter_key: str = ''
+    primary_load: str = ''
+    adjustable_surplus_load: str = ''
+    battery_limit_w: int = 0
+    ev_limit_w: int = 0
+    ev_limit_a: int = 0
+    reason: str = ''
+    changed: bool = False
+
+
+@dataclass(frozen=True)
 class NetZeroState:
     rpnz_w: float
     required_power_consumption_kw: float

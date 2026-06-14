@@ -29,11 +29,16 @@ def latest_forecast_value_at_or_before(forecast, now_ts, default=0.0):
                 best_value = None
     return default if best_value is None else best_value
 
-def ev_kw_to_selector_current_a(kw, phases, max_a, allowed=(4,8,12,16,20,24,28,32)):
+def ev_kw_to_selector_current_a(kw, phases, max_a, min_a=4, step_a=4):
     raw_a = (float(kw) * 1000.0) / (max(phases, 1) * 230.0)
     if raw_a < 1:
         return 0
-    candidates = [a for a in allowed if a <= max_a]
+
+    safe_min_a = max(1, int(min_a))
+    safe_max_a = max(safe_min_a, int(max_a))
+    safe_step_a = max(1, int(step_a))
+
+    candidates = list(range(safe_min_a, safe_max_a + 1, safe_step_a))
     if not candidates:
         return 0
     best = candidates[0]

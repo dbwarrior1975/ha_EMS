@@ -3,6 +3,7 @@ from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.balance import compute_rpnz_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs, configured_forecast, effective_forecast
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
+from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.decision_trace import net_zero_attrs
 from ems_adapter.entity_map import ENT
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
@@ -108,6 +109,14 @@ def ems_policy_engine_loop():
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
     profiles = Profiles(profiles.control, profiles.goal, profiles.forecast, guard_decision.guard)
     haeo = read_haeo(now_ts, profiles, cfg)
+    haeo_nz_plan = compute_haeo_net_zero_plan(
+        profiles,
+        cfg,
+        haeo,
+        now_ts,
+        previous_quarter_key=get_attr(ENT['policy_decision_trace'], 'haeo_nz_quarter_key', ''),
+        previous_primary_load=get_attr(ENT['policy_decision_trace'], 'haeo_nz_primary_load', ''),
+    )
     remaining_s = max((15 - (int(now_ts / 60) % 15)) * 60, 30)
     nz = NetZeroState(
         rpnz_w=get_float(ENT['rpnz_w'], compute_rpnz_w(m.hourly_energy_balance_kwh, remaining_s)),
@@ -130,6 +139,7 @@ def ems_policy_engine_loop():
         ev_hard_off_release_ready_cycles=get_attr(ENT['policy_ev_current_a'], 'ev_hard_off_release_ready_cycles', 0),
         prev_relay1_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay1_force_on', False),
         prev_relay2_force_on=get_attr(ENT['policy_decision_trace'], 'prev_relay2_force_on', False),
+        haeo_nz_plan=haeo_nz_plan,
     )
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     publish_sensor(ENT['policy_battery_target_w'], outputs.battery_target_w, attrs)

@@ -1,6 +1,6 @@
 from ems_core.domain.models import (
     ControlProfile, GoalProfile, ForecastProfile, GuardProfile, DominantLimitation,
-    HaeoTargets, SurplusTargetConfig, SurplusDispatchInput, NetZeroOutputs
+    HaeoTargets, HaeoNetZeroPlan, SurplusTargetConfig, SurplusDispatchInput, NetZeroOutputs
 )
 from ems_core.net_zero.battery_controller import candidate_sp_net_zero
 from ems_core.net_zero.load_projection import ev_strategy_current_a, relay_strategy_command
@@ -37,7 +37,7 @@ def dominant_limitation(profiles, configured_fc, effective_fc):
     return DominantLimitation.OPTIMIZATION_ACTIVE
 
 
-def explain(profiles, configured_fc, effective_fc):
+def explain(profiles, configured_fc, effective_fc, haeo_nz_plan_active=False):
     if profiles.guard == GuardProfile.DEGRADED:
         return 'Guard forces degraded fallback'
     if profiles.guard == GuardProfile.BATTERY_PROTECT:
@@ -48,6 +48,8 @@ def explain(profiles, configured_fc, effective_fc):
         return 'User manual control with guard enforcement'
     if profiles.goal == GoalProfile.NET_ZERO and configured_fc == ForecastProfile.HAEO and effective_fc == ForecastProfile.NONE:
         return 'Net zero goal with configured HAEO forecast, but stale forecast causes local fallback'
+    if profiles.goal == GoalProfile.NET_ZERO and haeo_nz_plan_active:
+        return 'HAEO net zero plan active'
     if profiles.goal == GoalProfile.NET_ZERO and effective_fc == ForecastProfile.HAEO:
         return 'Net zero goal with HAEO forecast visible, but local policy remains dominant'
     if profiles.goal == GoalProfile.NET_ZERO:
@@ -117,6 +119,7 @@ def _battery_target_and_authority(
     ev_target_w=0.0,
     adjustable_surplus_active=False,
     use_ev_primary_mode=False,
+    haeo_nz_plan=None,
 ):
     battery_min_floor_w = None
     battery_min_floor_reason = 'not_applicable'
@@ -223,6 +226,13 @@ def _battery_target_and_authority(
             if raw > current_sp and raw >= 0 and current_sp >= 0:
                 raw = current_sp
                 battery_min_floor_reason = 'activation_gate_hold'
+
+        if (
+            haeo_nz_plan is not None
+            and bool(getattr(haeo_nz_plan, 'active', False))
+            and raw > int(getattr(haeo_nz_plan, 'battery_limit_w', 0))
+        ):
+            raw = int(getattr(haeo_nz_plan, 'battery_limit_w', 0))
     elif haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal in (GoalProfile.MAX_EXPORT, GoalProfile.CHEAP_GRID_CHARGE):
         raw = int(round(haeo.battery_target_kw * 1000.0))
     elif profiles.goal == GoalProfile.MAX_EXPORT:
@@ -248,12 +258,17 @@ def _battery_target_and_authority(
     return raw, True, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next
 
 
-def net_zero_surplus_policy_active(profiles, effective_fc):
+def net_zero_surplus_policy_active(profiles, effective_fc, haeo_nz_plan_active=False):
     return (
         profiles.control == ControlProfile.AUTOMATIC
         and profiles.goal == GoalProfile.NET_ZERO
         and profiles.guard == GuardProfile.NORMAL_LIMITS
         and effective_fc == ForecastProfile.NONE
+    ) or (
+        profiles.control == ControlProfile.HORIZON_BY_HAEO
+        and profiles.goal == GoalProfile.NET_ZERO
+        and profiles.guard == GuardProfile.NORMAL_LIMITS
+        and bool(haeo_nz_plan_active)
     )
 
 
@@ -272,6 +287,7 @@ def _ev_policy_mode_and_current(
     use_ev_adjustable_mode=False,
     use_ev_primary_mode=False,
     use_ev_primary_home_battery_combo=False,
+    haeo_nz_plan=None,
 ):
     current_a = ev_strategy_current_a(
         profiles,
@@ -297,6 +313,15 @@ def _ev_policy_mode_and_current(
         and int(max(current_ev_current_a, 0)) >= int(cfg.ev_max_current_a)
     ):
         current_a = int(cfg.ev_max_current_a)
+
+    if (
+        profiles.goal == GoalProfile.NET_ZERO
+        and haeo_nz_plan is not None
+        and bool(getattr(haeo_nz_plan, 'active', False))
+        and current_a > 0
+    ):
+        limit_a = int(getattr(haeo_nz_plan, 'ev_limit_a', 0))
+        current_a = min(int(current_a), limit_a) if limit_a > 0 else 0
 
     if profiles.goal == GoalProfile.MAX_EXPORT and current_a == 0:
         return 'hard_off', 0, 0, False
@@ -413,6 +438,7 @@ def compute_net_zero_engine_outputs(
     ev_hard_off_release_ready_cycles=0,
     prev_relay1_force_on=False,
     prev_relay2_force_on=False,
+    haeo_nz_plan=None,
 ):
     conf_fc = configured_forecast(profiles.control, profiles.forecast)
     eff_fc = effective_forecast(conf_fc, haeo.fresh)
@@ -425,20 +451,33 @@ def compute_net_zero_engine_outputs(
         ev_target_kw=haeo.ev_target_kw,
     )
 
-    adjustable_surplus_load = _normalized_adjustable_surplus_load(cfg)
-    requested_primary_load = _normalized_adjustable_primary_load(cfg)
-    if not requested_primary_load:
-        adjustable_primary_load = adjustable_surplus_load
-        primary_surplus_combo_valid = True
-        primary_surplus_combo_reason = 'implicit_legacy_default'
-    else:
-        adjustable_primary_load = requested_primary_load
+    if haeo_nz_plan is None:
+        haeo_nz_plan = HaeoNetZeroPlan(False)
+    haeo_nz_plan_active = bool(getattr(haeo_nz_plan, 'active', False))
+
+    if haeo_nz_plan_active:
+        adjustable_primary_load = haeo_nz_plan.primary_load
+        adjustable_surplus_load = haeo_nz_plan.adjustable_surplus_load
         primary_surplus_combo_valid = adjustable_primary_load != adjustable_surplus_load
-        primary_surplus_combo_reason = 'supported_cross_combo' if primary_surplus_combo_valid else 'unsupported_same_target_combo'
+        primary_surplus_combo_reason = 'haeo_net_zero_plan'
+        primary_surplus_combo_source = 'HAEO_NET_ZERO_PLAN'
+    else:
+        adjustable_surplus_load = _normalized_adjustable_surplus_load(cfg)
+        requested_primary_load = _normalized_adjustable_primary_load(cfg)
+        primary_surplus_combo_source = 'CONFIG'
+        if not requested_primary_load:
+            adjustable_primary_load = adjustable_surplus_load
+            primary_surplus_combo_valid = True
+            primary_surplus_combo_reason = 'implicit_legacy_default'
+        else:
+            adjustable_primary_load = requested_primary_load
+            primary_surplus_combo_valid = adjustable_primary_load != adjustable_surplus_load
+            primary_surplus_combo_reason = 'supported_cross_combo' if primary_surplus_combo_valid else 'unsupported_same_target_combo'
 
     if not primary_surplus_combo_valid:
         adjustable_primary_load = 'HOME_BATTERY' if adjustable_surplus_load == 'EV_CHARGER' else 'EV_CHARGER'
         primary_surplus_combo_reason = 'fallback_to_cross_combo'
+        primary_surplus_combo_source = 'CONFIG'
 
     combo_fallback_active = primary_surplus_combo_reason == 'fallback_to_cross_combo'
     combo_fallback_warning = (
@@ -499,7 +538,7 @@ def compute_net_zero_engine_outputs(
         ),
     )
 
-    surplus_active = net_zero_surplus_policy_active(profiles, eff_fc)
+    surplus_active = net_zero_surplus_policy_active(profiles, eff_fc, haeo_nz_plan_active=haeo_nz_plan_active)
 
     effective_freeze_until_ts = _apply_force_rising_edge_freeze(
         now_ts=now_ts,
@@ -522,7 +561,25 @@ def compute_net_zero_engine_outputs(
     nxt = next_target(targets)
     rel = release_target(targets)
 
-    if surplus_decision.clear_all:
+    combo_change_requires_clear = (
+        haeo_nz_plan_active
+        and bool(getattr(haeo_nz_plan, 'changed', False))
+        and (
+            bool(adjustable_active_current)
+            or bool(relay1_net_zero_active)
+            or bool(relay2_net_zero_active)
+        )
+    )
+    combo_change_freeze_until_ts = (
+        float(now_ts) + float(cfg.surplus_freeze_s)
+        if combo_change_requires_clear
+        else None
+    )
+    surplus_state_clear_reason = 'HAEO_COMBO_CHANGED' if combo_change_requires_clear else ''
+
+    if combo_change_requires_clear:
+        decision_text = 'CLEAR_ALL'
+    elif surplus_decision.clear_all:
         decision_text = 'CLEAR_ALL'
     elif surplus_decision.activate:
         decision_text = 'ACTIVATE_' + surplus_decision.activate
@@ -592,6 +649,9 @@ def compute_net_zero_engine_outputs(
         and adjustable_active_current
         and (not battery_to_ev_loop_risk)
     )
+    if combo_change_requires_clear:
+        ev_primary_burn_active = False
+        ev_surplus_burn_active = False
     ev_burn_for_cycle = ev_surplus_burn_active or ev_primary_burn_active
     ev_policy_mode, ev_current_a, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_current(
         profiles,
@@ -610,12 +670,18 @@ def compute_net_zero_engine_outputs(
         use_ev_adjustable_mode=use_ev_surplus_mode,
         use_ev_primary_mode=use_ev_primary_mode,
         use_ev_primary_home_battery_combo=use_ev_primary_home_battery_combo,
+        haeo_nz_plan=haeo_nz_plan,
     )
 
     if (
         profiles.goal == GoalProfile.NET_ZERO
-        and use_ev_surplus_mode
-        and (surplus_decision.clear_all or surplus_decision.release == primary_release_target)
+        and (
+            combo_change_requires_clear
+            or (
+                use_ev_surplus_mode
+                and (surplus_decision.clear_all or surplus_decision.release == primary_release_target)
+            )
+        )
         and ev_policy_mode != 'skip'
     ):
         ev_policy_mode = 'restore_min'
@@ -625,6 +691,9 @@ def compute_net_zero_engine_outputs(
     if use_ev_primary_mode and (not use_ev_surplus_mode) and ev_policy_mode == 'burn':
         primary_envelope_w = _primary_power_envelope_w(cfg, m, nz)
         stepped_primary_a = _primary_ev_step_current_a(cfg, primary_envelope_w)
+        if haeo_nz_plan_active:
+            limit_a = int(getattr(haeo_nz_plan, 'ev_limit_a', 0))
+            stepped_primary_a = min(int(stepped_primary_a), limit_a) if limit_a > 0 else 0
         ev_current_a = stepped_primary_a
         ev_policy_mode = 'burn' if stepped_primary_a > 0 else 'restore_min'
 
@@ -650,6 +719,7 @@ def compute_net_zero_engine_outputs(
         ev_target_w=ev_target_w,
         adjustable_surplus_active=adjustable_surplus_active,
         use_ev_primary_mode=use_ev_primary_mode,
+        haeo_nz_plan=haeo_nz_plan,
     )
     discharge_limit_w, discharge_limit_sign_mode, configured_discharge_limit_w = _normalized_discharge_limit_w(cfg)
 
@@ -667,16 +737,21 @@ def compute_net_zero_engine_outputs(
         surplus_explanation=surplus_decision.explanation,
         effective_forecast=eff_fc,
         dominant_limitation=dominant_limitation(profiles, conf_fc, eff_fc),
-        explanation=explain(profiles, conf_fc, eff_fc),
+        explanation=explain(profiles, conf_fc, eff_fc, haeo_nz_plan_active=haeo_nz_plan_active),
         attrs={
             'configured_forecast': conf_fc,
             'active_stack': active_stack(targets),
             'surplus_primary_target': primary_release_target,
             'surplus_freeze_until_ts': (
-                surplus_decision.freeze_until_ts
-                if surplus_decision.freeze_until_ts is not None
-                else effective_freeze_until_ts
+                combo_change_freeze_until_ts
+                if combo_change_freeze_until_ts is not None
+                else (
+                    surplus_decision.freeze_until_ts
+                    if surplus_decision.freeze_until_ts is not None
+                    else effective_freeze_until_ts
+                )
             ),
+            'surplus_state_clear_reason': surplus_state_clear_reason,
             'surplus_rpc_kw': nz.required_power_consumption_kw,
             'surplus_rpnz_w': nz.rpnz_w,
             'battery_write_enabled': battery_write_enabled,
@@ -698,6 +773,7 @@ def compute_net_zero_engine_outputs(
             'adjustable_surplus_load': adjustable_surplus_load,
             'adjustable_surplus_activation': configured_activation_w,
             'adjustable_primary_load': adjustable_primary_load,
+            'primary_surplus_combo_source': primary_surplus_combo_source,
             'primary_surplus_combo_valid': bool(primary_surplus_combo_valid),
             'primary_surplus_combo_reason': primary_surplus_combo_reason,
             'primary_surplus_combo_fallback_active': bool(combo_fallback_active),
@@ -708,6 +784,15 @@ def compute_net_zero_engine_outputs(
             'discharge_limit_sign_mode': discharge_limit_sign_mode,
             'configured_discharge_limit_w': float(configured_discharge_limit_w),
             'surplus_adjustable_active': bool(adjustable_surplus_active_next),
+            'haeo_nz_plan_active': bool(haeo_nz_plan_active),
+            'haeo_nz_quarter_key': getattr(haeo_nz_plan, 'quarter_key', ''),
+            'haeo_nz_combo_changed': bool(getattr(haeo_nz_plan, 'changed', False)),
+            'haeo_nz_primary_load': getattr(haeo_nz_plan, 'primary_load', ''),
+            'haeo_nz_adjustable_surplus_load': getattr(haeo_nz_plan, 'adjustable_surplus_load', ''),
+            'haeo_nz_battery_limit_w': int(getattr(haeo_nz_plan, 'battery_limit_w', 0)),
+            'haeo_nz_ev_limit_w': int(getattr(haeo_nz_plan, 'ev_limit_w', 0)),
+            'haeo_nz_ev_limit_a': int(getattr(haeo_nz_plan, 'ev_limit_a', 0)),
+            'haeo_nz_combo_reason': getattr(haeo_nz_plan, 'reason', ''),
             'prev_relay1_force_on': bool(relay1_force_on),
             'prev_relay2_force_on': bool(relay2_force_on),
         },

@@ -62,6 +62,20 @@ def test_cheap_charge_default_ev_is_max_current():
 
 
 @pytest.mark.unit
+def test_cheap_charge_haeo_ev_target_uses_parametric_current_step():
+    profiles = make_profiles(goal=GoalProfile.CHEAP_GRID_CHARGE)
+    cfg = make_cfg(
+        ev_force_current_a=0,
+        ev_min_current_a=4,
+        ev_max_current_a=28,
+        ev_current_step_a=2,
+        ev_charger_phases=1,
+    )
+    haeo = make_haeo(effective_forecast=ForecastProfile.HAEO, ev_target_kw=2.3)
+    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 10
+
+
+@pytest.mark.unit
 def test_max_export_default_ev_is_off():
     profiles = make_profiles(goal=GoalProfile.MAX_EXPORT)
     cfg = make_cfg(ev_force_current_a=0, ev_min_current_a=4, ev_max_current_a=28)

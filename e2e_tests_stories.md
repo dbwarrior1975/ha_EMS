@@ -45,7 +45,22 @@ Eteneminen:
 2. HOME_BATTERY toimii `ADJUSTABLE` surplus-targetina.
 3. Testit kattavat EV-primary rampin, ADJUSTABLE-aktivoinnin, release-polun, hard-off holdin ja hard-offista palautumisen.
 
-## 5) NET_ZERO force-on relay2 with freeze hygiene
+## 5) HAEO + NET_ZERO with HOME_BATTERY primary and EV adjustable
+
+Kansio: `tests/e2e_entity/haeo_02_net_zero_homebattery_primary_ev_adjustable/`
+
+Status: first implemented EMS-internal HAEO `NET_ZERO` combo-selection scenario.
+
+Eteneminen:
+1. `HORIZON_BY_HAEO` tekee HAEO:sta konfiguroidun ja freshness-lahteet ovat tuoreita.
+2. Goal on `NET_ZERO`.
+3. HAEO battery forecast on suurempi kuin EV forecast.
+4. EMS:n sisainen HAEO-plan valitsee `HOME_BATTERY` primaryksi ja `EV_CHARGER` adjustable surplus -kohteeksi.
+5. Config-helperit seedataan tahallaan vastakkaiseen comboon, jotta testi todentaa HAEO-planin ohittavan helper-combon.
+6. Akku target clampataan HAEO battery -rajan mukaan.
+7. EV adjustable current clampataan HAEO EV -rajan mukaan seuraavalla policy-kierroksella, kun `surplus_adjustable_active` on ensin aktivoitu.
+
+## 6) NET_ZERO force-on relay2 with freeze hygiene
 
 Kansio: `tests/e2e_entity/net_zero_force_on_battery_support/`
 
@@ -54,7 +69,7 @@ Eteneminen:
 2. Force rising-edge luo freeze-jakson, joka estaa liian nopean seuraavan aktivoinnin.
 3. RELAY1 aktivointi, vapautus ja RELAY2:n paluu normaaliin surplus-kelpoisuuteen testataan vaiheittain.
 
-## 6) NET_ZERO HOME_BATTERY primary + EV adjustable
+## 7) NET_ZERO HOME_BATTERY primary + EV adjustable
 
 Kansio: `tests/e2e_entity/net_zero_homebattery_adjustable_load/`
 
@@ -63,7 +78,7 @@ Eteneminen:
 2. EV toimii `ADJUSTABLE` surplus-targetina.
 3. Testit kattavat activation-gaten, ADJUSTABLE/EV-aktivoinnin, low-PV release- ja hard-off-polun seka reaktivoinnin.
 
-## 7) NET_ZERO priority order
+## 8) NET_ZERO priority order
 
 Kansio: `tests/e2e_entity/net_zero_priority_order_quarter/`
 
@@ -73,7 +88,7 @@ Eteneminen:
 3. Vapautus tapahtuu matalimman prioriteetin aktiivisesta kohteesta.
 4. Lopussa sykli voi kaynnistya uudelleen.
 
-## 8) Optimizer degraded fallback
+## 9) Optimizer degraded fallback
 
 Kansio: `tests/e2e_entity/optimizer_degraded_fallback/`
 
@@ -82,7 +97,7 @@ Eteneminen:
 2. Stale tai puuttuva HAEO-data pudottaa effective forecastin paikalliseen fallbackiin.
 3. Runtime jatkaa ilman kaatumista paikallisella policylla.
 
-## 9) System degraded safe mode
+## 10) System degraded safe mode
 
 Kansio: `tests/e2e_entity/system_degraded_safe_mode/`
 

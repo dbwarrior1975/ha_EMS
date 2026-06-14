@@ -89,8 +89,47 @@ HAEO:n rooli on nykykoodissa rajattu:
 
 1. HAEO voi vaikuttaa akkutargettiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
 2. HAEO voi vaikuttaa EV-targettiin `CHEAP_GRID_CHARGE`-tilassa
-3. HAEO ei tee taytta `NET_ZERO`-optimointia, vaikka forecast olisi nakyvissa
+3. HAEO voi `HORIZON_BY_HAEO + NET_ZERO` -tilassa valita EMS:n sisaisen adjustable-combon ja tehorajat
 4. HAEO on tehokkaasti kaytossa vain, jos forecast on konfiguroitu ja freshness-lahteet ovat tuoreita
+
+### HAEO + `NET_ZERO`: EMS:n sisainen plan
+
+`NET_ZERO`-tilassa HAEO:a ei tulkita sitovana takuutehona. Se toimii strategisena varttikohtaisena toiveena, jonka EMS muuntaa sisaiseksi HAEO NET_ZERO -planiksi.
+
+EMS:n sisainen HAEO NET_ZERO -plan aktivoituu, kun:
+
+1. EMS ajetaan tilassa `control_profile = HORIZON_BY_HAEO`
+2. EMS ajetaan tilassa `goal_profile = NET_ZERO`
+3. HAEO on konfiguroitu joko `forecast_profile = HAEO` -arvolla tai `HORIZON_BY_HAEO`-control-profiilin kautta
+4. HAEO battery- ja EV-freshness-lahteet ovat tuoreita
+5. guard on `NORMAL_LIMITS`
+
+Tassa tilassa EMS laskee joka policy-kierroksella nykyisen vartin HAEO-planin:
+
+1. suuremman HAEO-tehon saanut kohde asetetaan `primary`-rooliin
+2. toinen kohde asetetaan `adjustable_surplus`-rooliin
+3. HAEO battery-teho muutetaan akun positiivisen lataustargetin ylarajaksi
+4. HAEO EV-teho muutetaan EV-current-ylarajaksi
+5. normaali `NET_ZERO` surplus-policy saa toimia, vaikka `effective_forecast = HAEO`
+
+Varttikohtainen semantiikka:
+
+1. HAEO:n ennuste on toiveellinen jakauma surplusille, ei takuuteho
+2. suurempi HAEO-teho voidaan tulkita korkeamman prioriteetin merkiksi, jos HAEO:lla oletetaan olevan riittava taustadata
+3. EMS:n sisainen plan ohittaa runtime-laskennassa `adjustable_primary_load`- ja `adjustable_surplus_load`-helperien combon
+4. EMS ei kirjoita combo-helperien arvoja takaisin Home Assistantiin
+5. EMS toteuttaa valintaa vain silta osin kuin hetkellinen surplus, guardit, rampit ja laiterajat sallivat
+
+Esimerkki:
+
+1. HAEO ennustaa EV:lle `5 kW` ja akulle `2 kW`
+2. EMS:n sisainen HAEO-plan asettaa `primary = EV_CHARGER`
+3. EMS:n sisainen HAEO-plan asettaa `adjustable_surplus = HOME_BATTERY`
+4. EMS yrittaa kayttaa surplusia taman prioriteetin mukaan, mutta pitaa edelleen `NET_ZERO`-tavoitteen ja turvarajat ensisijaisina
+
+Jos halutaan pitaa HAEO-combo-valinta kokonaan Home Assistant -automaation puolella, vaihtoehtoinen malli on ajaa EMS tilassa `AUTOMATIC + NET_ZERO + forecast_profile = NONE` ja kirjoittaa combo-helperit HA-automaatiosta. Talloin EMS:n nakokulmasta `effective_forecast` jaa arvoon `NONE`.
+
+Nykyinen ensitoteutus kattaa EMS-sisaisen combon valinnan, HAEO-tehorajat ja combo-vaihdon surplus-state-hygienian. Jos combo vaihtuu vanhojen surplus-statejen ollessa aktiivisia, policy tuottaa `CLEAR_ALL`, asettaa lyhyen freeze-jakson ja raportoi syyn `surplus_state_clear_reason = HAEO_COMBO_CHANGED`.
 
 ## Tarkeat entiteetit
 

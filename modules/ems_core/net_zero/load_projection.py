@@ -39,7 +39,13 @@ def ev_strategy_current_a(profiles, cfg, haeo, burn_active):
         return int(min(cfg.ev_force_current_a, cfg.ev_max_current_a))
 
     if haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
-        return ev_kw_to_selector_current_a(haeo.ev_target_kw, cfg.ev_charger_phases, cfg.ev_max_current_a)
+        return ev_kw_to_selector_current_a(
+            haeo.ev_target_kw,
+            cfg.ev_charger_phases,
+            cfg.ev_max_current_a,
+            min_a=cfg.ev_min_current_a,
+            step_a=getattr(cfg, 'ev_current_step_a', 4),
+        )
 
     if profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
         return int(cfg.ev_max_current_a)
