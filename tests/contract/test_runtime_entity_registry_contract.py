@@ -1,6 +1,6 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 
 
 @pytest.mark.unit
@@ -10,15 +10,15 @@ def test_required_entities_exist():
         'goal_profile',
         'forecast_profile',
         'guard_profile',
-        'policy_battery_target_w',
-        'policy_ev_current_a',
-        'policy_relay1_command',
-        'policy_relay2_command',
         'policy_decision_trace',
-        'surplus_dispatch_decision_pys',
-        'surplus_adjustable_active',
-        'surplus_r1_active',
-        'surplus_r2_active',
+        'device_policies',
+        'active_surplus_devices',
+        'previous_device_state',
+        'surplus_next_target_pys',
+        'surplus_next_threshold_pys',
+        'surplus_release_candidate_pys',
+        'surplus_explanation_pys',
+        'actuator_writer_trace',
         'actuator_battery_setpoint_w',
         'actuator_ev_current_a',
         'actuator_ev_enabled',
@@ -51,8 +51,7 @@ def test_entity_ids_are_unique():
 def test_unit_conversion_contract():
     assert ENT['rpnz_w'].startswith('sensor.')
     assert ENT['required_power_consumption_kw'].startswith('sensor.')
-    assert ENT['policy_battery_target_w'].startswith('sensor.')
-    assert ENT['policy_ev_current_a'].startswith('sensor.')
+    assert ENT['policy_decision_trace'].startswith('sensor.')
     assert ENT['actuator_battery_setpoint_w'].startswith('number.')
     assert ENT['actuator_ev_current_a'].startswith('number.')
 
@@ -61,4 +60,6 @@ def test_unit_conversion_contract():
 def test_unknown_state_defaults():
     assert ENT['surplus_policy_active_pys'].startswith('binary_sensor.')
     assert ENT['surplus_freeze_until'].startswith('input_datetime.')
-    assert ENT['surplus_adjustable_active'].startswith('input_boolean.')
+    assert ENT['active_surplus_devices'].startswith('sensor.')
+    assert ENT['previous_device_state'].startswith('sensor.')
+    assert ENT['actuator_writer_trace'].startswith('sensor.')

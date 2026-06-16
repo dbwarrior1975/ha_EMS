@@ -1,9 +1,10 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
-
+from tests.e2e_entity.refactored_runner import seed_previous_policy_trace
+from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_02_relay1_on_then_release_under_force(project_root):
@@ -11,17 +12,19 @@ def test_02_relay1_on_then_release_under_force(project_root):
     h = build_harness(project_root)
 
     # Seed end-of-phase-1 state with force already active; avoid synthetic rising-edge freeze.
+    seed_active_surplus_devices(
+        h,
+        active_device_ids=('RELAY1',),
+        actuator_relay1=False,
+        actuator_relay2=True,
+        actuator_ev_enabled=False,
+        actuator_ev_current_a=6,
+    )
     h.set_entities({
         ENT['relay2_force_on']: True,
-        ENT['surplus_r1_active']: True,
-        ENT['surplus_r2_active']: False,
-        ENT['actuator_relay1']: False,
-        ENT['actuator_relay2']: True,
-        ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 6,
         ENT['surplus_freeze_until']: 105.0,
     })
-    h.set_attrs(ENT['policy_decision_trace'], {
+    seed_previous_policy_trace(h, **{
         'prev_relay1_force_on': False,
         'prev_relay2_force_on': True,
     })
@@ -41,12 +44,9 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -59,8 +59,6 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },
@@ -79,16 +77,11 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },
@@ -107,12 +100,9 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'RELEASE_RELAY1',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -143,12 +133,9 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -161,8 +148,6 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: True,
             },

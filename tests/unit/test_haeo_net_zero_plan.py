@@ -38,6 +38,9 @@ def test_ev_larger_forecast_selects_ev_primary():
     assert plan.active is True
     assert plan.primary_load == 'EV_CHARGER'
     assert plan.adjustable_surplus_load == 'HOME_BATTERY'
+    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_CHARGER': 5000}
     assert plan.reason == 'ev_forecast_larger'
 
 
@@ -53,6 +56,9 @@ def test_battery_larger_forecast_selects_home_battery_primary():
     assert plan.active is True
     assert plan.primary_load == 'HOME_BATTERY'
     assert plan.adjustable_surplus_load == 'EV_CHARGER'
+    assert plan.primary_device_id == 'HOME_BATTERY'
+    assert plan.adjustable_device_id == 'EV_CHARGER'
+    assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
     assert plan.battery_limit_w == 3000
     assert plan.ev_limit_w == 1500
     assert plan.ev_limit_a == 8
@@ -71,6 +77,26 @@ def test_tie_keeps_previous_primary_when_available():
 
     assert plan.primary_load == 'EV_CHARGER'
     assert plan.adjustable_surplus_load == 'HOME_BATTERY'
+    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.reason == 'tie_keep_previous'
+    assert plan.changed is False
+
+
+@pytest.mark.unit
+def test_tie_keeps_previous_primary_device_id_when_available():
+    plan = compute_haeo_net_zero_plan(
+        _haeo_profiles(),
+        make_cfg(),
+        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=2.0),
+        now_ts=30.0,
+        previous_quarter_key='0',
+        previous_primary_load='HOME_BATTERY',
+        previous_primary_device_id='EV_CHARGER',
+    )
+
+    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.primary_load == 'EV_CHARGER'
     assert plan.reason == 'tie_keep_previous'
     assert plan.changed is False
 
@@ -131,4 +157,5 @@ def test_limits_are_clamped_to_device_bounds():
 
     assert plan.battery_limit_w == 2500
     assert plan.ev_limit_w == 2300
-    assert plan.ev_limit_a == 8
+    assert plan.device_limits_w == {'HOME_BATTERY': 2500, 'EV_CHARGER': 2300}
+    assert plan.ev_limit_a == 10

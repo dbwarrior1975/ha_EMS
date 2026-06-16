@@ -30,7 +30,11 @@ Nykyinen koko testisetti ajetaan samalla komennolla:
 pytest -q tests
 ```
 
-Viimeisin paikallinen tarkistus tassa tyopuussa: `130 passed`.
+Viimeisin varmennettu tila nykyisessa refaktorointivaiheessa:
+
+1. `python3 -m pytest -q tests`
+2. `python3 -m pytest -q tests/e2e_entity`
+3. `python3 -m pytest -q tests/smoke/test_pyscript_ast_compat.py`
 
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
@@ -65,11 +69,15 @@ Keskeinen infrastruktuuri:
 
 1. `tests/e2e_entity/scenario_harness.py`
 
-Tama harness simuloi nykyista tuotantoketjua suoraan tiedostotasolla:
+Kanoninen e2e-kerros on `tests/e2e_entity/`. Se harness simuloi nykyista
+tuotantoketjua suoraan tiedostotasolla:
 
 1. `ems_policy_engine.py`
 2. `ems_dispatch_state_applier.py`
 3. `ems_actuator_writers.py`
+
+`tests/scenarios/` sisaltaa kevyempia regressio-/semantiikkatesteja, mutta ei
+ole enaa projektin ensisijainen e2e-pinta.
 
 ### Smoke-testit
 
@@ -81,11 +89,21 @@ Tiedosto `test_top_level_files.py` varmistaa esimerkiksi:
 2. etta `max_solar_charge_w` on kytketty mukaan
 3. etta `battery_write_enabled` esiintyy malleissa ja moottorissa
 
+Tiedosto `test_pyscript_ast_compat.py` varmistaa, etta top-level runtime
+moduulit pysyvat Pyscript-yhteensopivina.
+
 ### Contract-testit
 
 Hakemisto: `tests/contract/`
 
-Tiedosto `test_entity_map_contract.py` varmistaa perustason entity-map-sopimusta.
+Keskeiset contract-kohteet:
+
+1. `test_runtime_entity_registry_contract.py`
+2. `test_grouped_config_contract.py`
+3. `test_grouped_config_runtime_parity.py`
+
+Kaytannollinen painotus on grouped-configissa, runtime-registryssa ja
+runtime-parityssa.
 
 ## Mita on oikeasti testattu
 
@@ -111,17 +129,6 @@ Tiedosto `test_entity_map_contract.py` varmistaa perustason entity-map-sopimusta
 5. `battery_write_enabled`-attribuutin olemassaolon
 6. `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-battery fallbackit ja selitteet
 7. HAEO-avusteiset battery-targetit `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-tiloissa
-
-### Load projection
-
-`tests/unit/test_load_projection.py` kattaa ainakin:
-
-1. `MANUAL` EV force-current -polun
-2. `MANUAL_SAFE` EV force-current -polun
-3. `DEGRADED` EV skip -polun
-4. `NET_ZERO` force-current floor -polun
-5. `CHEAP_GRID_CHARGE` EV-polut
-6. relay-komentojen perussemantiikan
 
 ### Writer-semantiiikka
 
@@ -162,8 +169,7 @@ Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 9. `tests/e2e_entity/net_zero_priority_order_quarter/`
 10. `tests/e2e_entity/optimizer_degraded_fallback/`
 11. `tests/e2e_entity/system_degraded_safe_mode/`
-12. `tests/scenarios/test_net_zero_priority_squence_e2e.py`
-13. `tests/scenarios/test_regressions.py`
+12. `tests/scenarios/test_regressions.py`
 
 Jokaisessa splitatussa e2e-kansiossa on oma `scenario_overview.md`, joka kertoo vaihejakojen tarkoituksen.
 
@@ -186,11 +192,11 @@ Nykyiset testit kattavat esimerkiksi:
 
 ### Contract-kattavuus
 
-`entity_map`-sopimustesteilla on perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
+Grouped-config- ja parity-testeilla on nyt perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
 
-1. etta kaikki tarvittavat entityt ovat mapissa
-2. ettei ID-konflikteja ole
-3. etta tuntemattomat tilat kasitellaan sovitusti
+1. etta grouped-configin kaikki pakolliset device-pinnat on validoitu
+2. ettei runtime-entity-id -konflikteja ole
+3. etta grouped-configin ja compatibility-pintojen erot ovat tarkoituksellisia
 
 ### DEGRADED- ja anti-flap-kattavuus
 

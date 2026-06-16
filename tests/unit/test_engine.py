@@ -176,6 +176,126 @@ def test_engine_trace_attrs_contain_authority_flag():
 
 
 @pytest.mark.unit
+def test_engine_trace_attrs_contain_ev_power_normalization():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        ev_min_current_a=6,
+        ev_max_current_a=16,
+        ev_current_step_a=4,
+        ev_charger_phases=3,
+    )
+    m = make_m(charger_on=True, charger_current_a=10)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=True,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=True,
+    )
+
+    assert out.ev_current_a == 16
+    assert out.attrs['ev_min_power_w'] == 4140
+    assert out.attrs['ev_max_power_w'] == 11040
+    assert out.attrs['ev_power_step_w'] == 2760
+    assert out.attrs['ev_target_w'] == 11040
+
+
+@pytest.mark.unit
+def test_engine_trace_attrs_contain_device_policies_matching_legacy_outputs():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        ev_min_current_a=6,
+        ev_max_current_a=16,
+        ev_charger_phases=3,
+        relay1_power_kw=2.5,
+        relay2_power_kw=5.0,
+    )
+    m = make_m(charger_on=True, charger_current_a=10)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=True,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=True,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=True,
+    )
+
+    policies = {item['device_id']: item for item in out.attrs['device_policies']}
+    policies_from_output = {policy.device_id: policy for policy in out.device_policies}
+
+    assert out.attrs['device_policy_parity_ok'] is True
+    assert out.attrs['device_policy_parity_mismatch'] == ''
+    assert policies_from_output['HOME_BATTERY'].target_w == out.battery_target_w
+    assert policies_from_output['HOME_BATTERY'].enabled is out.battery_write_enabled
+    assert policies_from_output['EV_CHARGER'].current_a == out.ev_current_a
+    assert policies_from_output['RELAY1'].enabled is True
+    assert policies_from_output['RELAY2'].enabled is False
+    assert policies['HOME_BATTERY']['target_w'] == out.battery_target_w
+    assert policies['HOME_BATTERY']['enabled'] is out.battery_write_enabled
+    assert policies['EV_CHARGER']['target_w'] == out.attrs['ev_target_w']
+    assert policies['EV_CHARGER']['current_a'] == out.ev_current_a
+    assert policies['EV_CHARGER']['enabled'] is True
+    assert policies['RELAY1']['target_w'] == 2500
+    assert policies['RELAY1']['enabled'] is True
+    assert policies['RELAY2']['target_w'] == 0
+    assert policies['RELAY2']['enabled'] is False
+
+
+@pytest.mark.unit
+def test_engine_surplus_device_parity_trace_matches_legacy_activation():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='HOME_BATTERY',
+        adjustable_surplus_activation=2000,
+        ev_min_current_a=4,
+        ev_max_current_a=28,
+        ev_charger_phases=1,
+    )
+    m = make_m()
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500, required_power_consumption_kw=2.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=False,
+        relay2_surplus_allowed=False,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+    )
+
+    assert out.surplus_dispatch_decision == 'ACTIVATE_ADJUSTABLE'
+    assert out.attrs['surplus_device_parity_ok'] is True
+    assert out.attrs['surplus_device_parity_mismatch'] == ''
+    assert out.attrs['surplus_device_dispatch_decision'] == 'ACTIVATE_ADJUSTABLE'
+    assert out.attrs['surplus_device_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_device_dispatch_target'] == 'ADJUSTABLE'
+    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_device_dispatch_contract'] == 'device_id_primary'
+    assert out.attrs['surplus_dispatch_decision_role'] == 'ha_compatibility_mirror'
+    assert out.attrs['surplus_device_next_target'] == 'ADJUSTABLE'
+    assert out.attrs['surplus_device_next_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_device_active_stack'] == 'NONE'
+    assert out.attrs['surplus_device_targets'][0]['threshold_w'] == 2000
+
+
+@pytest.mark.unit
 def test_engine_cheap_grid_charge_local_battery_target_and_explanation():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.CHEAP_GRID_CHARGE, forecast=ForecastProfile.NONE)
     cfg = make_cfg()
@@ -389,6 +509,10 @@ def test_engine_home_battery_adjustable_release_stops_max_hold():
     )
 
     assert out.surplus_dispatch_decision == 'RELEASE_ADJUSTABLE'
+    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_device_dispatch_target'] == 'ADJUSTABLE'
+    assert out.attrs['surplus_device_dispatch_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['surplus_device_parity_ok'] is True
     assert out.battery_target_w < 2000
 
 

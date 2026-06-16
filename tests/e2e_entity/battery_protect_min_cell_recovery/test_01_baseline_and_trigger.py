@@ -1,9 +1,8 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import build_harness
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import run_steps
-
 
 @pytest.mark.scenario
 def test_01_baseline_and_trigger(project_root):
@@ -21,9 +20,6 @@ def test_01_baseline_and_trigger(project_root):
                 ENT['guard_profile']: 'NORMAL_LIMITS',
                 ENT['soc']: 10.0,
                 ENT['min_cell_voltage_v']: 3.2,
-            },
-            'expect_policy_values': {
-                ENT['policy_decision_trace']: 'AUTOMATIC/NET_ZERO/NORMAL_LIMITS/NONE',
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,

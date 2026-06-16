@@ -1,8 +1,7 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
-
 
 @pytest.mark.scenario
 def test_activation_and_ev_burn_window(project_root):
@@ -18,19 +17,23 @@ def test_activation_and_ev_burn_window(project_root):
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_device_dispatch_action': 'ACTIVATE',
+                'surplus_device_dispatch_target': 'RELAY1',
+                'surplus_device_dispatch_device_id': 'RELAY1',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
-                'surplus_next_target': 'RELAY1',
-                'ev_policy_mode': 'restore_min',
+                'surplus_device_next_target': 'RELAY1',
+                'surplus_device_next_device_id': 'RELAY1',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min', 'current_a': 0},
+                'RELAY1': {'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY1',
+                'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 200,
@@ -45,20 +48,23 @@ def test_activation_and_ev_burn_window(project_root):
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_device_dispatch_action': 'ACTIVATE',
+                'surplus_device_dispatch_target': 'ADJUSTABLE',
+                'surplus_device_dispatch_device_id': 'EV_CHARGER',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_policy_mode': 'restore_min',
+                'surplus_device_next_target': 'ADJUSTABLE',
+                'surplus_device_next_device_id': 'EV_CHARGER',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_ADJUSTABLE',
-                ENT['policy_relay1_command']: 1,
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min', 'current_a': 0},
+                'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_ADJUSTABLE',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 6,
@@ -74,17 +80,21 @@ def test_activation_and_ev_burn_window(project_root):
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_device_dispatch_decision': 'NOOP',
+                'surplus_device_dispatch_action': 'NOOP',
+                'surplus_device_dispatch_target': '',
+                'surplus_device_dispatch_device_id': '',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'burn',
+                'surplus_device_next_target': 'RELAY2',
+                'surplus_device_next_device_id': 'RELAY2',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_relay1_command']: 1,
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': True, 'mode': 'burn', 'current_a': 28},
+                'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {
-                'decision': 'NOOP',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_writer_trace': {
                 'ev': {
@@ -93,7 +103,6 @@ def test_activation_and_ev_burn_window(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
@@ -109,22 +118,25 @@ def test_activation_and_ev_burn_window(project_root):
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_device_dispatch_decision': 'NOOP',
+                'surplus_device_dispatch_action': 'NOOP',
+                'surplus_device_dispatch_target': '',
+                'surplus_device_dispatch_device_id': '',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
-                'surplus_next_target': 'RELAY2',
-                'ev_policy_mode': 'burn',
+                'surplus_device_next_target': 'RELAY2',
+                'surplus_device_next_device_id': 'RELAY2',
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 28,
-                ENT['policy_relay1_command']: 1,
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': True, 'mode': 'burn', 'current_a': 28},
+                'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {
-                'decision': 'NOOP',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_battery_setpoint_w']: 800,
             },
         },

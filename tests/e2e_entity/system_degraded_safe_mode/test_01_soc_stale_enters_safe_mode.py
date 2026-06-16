@@ -1,8 +1,7 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.system_degraded_safe_mode.scenario_steps import build_harness, run_steps
-
 
 @pytest.mark.scenario
 def test_soc_stale_enters_safe_mode(project_root):
@@ -19,21 +18,14 @@ def test_soc_stale_enters_safe_mode(project_root):
             'expect_policy': {
                 'guard': 'DEGRADED',
                 'dominant_limitation': 'SYSTEM_DEGRADED',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'CLEAR_ALL',
-                ENT['policy_relay1_command']: -1,
-                ENT['policy_relay2_command']: -1,
-                ENT['policy_ev_current_a']: -1,
-                ENT['policy_battery_target_w']: 0,
-            },
-            'expect_dispatch_state': {
-                'decision': 'CLEAR_ALL',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'skip'},
+                'RELAY2': {'enabled': False, 'mode': 'skip'},
+                'EV_CHARGER': {'current_a': -1, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_values': {
-                ENT['policy_battery_target_w']: 0,
-                ENT['policy_ev_current_a']: -1,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 0.0,

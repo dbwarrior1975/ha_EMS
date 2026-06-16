@@ -1,9 +1,9 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import run_steps
-
+from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_03_release_relay1_then_restart(project_root):
@@ -11,15 +11,14 @@ def test_03_release_relay1_then_restart(project_root):
     h = build_harness(project_root)
 
     # Seed post-adjustable-release state so this phase is independent.
-    h.set_entities({
-        ENT['surplus_r1_active']: True,
-        ENT['surplus_adjustable_active']: False,
-        ENT['surplus_r2_active']: False,
-        ENT['actuator_relay1']: True,
-        ENT['actuator_relay2']: False,
-        ENT['actuator_ev_enabled']: True,
-        ENT['actuator_ev_current_a']: 6,
-    })
+    seed_active_surplus_devices(
+        h,
+        active_device_ids=('RELAY1',),
+        actuator_relay1=True,
+        actuator_relay2=False,
+        actuator_ev_enabled=True,
+        actuator_ev_current_a=6,
+    )
 
     steps = [
         {
@@ -32,19 +31,15 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'RELEASE_RELAY1',
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 0,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'RELEASE_RELAY1',
+                'active_surplus_device_ids': (),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_current_a']: 6,
@@ -60,19 +55,15 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 0,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'NOOP',
+                'active_surplus_device_ids': (),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
@@ -89,19 +80,15 @@ def test_03_release_relay1_then_restart(project_root):
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_target': 'RELAY1',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 0,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY1',
+                'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_enabled']: True,

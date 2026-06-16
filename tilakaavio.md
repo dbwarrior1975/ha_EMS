@@ -40,21 +40,21 @@ Tulkitse kaavio nain:
 stateDiagram-v2
     [*] --> IDLE
 
-    IDLE --> ACTIVE: ACTIVATE_*
-    ACTIVE --> ACTIVE: ACTIVATE_* (same or next target)
-    ACTIVE --> IDLE: RELEASE_* or CLEAR_ALL
+    IDLE --> ACTIVE: ACTIVATE device_id
+    ACTIVE --> ACTIVE: ACTIVATE next device_id
+    ACTIVE --> IDLE: RELEASE device_id or CLEAR_ALL
 
     ACTIVE --> FROZEN: freeze_until_ts > now
     FROZEN --> ACTIVE: freeze expired and target still active
-    FROZEN --> IDLE: RELEASE_* or CLEAR_ALL
+    FROZEN --> IDLE: RELEASE device_id or CLEAR_ALL
 
     IDLE --> FROZEN: freeze created on force/activation edge
 ```
 
 Tulkitse kaavio nain:
 
-1. `ACTIVATE_*` nostaa kohteen aktiiviseksi.
-2. `RELEASE_*` ja `CLEAR_ALL` pudottavat aktiivisuuden.
+1. `ACTIVATE` nostaa kanonisen `device_id`-kohteen aktiiviseksi.
+2. `RELEASE` ja `CLEAR_ALL` pudottavat aktiivisuuden.
 3. `FROZEN` estaa uusia aktivointeja freeze-ikkunan ajan.
 4. Freeze voi syntya force- tai aktivointireunasta.
 

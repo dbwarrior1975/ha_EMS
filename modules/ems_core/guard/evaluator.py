@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from ems_core.domain.models import GuardProfile, RuntimeMeasurements, EmsConfig
 
-@dataclass(frozen=True)
+@dataclass
 class GuardDecision:
     guard: str
     soc_stale: bool

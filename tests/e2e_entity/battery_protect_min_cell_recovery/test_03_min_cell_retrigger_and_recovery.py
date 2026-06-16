@@ -1,9 +1,9 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import build_harness
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import run_steps
-
+from tests.e2e_entity.refactored_runner import seed_battery_protect_runtime_state
 
 @pytest.mark.scenario
 def test_03_min_cell_retrigger_and_recovery(project_root):
@@ -11,12 +11,13 @@ def test_03_min_cell_retrigger_and_recovery(project_root):
     h = build_harness(project_root)
 
     # Seed a normal-state start so this phase is independent from previous phases.
-    h.set_entities({
-        ENT['guard_profile']: 'NORMAL_LIMITS',
-        ENT['soc']: 2.0,
-        ENT['min_cell_voltage_v']: 3.06,
-        ENT['actuator_battery_setpoint_w']: 800,
-    })
+    seed_battery_protect_runtime_state(
+        h,
+        guard_profile='NORMAL_LIMITS',
+        soc=2.0,
+        min_cell_voltage_v=3.06,
+        actuator_battery_setpoint_w=800,
+    )
 
     steps = [
         {

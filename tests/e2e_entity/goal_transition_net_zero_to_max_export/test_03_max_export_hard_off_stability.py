@@ -1,27 +1,23 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
-
+from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_max_export_hard_off_stability(project_root):
     h = build_harness(project_root)
 
-    h.set_entities({
-        ENT['goal_profile']: 'MAX_EXPORT',
-        ENT['surplus_r1_active']: False,
-        ENT['surplus_adjustable_active']: False,
-        ENT['surplus_r2_active']: False,
-        ENT['actuator_relay1']: False,
-        ENT['actuator_relay2']: False,
-        ENT['actuator_ev_enabled']: True,
-        ENT['actuator_ev_current_a']: 28,
-        ENT['policy_relay1_command']: 0,
-        ENT['policy_relay2_command']: 0,
-        ENT['policy_ev_current_a']: 28,
-        ENT['actuator_battery_setpoint_w']: -200,
-    })
+    seed_active_surplus_devices(
+        h,
+        goal_profile='MAX_EXPORT',
+        active_device_ids=(),
+        actuator_relay1=False,
+        actuator_relay2=False,
+        actuator_ev_enabled=True,
+        actuator_ev_current_a=28,
+        actuator_battery_setpoint_w=-200,
+    )
 
     steps = [
         {
@@ -33,18 +29,22 @@ def test_max_export_hard_off_stability(project_root):
             },
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_device_dispatch_decision': 'CLEAR_ALL',
+                'surplus_device_dispatch_action': 'CLEAR_ALL',
+                'surplus_device_dispatch_target': '',
+                'surplus_device_dispatch_device_id': '',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Policy inactive -> clear all surplus states',
-                'surplus_next_target': 'RELAY1',
-                'ev_policy_mode': 'hard_off',
+                'surplus_device_next_target': 'RELAY1',
+                'surplus_device_next_device_id': 'RELAY1',
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off', 'current_a': 0},
+                'RELAY1': {'enabled': False},
+                'RELAY2': {'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'CLEAR_ALL',
+                'active_surplus_device_ids': (),
             },
             'expect_writer_trace': {
                 'ev': {
@@ -62,9 +62,6 @@ def test_max_export_hard_off_stability(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_relay1']: False,
@@ -81,18 +78,22 @@ def test_max_export_hard_off_stability(project_root):
             },
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_device_dispatch_decision': 'CLEAR_ALL',
+                'surplus_device_dispatch_action': 'CLEAR_ALL',
+                'surplus_device_dispatch_target': '',
+                'surplus_device_dispatch_device_id': '',
+                'surplus_device_dispatch_contract': 'device_id_primary',
                 'surplus_explanation': 'Policy inactive -> clear all surplus states',
-                'surplus_next_target': 'RELAY1',
-                'ev_policy_mode': 'hard_off',
+                'surplus_device_next_target': 'RELAY1',
+                'surplus_device_next_device_id': 'RELAY1',
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off', 'current_a': 0},
+                'RELAY1': {'enabled': False},
+                'RELAY2': {'enabled': False},
             },
             'expect_dispatch_state': {
-                'decision': 'CLEAR_ALL',
+                'active_surplus_device_ids': (),
             },
             'expect_writer_trace': {
                 'ev': {
@@ -110,9 +111,6 @@ def test_max_export_hard_off_stability(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_relay1']: False,

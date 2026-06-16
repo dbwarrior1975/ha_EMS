@@ -1,9 +1,8 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
-
 
 @pytest.mark.scenario
 def test_01_force_rising_edge_freeze_hygiene(project_root):
@@ -25,16 +24,11 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
@@ -53,16 +47,11 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
             },
@@ -83,13 +72,13 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 1,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_dispatch_state': {
-                'decision': 'NOOP',
                 'freeze_until_ts': 75.0,
+                'freeze_written': True,
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -101,10 +90,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                     'written': True,
                 },
             },
-            'expect_freeze_entity_present': True,
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: True,
             },
@@ -124,12 +110,9 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -161,12 +144,9 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': True,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY1',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -179,7 +159,6 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: True,
             },

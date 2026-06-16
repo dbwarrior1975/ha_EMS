@@ -1,8 +1,7 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.optimizer_degraded_fallback.scenario_steps import build_harness, run_steps
-
 
 @pytest.mark.scenario
 def test_optimizer_stale_reactive_fallback(project_root):
@@ -23,15 +22,11 @@ def test_optimizer_stale_reactive_fallback(project_root):
                 'effective_forecast': 'NONE',
                 'dominant_limitation': 'FORECAST_FALLBACK_LOCAL',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'CLEAR_ALL',
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 200,
-            },
-            'expect_dispatch_state': {
-                'decision': 'CLEAR_ALL',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 200},
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,

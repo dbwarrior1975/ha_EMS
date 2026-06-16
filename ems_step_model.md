@@ -18,7 +18,7 @@ Tasta seuraa perusmalli:
 
 ## Tarkein seuraus
 
-`surplus_dispatch_decision` ei ole sama asia kuin actuator-muutos samassa stepissa.
+`surplus_device_dispatch_decision` ei ole sama asia kuin actuator-muutos samassa stepissa.
 
 Monissa tilanteissa tapahtuu nain:
 
@@ -29,31 +29,32 @@ Monissa tilanteissa tapahtuu nain:
 
 ## Missa tama nakyy selvimmin
 
-Tama viive nakyy erityisesti surplus-ohjatuissa kuormissa:
+Tama viive nakyy erityisesti surplus-ohjatuissa kuormissa ja niihin liittyvassa
+kanonisessa tilassa:
 
-- `surplus_adjustable_active`
-- `surplus_r1_active`
-- `surplus_r2_active`
+- `active_surplus_devices`
 - `surplus_freeze_until_ts`
 
-Policy lukee juuri naita tiloja stepin alussa. Jos dispatch state muuttaa niita saman stepin aikana, uusi vaikutus policy-commandiin nakyy tavallisesti vasta seuraavalla kierroksella.
+Policy lukee juuri naita tiloja stepin alussa. Jos dispatch state muuttaa niita
+saman stepin aikana, uusi vaikutus `device_policies`-ulostuloon nakyy
+tavallisesti vasta seuraavalla kierroksella.
 
 ## EV-esimerkki
 
 Tyypillinen EV-polku:
 
 1. Step A: policy paattaa `RELEASE_ADJUSTABLE`
-2. Step A: dispatch state asettaa `surplus_adjustable_active = False`
-3. Step A: writer voi silti nahda `policy_ev_current_a = 28`, koska se laskettiin ennen dispatch state-muutosta
-4. Step B: policy nakee nyt `surplus_adjustable_active = False`
-5. Step B: policy tuottaa `ev_policy_mode = 'restore_min'`; `policy_ev_current_a` on polkukohtainen (EV-primaryssa usein `ev_min_current_a`, muissa release-polussa voi olla `0`)
-6. Step B: writer laskee EV-currentin minimiin
+2. Step A: dispatch state poistaa `EV_CHARGER`:n kanonisesta `active_surplus_devices`-tilasta
+3. Step A: writer voi silti nahda saman stepin aikana vanhan `EV_CHARGER`-device-policyn, koska se laskettiin ennen dispatch state -muutosta
+4. Step B: policy nakee nyt paivitetyn `active_surplus_devices`-tilan
+5. Step B: policy tuottaa uuden `EV_CHARGER`-device-policyn, jossa moodi on tyypillisesti `restore_min` tai `hard_off`
+6. Step B: writer toteuttaa uuden pyynnon actuator-tasolle
 
 Siksi on mahdollista, etta samassa stepissa ovat kaikki totta:
 
-- `surplus_dispatch_decision == 'RELEASE_ADJUSTABLE'`
-- `surplus_adjustable_active == False`
-- writer trace kertoo edelleen `already_matching` ja `new_current_a == 28`
+- `surplus_device_dispatch_decision == 'RELEASE_ADJUSTABLE'`
+- `active_surplus_devices` ei enaa sisalla `EV_CHARGER`:a
+- writer trace kertoo edelleen `already_matching` tai toteuttaa viela vanhaa targetia
 
 Tama ei ole ristiriita, vaan seurausta komponenttien ajojarjestyksesta.
 
@@ -64,10 +65,10 @@ Sama periaate koskee myos releita, kun niiden command riippuu surplus-state-tila
 Esimerkki aktivoinnista:
 
 1. Policy paattaa `ACTIVATE_RELAY1`
-2. Dispatch state applier asettaa `surplus_r1_active = True`
-3. Writer ei valttamatta viela kytke reletta paalle, jos saman stepin `policy_relay1_command` on yha `0`
-4. Seuraavassa stepissa policy nakee `surplus_r1_active = True`
-5. `policy_relay1_command` muuttuu `1`:ksi
+2. Dispatch state applier lisaa `RELAY1`:n `active_surplus_devices`-tilaan
+3. Writer ei valttamatta viela kytke reletta paalle, jos saman stepin `RELAY1`-device-policy on yha `enabled=false`
+4. Seuraavassa stepissa policy nakee `RELAY1`:n aktiivisena
+5. `RELAY1`-device-policy muuttuu `enabled=true`
 6. Writer kytkee releen paalle
 
 Sama toimii myos release-suunnassa.
@@ -82,7 +83,9 @@ Hyva esimerkki:
 
 - `relay_force_on`
 
-Jos `relay2_force_on=True` stepin alussa, policy voi tuottaa heti `policy_relay2_command = 1`, ja writer voi kytkea relay2:n paalle samassa stepissa.
+Jos `relay2_force_on=True` stepin alussa, policy voi tuottaa heti relay2:lle
+paalle-kaskyn `device_policies`-payloadissa, ja writer voi kytkea relay2:n
+paalle samassa stepissa.
 
 ## Kaytannon saanto testeihin
 
@@ -92,6 +95,8 @@ Kun kirjoitat E2E-skenaariota, erottele aina ainakin nama tasot:
    näkyvat entity-tilat stepin jalkeen
 2. `expect_policy`
    policy trace -attribuutit
+3. `expect_device_policies`
+   kanoniset device-kohtaiset ohjauspyynnot
 3. `expect_dispatch_state`
    dispatch state trace -attribuutit
 4. `expect_writer_trace`

@@ -8,8 +8,6 @@ def _load_writer_module(project_root):
     # Poista adapter-importit; injektoidaan korvikkeet testin namespaceen
     filtered = []
     for line in src.splitlines():
-        if line.startswith('from ems_adapter.entity_map import'):
-            continue
         if line.startswith('from ems_adapter.ha_adapter import'):
             continue
         filtered.append(line)
@@ -80,18 +78,44 @@ def _load_writer_module(project_root):
     return ns, state, ENT
 
 
+def _install_device_policies(mod, policies):
+    def get_attr(entity_id, attr, default=None):
+        if attr == 'device_policies':
+            return tuple(policies)
+        return default
+
+    mod['get_attr'] = get_attr
+
+
 @pytest.mark.unit
-def test_writer_relay_release_turns_actuator_off(project_root):
+def test_writer_relay_without_device_policy_does_not_use_legacy_command(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
-    # policy says relay should be off; actuator currently on
     state[ENT['actuator_relay1']] = True
     state[ENT['policy_relay1_command']] = 0
 
     result = mod['_write_relay_actuator'](ENT['policy_relay1_command'], ENT['actuator_relay1'], 'relay1')
-    assert result['written'] is True
-    assert state[ENT['actuator_relay1']] is False
-    assert result['reason'] == 'state_changed'
+    assert result['written'] is False
+    assert state[ENT['actuator_relay1']] is True
+    assert result['reason'] == 'missing_device_policy'
+    assert result['policy_source'] == 'missing_device_policy'
+
+
+@pytest.mark.unit
+def test_writer_ev_without_device_policy_does_not_use_legacy_current_even_without_device_id(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    state[ENT['policy_ev_current_a']] = 12
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 4
+
+    result = mod['_write_ev_actuator'](device_id=None)
+
+    assert result['written'] is False
+    assert result['reason'] == 'missing_device_policy'
+    assert result['policy_source'] == 'missing_device_policy'
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 4
 
 
 @pytest.mark.unit
@@ -112,19 +136,345 @@ def test_writer_manual_battery_is_hands_off(project_root):
 def test_writer_manual_safe_clamps_to_policy_target(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'power',
+            }
+        ],
+    )
+
     state['input_select.ems_control_profile'] = 'MANUAL_SAFE'
-    state[ENT['policy_battery_target_w']] = 0
+    state[ENT['policy_battery_target_w']] = 500
     state[ENT['actuator_battery_setpoint_w']] = -500
 
     result = mod['_write_battery_actuator']()
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
+    assert result['policy_source'] == 'device_policy'
     assert state[ENT['actuator_battery_setpoint_w']] == 0
+
+
+@pytest.mark.unit
+def test_writer_battery_does_not_fallback_to_legacy_policy_target_without_device_policy(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 1
+    state['input_number.ems_ramp_max_w'] = 1000
+    state[ENT['policy_battery_target_w']] = 500
+    state[ENT['actuator_battery_setpoint_w']] = 0
+
+    result = mod['_write_battery_actuator']()
+
+    assert result['written'] is False
+    assert result['reason'] == 'missing_device_policy'
+    assert result['policy_source'] == 'missing_device_policy'
+    assert state[ENT['actuator_battery_setpoint_w']] == 0
+
+
+@pytest.mark.unit
+def test_writer_ev_does_not_fallback_to_legacy_current_without_device_policy(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    state[ENT['policy_ev_current_a']] = 16
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 4
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is False
+    assert result['reason'] == 'missing_device_policy'
+    assert result['policy_source'] == 'missing_device_policy'
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 4
+
+
+@pytest.mark.unit
+def test_writer_battery_can_read_device_policy_target(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 500,
+                'enabled': True,
+                'mode': 'power',
+            }
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 1
+    state['input_number.ems_ramp_max_w'] = 1000
+    state[ENT['policy_battery_target_w']] = 0
+    state[ENT['actuator_battery_setpoint_w']] = 0
+
+    result = mod['_write_battery_actuator']()
+
+    assert result['written'] is True
+    assert result['policy_source'] == 'device_policy'
+    assert result['policy_target_w'] == 500
+    assert state[ENT['actuator_battery_setpoint_w']] == 500
+
+
+@pytest.mark.unit
+def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 3680,
+                'enabled': True,
+                'mode': 'burn',
+            }
+        ],
+    )
+
+    state[ENT['policy_ev_current_a']] = -1
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 4
+    state['input_number.ems_ev_min_current_a'] = 4
+    state['input_number.ems_ev_max_current_a'] = 32
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is True
+    assert result['policy_source'] == 'device_policy'
+    assert result['target_current_a'] == 16
+    assert state[ENT['actuator_ev_enabled']] is True
+    assert state[ENT['actuator_ev_current_a']] == 16
+
+
+@pytest.mark.unit
+def test_writer_ev_uses_target_w_even_if_current_a_mirror_conflicts(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 5520,
+                'current_a': 28,
+                'enabled': True,
+                'mode': 'burn',
+            }
+        ],
+    )
+
+    state[ENT['policy_ev_current_a']] = -1
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 4
+    state['input_number.ems_ev_min_current_a'] = 6
+    state['input_number.ems_ev_max_current_a'] = 28
+    state['input_number.ems_ev_current_step_a'] = 4
+    state['input_number.ems_ev_charger_phases'] = 1
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is True
+    assert result['policy_source'] == 'device_policy'
+    assert result['target_current_a'] == 22
+    assert state[ENT['actuator_ev_current_a']] == 22
+
+
+@pytest.mark.unit
+def test_writer_relay_device_policy_overrides_legacy_command(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'relay',
+            }
+        ],
+    )
+
+    state[ENT['policy_relay1_command']] = 1
+    state[ENT['actuator_relay1']] = True
+
+    result = mod['_write_relay_actuator'](
+        ENT['policy_relay1_command'],
+        ENT['actuator_relay1'],
+        'relay1',
+        device_id='RELAY1',
+    )
+
+    assert result['written'] is True
+    assert result['policy_source'] == 'device_policy'
+    assert state[ENT['actuator_relay1']] is False
+
+
+@pytest.mark.unit
+def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            }
+        ],
+    )
+
+    state[ENT['policy_relay1_command']] = 0
+    state[ENT['actuator_relay1']] = True
+
+    result = mod['_write_relay_actuator'](
+        ENT['policy_relay1_command'],
+        ENT['actuator_relay1'],
+        'relay1',
+        device_id='RELAY1',
+    )
+
+    assert result['written'] is False
+    assert result['reason'] == 'policy_skip'
+    assert result['policy_source'] == 'device_policy'
+    assert state[ENT['actuator_relay1']] is True
+
+
+@pytest.mark.unit
+def test_writer_relay_does_not_fallback_to_legacy_command_with_device_id(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    state[ENT['policy_relay1_command']] = 1
+    state[ENT['actuator_relay1']] = False
+
+    result = mod['_write_relay_actuator'](
+        ENT['policy_relay1_command'],
+        ENT['actuator_relay1'],
+        'relay1',
+        device_id='RELAY1',
+    )
+
+    assert result['written'] is False
+    assert result['reason'] == 'missing_device_policy'
+    assert result['policy_source'] == 'missing_device_policy'
+    assert state[ENT['actuator_relay1']] is False
+
+
+@pytest.mark.unit
+def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 500,
+                'enabled': True,
+                'mode': 'power',
+            },
+                {
+                    'device_id': 'EV_CHARGER',
+                    'target_w': 2760,
+                    'current_a': 12,
+                    'enabled': True,
+                    'mode': 'burn',
+                },
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'relay',
+            },
+            {
+                'device_id': 'RELAY2',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'relay',
+            },
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 1
+    state['input_number.ems_ramp_max_w'] = 1000
+    state['input_number.ems_ev_min_current_a'] = 6
+    state['input_number.ems_ev_max_current_a'] = 28
+    state['input_number.ems_ev_current_step_a'] = 2
+    state['input_number.ems_ev_charger_phases'] = 1
+    state[ENT['actuator_battery_setpoint_w']] = 0
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    state[ENT['actuator_relay1']] = False
+    state[ENT['actuator_relay2']] = True
+
+    state[ENT['policy_battery_target_w']] = -2000
+    state[ENT['policy_ev_current_a']] = -1
+    state[ENT['policy_relay1_command']] = 0
+    state[ENT['policy_relay2_command']] = 1
+
+    result = mod['ems_actuator_writers_loop']()
+    writer_trace = state['sensor.ems_actuator_writer_trace']
+
+    assert result['victron']['policy_source'] == 'device_policy'
+    assert result['ev']['policy_source'] == 'device_policy'
+    assert result['relay1']['policy_source'] == 'device_policy'
+    assert result['relay2']['policy_source'] == 'device_policy'
+    assert state[ENT['actuator_battery_setpoint_w']] == 500
+    assert state[ENT['actuator_ev_enabled']] is True
+    assert state[ENT['actuator_ev_current_a']] == 12
+    assert state[ENT['actuator_relay1']] is True
+    assert state[ENT['actuator_relay2']] is False
+    assert writer_trace['attrs']['writer_policy_contract'] == 'device_policy_primary'
     
     
 @pytest.mark.unit
 def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(project_root):
     mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'power',
+            },
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'current_a': 0,
+                'enabled': True,
+                'mode': 'release',
+            },
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+            {
+                'device_id': 'RELAY2',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+        ],
+    )
 
     # Neutraloi muut writer-haarat, jotta testin fokus pysyy EV:ssä
     state['input_select.ems_control_profile'] = 'AUTOMATIC'
@@ -165,21 +515,23 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
 def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'current_a': 0,
+                'enabled': False,
+                'mode': 'hard_off',
+            }
+        ],
+    )
+
     state[ENT['actuator_ev_enabled']] = True
     state[ENT['actuator_ev_current_a']] = 16
     state[ENT['policy_ev_current_a']] = 0
     state['input_number.ems_ev_min_current_a'] = 4
-
-    # Simulate policy attrs carried by the HA sensor entity.
-    policy_sensor = ENT['policy_ev_current_a']
-    state[policy_sensor] = 0
-
-    def get_attr(entity_id, attr, default=None):
-        if entity_id == policy_sensor and attr == 'ev_policy_mode':
-            return 'hard_off'
-        return default
-
-    mod['get_attr'] = get_attr
 
     result = mod['_write_ev_actuator']()
     assert result['written'] is True

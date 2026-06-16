@@ -1,9 +1,8 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import run_steps
-
 
 @pytest.mark.scenario
 def test_01_activation_chain(project_root):
@@ -19,22 +18,22 @@ def test_01_activation_chain(project_root):
                 ENT['rpnz_w']: 500,
             },
             'expect_policy': {
+                'surplus_device_parity_ok': True,
+                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_device_next_target': 'RELAY1',
+                'surplus_device_next_device_id': 'RELAY1',
                 'surplus_freeze_until_ts': 15.0,
                 'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_target': 'RELAY1',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY1',
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 0,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY1',
+                'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_adjustable_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_enabled']: False,
@@ -48,22 +47,22 @@ def test_01_activation_chain(project_root):
                 ENT['rpnz_w']: 500,
             },
             'expect_policy': {
+                'surplus_device_parity_ok': True,
+                'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+                'surplus_device_next_target': 'ADJUSTABLE',
+                'surplus_device_next_device_id': 'EV_CHARGER',
                 'surplus_freeze_until_ts': 45.0,
                 'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_ADJUSTABLE',
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 0,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_ADJUSTABLE',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_adjustable_active']: True,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
             },
@@ -76,23 +75,23 @@ def test_01_activation_chain(project_root):
                 ENT['rpnz_w']: 500,
             },
             'expect_policy': {
+                'surplus_device_parity_ok': True,
+                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY2',
+                'surplus_device_next_target': 'RELAY2',
+                'surplus_device_next_device_id': 'RELAY2',
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Raw RPC 6.000 kW >= RELAY2 threshold 5.000 kW',
                 'surplus_next_target': 'RELAY2',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'ACTIVATE_RELAY2',
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 0,
-                ENT['policy_ev_current_a']: 28,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': False, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 28, 'enabled': True},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY2',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2'),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_adjustable_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: False,
                 ENT['actuator_ev_current_a']: 28,
@@ -106,23 +105,23 @@ def test_01_activation_chain(project_root):
                 ENT['rpnz_w']: 500,
             },
             'expect_policy': {
+                'surplus_device_parity_ok': True,
+                'surplus_device_dispatch_decision': 'NOOP',
+                'surplus_device_next_target': 'NONE',
+                'surplus_device_next_device_id': '',
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'NONE',
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-                ENT['policy_ev_current_a']: 28,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
+                'EV_CHARGER': {'current_a': 28, 'enabled': True},
             },
             'expect_dispatch_state': {
-                'decision': 'NOOP',
+                'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2'),
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_adjustable_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
                 ENT['actuator_ev_current_a']: 28,

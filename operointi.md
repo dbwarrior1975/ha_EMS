@@ -4,6 +4,36 @@
 
 Tama dokumentti kuvaa projektin kayttoa, valvontaa ja vianetsintaa.
 
+## Kanoninen runtime-pinta
+
+Nykyisen tuotantopolun ensisijainen totuus ei ole enaa yksittaisissa
+`policy_*`- tai `surplus_*_active`-entiteeteissa, vaan naissa pinoissa:
+
+1. `sensor.ems_policy_decision_trace_pyscript`
+2. `sensor.ems_device_policies_pyscript`
+3. `sensor.ems_active_surplus_devices`
+4. `sensor.ems_previous_device_state`
+
+Kaytannollinen tulkinta:
+
+1. `policy_decision_trace` kertoo miksi EMS paatti niin kuin paatti
+2. `device_policies` kertoo mita writerille pyydetaan kanonisessa muodossa
+3. `active_surplus_devices` kertoo mitka surplus-kohteet ovat kanonisesti aktiivisia
+4. `previous_device_state` kantaa yli syklien erityisesti EV:n edellisen moodin muistia
+
+Poistetut legacy-peilit:
+
+1. `sensor.ems_policy_battery_target_w_pyscript`
+2. `sensor.ems_policy_ev_current_a_pyscript`
+3. `sensor.ems_policy_relay1_command_pyscript`
+4. `sensor.ems_policy_relay2_command_pyscript`
+5. `input_boolean.ems_surplus_adjustable_active`
+6. `input_boolean.ems_surplus_relay1_active`
+7. `input_boolean.ems_surplus_relay2_active`
+
+Jos HA:ssa on viela automaatioita tai dashboardeja, jotka lukevat naita, ne
+pitää paivittaa kayttamaan kanonisia entityja.
+
 ## Operoinnin ohjauspisteet
 
 Keskeiset profiilientiteetit:
@@ -101,20 +131,26 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ovat alle `ems_haeo_stale_timeout_s` -rajan.
 
-### Policy-ulostulot
+### Kanoniset policy-ulostulot
+
+1. `sensor.ems_policy_decision_trace_pyscript`
+2. `sensor.ems_device_policies_pyscript`
+3. `sensor.ems_previous_device_state`
+
+### Kanoniset surplus-tilat
+
+1. `input_datetime.ems_surplus_freeze_until`
+2. `sensor.ems_active_surplus_devices`
+
+### Poistetut legacy-peilit
 
 1. `sensor.ems_policy_battery_target_w_pyscript`
 2. `sensor.ems_policy_ev_current_a_pyscript`
 3. `sensor.ems_policy_relay1_command_pyscript`
 4. `sensor.ems_policy_relay2_command_pyscript`
-5. `sensor.ems_policy_decision_trace_pyscript`
-
-### Surplus-tilat
-
-1. `input_datetime.ems_surplus_freeze_until`
-2. `input_boolean.ems_surplus_adjustable_active`
-3. `input_boolean.ems_surplus_relay1_active`
-4. `input_boolean.ems_surplus_relay2_active`
+5. `input_boolean.ems_surplus_adjustable_active`
+6. `input_boolean.ems_surplus_relay1_active`
+7. `input_boolean.ems_surplus_relay2_active`
 
 ### Aktuaattorit
 
@@ -232,9 +268,8 @@ HAEO:n nykyinen rooli on rajattu. Koodin perusteella se tekee seuraavaa:
 
 1. tuo akkutargetin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloihin, jos forecast on tuore
 2. tuo EV-targetin `CHEAP_GRID_CHARGE`-tilaan, jos forecast on tuore
-3. `HORIZON_BY_HAEO` voi pakottaa HAEO-ennusteen konfiguroiduksi, vaikka forecast-profile olisi `NONE`
-
-Koodin perusteella ei pidä sanoa, etta HAEO tekisi taytta `NET_ZERO`-optimointia.
+3. `HORIZON_BY_HAEO + NET_ZERO` voi muodostaa EMS:n sisaisen varttikohtaisen HAEO-planin
+4. `HORIZON_BY_HAEO` voi pakottaa HAEO-ennusteen konfiguroiduksi, vaikka forecast-profile olisi `NONE`
 
 ## Surplus-kuormien operointi
 
@@ -272,9 +307,12 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 4. `effective_forecast`
 5. `battery_write_enabled`
 6. `surplus_policy_active`
-7. `surplus_dispatch_decision`
+7. `surplus_device_dispatch_decision`
 8. `surplus_explanation`
 9. `surplus_freeze_until_ts`
+10. `config_source`
+11. `config_grouped_production_ready`
+12. `device_policies`
 
 Sen jalkeen tarkasta:
 
@@ -289,15 +327,15 @@ Tarkista jarjestyksessa:
 
 1. `goal_profile`
 2. `guard`
-3. `policy_ev_current_a`
-4. `surplus_adjustable_active`
+3. `sensor.ems_device_policies_pyscript` / `device_policies`
+4. `sensor.ems_active_surplus_devices`
 5. `actuator_writer_trace.ev`
 
 Tulkitse:
 
-1. `policy_ev_current_a = -1` tarkoittaa skip-tilaa
-2. `policy_ev_current_a = 0` voi tarkoittaa joko release-semantiiikkaa tai `MAX_EXPORT`-off-tavoitetta
-3. `policy_ev_current_a > 0` tarkoittaa aktiivista kirjoituspyyntoa
+1. jos `EV_CHARGER.enabled = false` ja `target_w = 0`, EV:ta ei pyydeta aktiiviseksi
+2. jos `EV_CHARGER.enabled = true` ja `target_w > 0`, writer muuntaa pyynnon ampeereiksi
+3. writer-tracen `reason` kertoo, kirjoitettiinko oikeasti vai oliko tila jo valmiiksi oikea
 
 ### EV jaa vaaraan virtaan
 
@@ -305,7 +343,7 @@ Tarkista:
 
 1. `ev_force_current_a`
 2. `goal_profile`
-3. `surplus_adjustable_active`
+3. `sensor.ems_device_policies_pyscript`
 4. `actuator_writer_trace.ev.reason`
 
 Tyypillinen selitys nykykoodissa:
@@ -317,7 +355,7 @@ Restore_min-haaran tarkennus (EV-primary + HOME_BATTERY):
 
 1. jos `ev_policy_mode = restore_min` ja `charger_on = false`, battery-target voi jatkaa normaalia NET_ZERO-saatoa (purku sallittu)
 2. jos `ev_policy_mode = restore_min` ja `charger_on = true`, battery floor-hold voi aktivoitua ja battery-target lukittuu flooriin
-3. tarkista aina yhdessa: `ev_policy_mode`, `policy_ev_current_a`, `switch.charger_control` (`charger_on`) ja `battery_min_floor_reason`
+3. tarkista aina yhdessa: `ev_policy_mode`, `EV_CHARGER.target_w`, `switch.charger_control` (`charger_on`) ja `battery_min_floor_reason`
 
 ### Releet eivat aktivoidu
 
@@ -325,8 +363,8 @@ Tarkista:
 
 1. `relay*_surplus_allowed`
 2. `relay*_force_on`
-3. `surplus_r*_active`
-4. `policy_relay*_command`
+3. `sensor.ems_active_surplus_devices`
+4. `device_policies`
 5. `actuator_writer_trace.relay*`
 
 ### Akku ei reagoi
@@ -336,7 +374,7 @@ Tarkista:
 1. `battery_write_enabled`
 2. `control_profile`
 3. `guard`
-4. `policy_battery_target_w`
+4. `device_policies`
 5. `actuator_battery_setpoint_w`
 6. writerin deadband- ja ramp-arvot
 
@@ -368,7 +406,6 @@ Jos `effective_forecast=NONE`, EMS on paikallisessa fallbackissa, vaikka HAEO ol
 
 1. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
 2. `DEGRADED`-tilassa writer skiptaa rele- ja EV-actuatorien aktiivisen pakottamisen, vaikka latchit clearataan. Tama kannattaa huomioida turvallisuusriskina ja erillisena tuotantopaatoksena.
-3. Repossa on vanhoja artefakteja kuten `__pycache__` ja `.pyc`, jotka voivat hammentaa analyysia.
 
 ## Avoimet kysymykset / jatkokehitys
 

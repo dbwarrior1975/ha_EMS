@@ -1,0 +1,16 @@
+from pathlib import Path
+
+from ems_adapter.config_loader import load_grouped_ems_config
+from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _load_entities():
+    config = load_grouped_ems_config(_project_root() / 'EMS_config.yaml')
+    return build_runtime_entities_from_grouped_config(config)
+
+
+ENT = _load_entities()

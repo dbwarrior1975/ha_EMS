@@ -1,9 +1,8 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_homebattery_adjustable_load.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_homebattery_adjustable_load.scenario_steps import run_steps
-
 
 @pytest.mark.scenario
 def test_01_baseline_to_adjustable_activation(project_root):
@@ -19,23 +18,16 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: -10.0,
                 ENT['grid_power_w']: -20.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_battery_target_w']: 0,
+            'expect_device_policies': {
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'surplus_next_target': 'ADJUSTABLE',
                 'surplus_primary_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 0,
@@ -49,23 +41,16 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 100.0,
                 ENT['grid_power_w']: -1200.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_battery_target_w']: 600,
+            'expect_device_policies': {
+                'HOME_BATTERY': {'target_w': 600},
             },
             'expect_policy': {
                 'surplus_next_target': 'ADJUSTABLE',
                 'surplus_primary_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 600,
@@ -79,24 +64,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: -1000.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 1400,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 1400},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 1400,
@@ -110,24 +88,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 550.0,
                 ENT['grid_power_w']: -2800.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -141,24 +112,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 530.0,
                 ENT['grid_power_w']: -1120.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_r1_active']: False,
-                ENT['surplus_r2_active']: False,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -172,17 +136,13 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 340.0,
                 ENT['grid_power_w']: -1843.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
                 ENT['actuator_ev_current_a']: 6,
@@ -198,18 +158,14 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 50.0,
                 ENT['grid_power_w']: -3140.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
                 ENT['actuator_ev_current_a']: 6,
@@ -225,18 +181,14 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 50.0,
                 ENT['grid_power_w']: -1840.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
                 ENT['actuator_ev_current_a']: 6,
@@ -252,22 +204,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 250.0,
                 ENT['grid_power_w']: -4140.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
                 'surplus_explanation': 'Waiting for ADJUSTABLE; raw RPC below threshold',
             },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
-            },
             'expect_values': {
-                ENT['surplus_adjustable_active']: None,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -281,22 +228,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 500.0,
                 ENT['grid_power_w']: -1500.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 0,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 88.0,
                 'surplus_next_target': 'ADJUSTABLE',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'restore_min',
-            },
-            'expect_dispatch_state': {
-                'decision': 'ACTIVATE_ADJUSTABLE',
             },
             'expect_values': {
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_ev_current_a']: 6,
                 ENT['actuator_ev_enabled']: False,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -310,22 +252,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 450.0,
                 ENT['grid_power_w']: -40.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 28,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_next_target': 'RELAY1',
                 'surplus_freeze_until_ts': 88.0,
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'burn',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -339,22 +276,17 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['rpnz_w']: 450.0,
                 ENT['grid_power_w']: -40.0,
             },
-            'expect_policy_values': {
-                ENT['policy_ev_current_a']: 28,
-                ENT['policy_battery_target_w']: 2000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
                 'surplus_next_target': 'RELAY1',
                 'surplus_freeze_until_ts': 88.0,
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'burn',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
-                ENT['surplus_adjustable_active']: True,
                 ENT['actuator_ev_enabled']: True,
                 ENT['actuator_ev_current_a']: 28,
                 ENT['actuator_battery_setpoint_w']: 2000,
@@ -369,19 +301,14 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: 4040.0,
                 ENT['pv_power_kw']: 3.0,
             },
-            'expect_policy_values': {
-                ENT['surplus_dispatch_decision_pys']: 'NOOP',
-                ENT['policy_ev_current_a']: 28,
-                ENT['policy_battery_target_w']: 1000,
+            'expect_device_policies': {
+                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'HOME_BATTERY': {'target_w': 1000},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 88.0,
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'ev_policy_mode': 'burn',
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: True,

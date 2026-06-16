@@ -42,6 +42,39 @@ Lisadokumentaatio:
 4. `tilakaavio.md`
 5. `business_logic_guide.md`
 
+## Konfiguraatio
+
+Nykyinen kanoninen tuotantokonfiguraatio on grouped YAML -tiedosto:
+
+- `EMS_config.yaml`
+
+EMS olettaa tuotannossa oletuksena, etta tiedosto loytyy Home Assistantin
+`/config/`-hakemistosta talla tarkalla nimella:
+
+- `/config/EMS_config.yaml`
+
+Kaytannossa:
+
+1. kopioi repon `EMS_config.yaml` Home Assistantin `/config/`-hakemistoon
+2. sailyta tiedoston nimi `EMS_config.yaml`
+3. paivita tiedoston sisaiset entity-id:t vastaamaan omaa HA-ymparistoasi
+
+Oletuspolku tulee suoraan runtime-koodista:
+
+- `modules/ems_adapter/runtime_context.py`
+- `_DEFAULT_GROUPED_CONFIG_PATH = '/config/EMS_config.yaml'`
+
+`EMS_GROUPED_CONFIG_PATH` voi edelleen overrideata polun, mutta normaalissa
+tuotantokaytossa sita ei tarvita.
+
+Tarkeä rajaus:
+
+1. grouped `EMS_config.yaml` on nykyinen kanoninen konfiguraatio
+2. runtime rakentaa entity-id:t `runtime_context`-kerroksen kautta
+3. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
+4. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
+   kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
+
 ## Nopeat suunnistusdokumentit
 
 Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
@@ -134,12 +167,18 @@ Nykyinen ensitoteutus kattaa EMS-sisaisen combon valinnan, HAEO-tehorajat ja com
 ## Tarkeat entiteetit
 
 README kuvaa EMS:n kayttorajapinnan ensisijaisesti EMS-avaimilla.
-Home Assistant -entity_id-mappaus loytyy tiedostosta `modules/ems_adapter/entity_map.py`.
+Nykyinen tuotantopolku rakentaa Home Assistant -entity_id:t ensisijaisesti
+grouped `EMS_config.yaml` -tiedostosta `runtime_context`-kerroksen kautta.
+
+Keskeiset tiedostot:
+
+1. `EMS_config.yaml`
+2. `modules/ems_adapter/runtime_context.py`
 
 Nopea mappausperiaate:
 
 1. dokumentaatio ja operointi = EMS-avaimet
-2. runtime-integraatio = entity_mapin HA entity_id:t
+2. runtime-integraatio = `EMS_config.yaml`-tiedoston HA entity_id:t
 
 Keskeiset profiiliavaimet (EMS):
 
@@ -220,17 +259,15 @@ HAEO freshness arvioidaan seka battery- etta EV-freshness-lahteiden iasta. Molem
 
 Keskeiset policy-ulostuloavaimet (EMS):
 
-1. `policy_battery_target_w`
-2. `policy_ev_current_a`
-3. `policy_relay1_command`
-4. `policy_relay2_command`
-5. `policy_decision_trace`
-6. `surplus_policy_active_pys`
-7. `surplus_next_target_pys`
-8. `surplus_next_threshold_pys`
-9. `surplus_release_candidate_pys`
-10. `surplus_explanation_pys`
-11. `surplus_dispatch_decision_pys`
+1. `device_policies`
+2. `policy_decision_trace`
+3. `surplus_policy_active_pys`
+4. `surplus_next_target_pys`
+5. `surplus_next_threshold_pys`
+6. `surplus_release_candidate_pys`
+7. `surplus_explanation_pys`
+8. `active_surplus_devices`
+9. `previous_device_state`
 
 Keskeiset actuator-avaimet (EMS):
 
@@ -307,7 +344,7 @@ Pytest-markerit:
 Huomio contract-testeista:
 
 1. `contract` ei ole erillinen marker `pytest.ini`:ssa
-2. contract-testit ovat kansiossa `tests/contract/` (esim. `tests/contract/test_entity_map_contract.py`)
+2. contract-testit ovat kansiossa `tests/contract/`
 3. aja contract-testit suoraan polulla tai `-k contract`-suodatuksella
 
 Projektin testikomento:
@@ -324,7 +361,8 @@ Tama repositorio ei sisalla koko Home Assistant -ympariston konfiguraatiota, vaa
 
 Ennen kayttoonottoa varmista ainakin:
 
-1. kaikki `entity_map.py`-mappauksen vaatimukset on provisioitu
+1. `EMS_config.yaml` on kopioitu Home Assistantin `/config/`-hakemistoon nimella `/config/EMS_config.yaml`
+2. kaikki `EMS_config.yaml`-tiedostossa viitatut entityt on provisioitu
 2. Pyscript on saatavilla ja top-level scriptit voidaan suorittaa
 3. goal-, control-, forecast- ja guard-profiilien arvot vastaavat projektin tukemia tiloja
 4. HAEO forecast- ja freshness-entiteetit ovat olemassa, jos forecast-kayttoa halutaan

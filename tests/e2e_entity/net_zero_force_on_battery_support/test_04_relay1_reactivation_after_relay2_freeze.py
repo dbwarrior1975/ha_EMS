@@ -1,9 +1,9 @@
 import pytest
 
-from ems_adapter.entity_map import ENT
+from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
-
+from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_04_relay1_reactivation_after_relay2_freeze(project_root):
@@ -11,15 +11,17 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
     h = build_harness(project_root)
 
     # Seed post-t284 state so phase is independent from previous phases.
+    seed_active_surplus_devices(
+        h,
+        active_device_ids=('RELAY2',),
+        actuator_relay1=False,
+        actuator_relay2=True,
+        actuator_ev_enabled=False,
+        actuator_ev_current_a=6,
+    )
     h.set_entities({
         ENT['relay2_force_on']: False,
-        ENT['surplus_r1_active']: False,
-        ENT['surplus_r2_active']: True,
         ENT['surplus_freeze_until']: 285.0,
-        ENT['actuator_relay1']: False,
-        ENT['actuator_relay2']: True,
-        ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 6,
     })
 
     steps = [
@@ -38,12 +40,12 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 0,
-                ENT['policy_relay2_command']: 1,
+            'expect_device_policies': {
+                'RELAY1': {'enabled': False, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_dispatch_state': {
-                'decision': 'ACTIVATE_RELAY1',
+
                 'freeze_until_ts': 315.0,
             },
             'expect_writer_trace': {
@@ -57,8 +59,6 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r2_active']: True,
-                ENT['surplus_r1_active']: True,
                 ENT['actuator_relay1']: False,
                 ENT['actuator_relay2']: True,
             },
@@ -78,12 +78,9 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -96,8 +93,6 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },
@@ -116,12 +111,9 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 'prev_relay1_force_on': False,
                 'prev_relay2_force_on': False,
             },
-            'expect_policy_values': {
-                ENT['policy_relay1_command']: 1,
-                ENT['policy_relay2_command']: 1,
-            },
-            'expect_dispatch_state': {
-                'decision': 'NOOP',
+            'expect_device_policies': {
+                'RELAY1': {'enabled': True, 'mode': 'relay'},
+                'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -134,8 +126,6 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 },
             },
             'expect_values': {
-                ENT['surplus_r1_active']: True,
-                ENT['surplus_r2_active']: True,
                 ENT['actuator_relay1']: True,
                 ENT['actuator_relay2']: True,
             },

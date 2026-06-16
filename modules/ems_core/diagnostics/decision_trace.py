@@ -1,4 +1,20 @@
 def net_zero_attrs(outputs, profiles, guard_decision=None):
+    device_policy_payloads = outputs.attrs.get('device_policies')
+    if not device_policy_payloads and getattr(outputs, 'device_policies', ()):
+        payloads = []
+        for policy in outputs.device_policies:
+            payload = {
+                'device_id': policy.device_id,
+                'target_w': int(policy.target_w),
+                'enabled': bool(policy.enabled),
+                'mode': policy.mode,
+                'reason': policy.reason,
+            }
+            if getattr(policy, 'current_a', None) is not None:
+                payload['current_a'] = int(policy.current_a)
+            payloads.append(payload)
+        device_policy_payloads = tuple(payloads)
+
     attrs = {
         'control': profiles.control,
         'goal': profiles.goal,
@@ -18,6 +34,7 @@ def net_zero_attrs(outputs, profiles, guard_decision=None):
         'surplus_release_candidate': outputs.surplus_release_candidate,
         'surplus_dispatch_decision': outputs.surplus_dispatch_decision,
         'surplus_explanation': outputs.surplus_explanation,
+        'device_policies': device_policy_payloads or (),
     }
 
     attrs.update(outputs.attrs)

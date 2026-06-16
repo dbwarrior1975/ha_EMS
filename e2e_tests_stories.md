@@ -4,6 +4,16 @@ Tama dokumentti kuvaa nykyiset `tests/e2e_entity`-hakemiston story-kansiot. Vanh
 
 Jokaisessa story-kansiossa on oma `scenario_overview.md`, joka on tarkin paikka yksityiskohtaiselle vaihejaolle.
 
+Kanoninen e2e-semanttiikka:
+
+1. policy-tason odotukset todennetaan ensisijaisesti `device_policies`-rakenteesta
+2. dispatch-tason odotukset todennetaan `policy_decision_trace`- ja
+   `dispatch_state_applier_trace` -attribuuteista
+3. aktiivinen surplus-tila todennetaan kanonisesti `active_surplus_devices`-rakenteesta
+4. vanhat `policy_*`- ja `surplus_*_active` -entityt eivat kuulu enaa
+   tuotantopintaan; mahdolliset viittaukset niihin ovat vain historiallista
+   kontekstia dokumenteissa
+
 ## 1) BATTERY_PROTECT min-cell recovery
 
 Kansio: `tests/e2e_entity/battery_protect_min_cell_recovery/`
@@ -58,7 +68,7 @@ Eteneminen:
 4. EMS:n sisainen HAEO-plan valitsee `HOME_BATTERY` primaryksi ja `EV_CHARGER` adjustable surplus -kohteeksi.
 5. Config-helperit seedataan tahallaan vastakkaiseen comboon, jotta testi todentaa HAEO-planin ohittavan helper-combon.
 6. Akku target clampataan HAEO battery -rajan mukaan.
-7. EV adjustable current clampataan HAEO EV -rajan mukaan seuraavalla policy-kierroksella, kun `surplus_adjustable_active` on ensin aktivoitu.
+7. EV adjustable target clampataan HAEO EV -rajan mukaan seuraavalla policy-kierroksella, kun `EV_CHARGER` on ensin aktivoitu kanoniseen `active_surplus_devices`-tilaan.
 
 ## 6) NET_ZERO force-on relay2 with freeze hygiene
 
@@ -104,4 +114,4 @@ Kansio: `tests/e2e_entity/system_degraded_safe_mode/`
 Eteneminen:
 1. Stale battery inverter heartbeat ajaa guardin `DEGRADED`-tilaan.
 2. Akku target clampataan nollaan ja EV/rele-policy menee skip-tilaan.
-3. Latchit voidaan clearata, mutta writer ei pakota olemassa olevia EV/rele-actuatoreita pois paalta, jos policy on `-1`.
+3. Aktiivinen surplus-tila voidaan clearata, mutta writer ei pakota olemassa olevia EV/rele-actuatoreita pois paalta, jos policy on `-1`.

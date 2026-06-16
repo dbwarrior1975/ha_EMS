@@ -1,6 +1,6 @@
 import pytest
 from ems_core.diagnostics.decision_trace import net_zero_attrs
-from ems_core.domain.models import NetZeroOutputs
+from ems_core.domain.models import DevicePolicy, NetZeroOutputs
 from tests.helpers import make_profiles
 
 
@@ -21,10 +21,24 @@ def test_decision_trace_exposes_core_fields_and_battery_authority():
         effective_forecast='NONE',
         dominant_limitation='USER_MANUAL_OVERRIDE',
         explanation='User manual control active',
-        attrs={'configured_forecast': 'NONE'},
+        device_policies=(
+            DevicePolicy(
+                device_id='HOME_BATTERY',
+                target_w=100,
+                enabled=False,
+                mode='power',
+                reason='battery_policy',
+            ),
+        ),
+        attrs={
+            'configured_forecast': 'NONE',
+            'device_policy_parity_ok': True,
+        },
     )
     attrs = net_zero_attrs(out, make_profiles())
     assert attrs['battery_write_enabled'] is False
     assert attrs['battery_target_w'] == 100
     assert attrs['ev_current_a'] == 12
     assert attrs['configured_forecast'] == 'NONE'
+    assert attrs['device_policy_parity_ok'] is True
+    assert attrs['device_policies'][0]['device_id'] == 'HOME_BATTERY'
