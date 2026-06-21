@@ -27,7 +27,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_device_next_device_id': 'RELAY1',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min', 'current_a': 0},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
                 'RELAY1': {'enabled': False},
             },
             'expect_dispatch_state': {
@@ -58,7 +58,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_device_next_device_id': 'EV_CHARGER',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min', 'current_a': 0},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
                 'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {
@@ -90,7 +90,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_device_next_device_id': 'RELAY2',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': True, 'mode': 'burn', 'current_a': 28},
+                'EV_CHARGER': {'enabled': True, 'mode': 'burn'},
                 'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {
@@ -128,7 +128,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_device_next_device_id': 'RELAY2',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': True, 'mode': 'burn', 'current_a': 28},
+                'EV_CHARGER': {'enabled': True, 'mode': 'burn'},
                 'RELAY1': {'enabled': True},
             },
             'expect_dispatch_state': {

@@ -1,6 +1,6 @@
 import pytest
 
-from ems_adapter.config_loader import legacy_parity_index, load_grouped_ems_config, validate_grouped_ems_config
+from ems_adapter.config_loader import runtime_alias_index, load_grouped_ems_config, validate_grouped_ems_config
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
 
 
@@ -10,7 +10,7 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
     result = validate_grouped_ems_config(config)
     assert result.ok is True
 
-    aliases = legacy_parity_index(config)
+    aliases = runtime_alias_index(config)
     runtime_entities = build_runtime_entities_from_grouped_config(config)
 
     expected_exact_matches = {
@@ -67,16 +67,16 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
         'pv_power_kw',
     }
 
-    for legacy_key in expected_exact_matches:
-        assert aliases[legacy_key].value == runtime_entities[legacy_key], legacy_key
+    for runtime_key in expected_exact_matches:
+        assert aliases[runtime_key].value == runtime_entities[runtime_key], runtime_key
 
 
 @pytest.mark.unit
-def test_grouped_config_aliases_cover_legacy_ems_config_fields(project_root):
+def test_grouped_config_aliases_cover_runtime_scalar_fields(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    aliases = legacy_parity_index(config)
+    aliases = runtime_alias_index(config)
 
-    expected_ems_config_legacy_keys = {
+    expected_ems_config_runtime_keys = {
         'deadband_w',
         'ramp_max_w',
         'strict_limits_max_w',
@@ -109,13 +109,13 @@ def test_grouped_config_aliases_cover_legacy_ems_config_fields(project_root):
         'relay2_priority',
     }
 
-    assert expected_ems_config_legacy_keys <= set(aliases)
+    assert expected_ems_config_runtime_keys <= set(aliases)
 
 
 @pytest.mark.unit
 def test_example_grouped_config_exposes_explicit_unit_aliases(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    aliases = legacy_parity_index(config)
+    aliases = runtime_alias_index(config)
 
     assert aliases['required_power_consumption_kw'].unit_transform == 'W_TO_KW'
     assert aliases['pv_power_kw'].unit_transform == 'W_TO_KW'

@@ -43,7 +43,7 @@ def test_02_release_relay2_then_adjustable(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
                 'RELAY2': {'enabled': True, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2'),
@@ -72,7 +72,7 @@ def test_02_release_relay2_then_adjustable(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
                 'RELAY2': {'enabled': True, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
@@ -100,7 +100,7 @@ def test_02_release_relay2_then_adjustable(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': ('RELAY1',),

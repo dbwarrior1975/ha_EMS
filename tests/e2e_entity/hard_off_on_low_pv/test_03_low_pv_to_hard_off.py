@@ -44,7 +44,7 @@ def test_03_low_pv_to_hard_off(project_root):
                 'pv_power_kw': 1.3,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
                 'ev': {

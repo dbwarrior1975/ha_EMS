@@ -449,7 +449,6 @@ class DevicePolicy:
     enabled: bool
     mode: str
     reason: str = ''
-    current_a: Optional[int] = None
 
 
 @dataclass

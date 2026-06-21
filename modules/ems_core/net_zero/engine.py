@@ -199,8 +199,6 @@ def _device_policy_payload(policy):
         'mode': policy.mode,
         'reason': policy.reason,
     }
-    if policy.device_id == 'EV_CHARGER' and policy.current_a is not None:
-        payload['current_a'] = int(policy.current_a)
     return payload
 
 
@@ -238,7 +236,6 @@ def _build_device_policies(
             enabled=int(ev_current_a) > 0,
             mode=str(ev_policy_mode),
             reason='ev_policy',
-            current_a=int(ev_current_a),
         ),
         DevicePolicy(
             device_id='RELAY1',
@@ -257,19 +254,13 @@ def _build_device_policies(
     )
 
 
-def _legacy_outputs_from_device_policies(device_policies):
+def _legacy_outputs_from_device_policies(device_policies, *, ev_current_a):
     by_id = {}
     for policy in device_policies:
         by_id[policy.device_id] = policy
 
-    ev_policy = by_id['EV_CHARGER']
     relay1_policy = by_id['RELAY1']
     relay2_policy = by_id['RELAY2']
-
-    if ev_policy.current_a is None:
-        ev_current_a = 0
-    else:
-        ev_current_a = int(ev_policy.current_a)
 
     if relay1_policy.mode == 'skip':
         relay1_command = -1
@@ -291,7 +282,7 @@ def _legacy_outputs_from_device_policies(device_policies):
 
 
 def _device_policy_parity_mismatch(device_policies, *, battery_target_w, battery_write_enabled, ev_current_a, relay1_command, relay2_command):
-    derived = _legacy_outputs_from_device_policies(device_policies)
+    derived = _legacy_outputs_from_device_policies(device_policies, ev_current_a=ev_current_a)
     mismatches = []
     if derived['battery_target_w'] != int(round(float(battery_target_w))):
         mismatches.append('HOME_BATTERY.target_w')
@@ -984,7 +975,7 @@ def compute_net_zero_engine_outputs(
         relay1_command=relay1_command,
         relay2_command=relay2_command,
     )
-    legacy_outputs = _legacy_outputs_from_device_policies(device_policies)
+    legacy_outputs = _legacy_outputs_from_device_policies(device_policies, ev_current_a=ev_current_a)
     device_policy_parity_mismatch = _device_policy_parity_mismatch(
         device_policies,
         battery_target_w=battery_target_w,

@@ -108,7 +108,7 @@ def test_explicit_adjustable_activation_overrides_device_default_threshold():
 
 
 @pytest.mark.unit
-def test_device_target_to_legacy_target_preserves_threshold_and_state():
+def test_device_target_export_mapping_preserves_threshold_and_state():
     cfg = make_cfg(relay1_power_kw=2.5)
     relay1 = build_surplus_device_targets(
         cfg,
@@ -135,7 +135,7 @@ def test_device_target_to_legacy_target_preserves_threshold_and_state():
 
 
 @pytest.mark.unit
-def test_device_dispatch_to_legacy_dispatch_maps_device_id_to_decision_name():
+def test_device_dispatch_export_mapping_maps_device_id_to_decision_name():
     cfg = make_cfg(adjustable_surplus_load='EV_CHARGER', adjustable_surplus_activation=2000)
     targets = build_surplus_device_targets(
         cfg,

@@ -97,8 +97,8 @@ class ConfigValidationResult:
 
 
 @dataclass
-class LegacyParityAlias:
-    legacy_key: str
+class RuntimeAlias:
+    runtime_key: str
     config_path: str
     value: str
     unit_transform: str = 'identity'
@@ -250,7 +250,7 @@ def _validation_result(ok: bool, issues: list[ConfigValidationIssue]) -> ConfigV
     )
 
 
-def build_legacy_parity_aliases(config: dict) -> tuple[LegacyParityAlias, ...]:
+def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
     ems = config.get('ems', {})
     profiles = ems.get('profiles', {})
     global_config = ems.get('global_config', {})
@@ -357,10 +357,10 @@ def build_legacy_parity_aliases(config: dict) -> tuple[LegacyParityAlias, ...]:
     return tuple(active_aliases)
 
 
-def legacy_parity_index(config: dict) -> dict[str, LegacyParityAlias]:
+def runtime_alias_index(config: dict) -> dict[str, RuntimeAlias]:
     index = {}
-    for alias in build_legacy_parity_aliases(config):
-        index[alias.legacy_key] = alias
+    for alias in build_runtime_aliases(config):
+        index[alias.runtime_key] = alias
     return index
 
 
@@ -441,10 +441,10 @@ def build_core_config_from_grouped_reader(
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),
     )
-    return _populate_core_config_compat_fields(core_config)
+    return _populate_core_config_derived_fields(core_config)
 
 
-def _populate_core_config_compat_fields(core_config: CoreConfig) -> CoreConfig:
+def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
     if core_config.role_constraints is None:
         core_config.role_constraints = CoreRoleConstraintsConfig()
     if core_config.deadband_w is None:
@@ -700,7 +700,7 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
         ),
         haeo=None,
     )
-    return _populate_core_config_compat_fields(core_config)
+    return _populate_core_config_derived_fields(core_config)
 
 
 def build_ems_config_from_core_config(core_config: CoreConfig) -> EmsConfig:
@@ -1117,9 +1117,9 @@ def _build_core_role_constraints(role_constraints: object, read_entity: Callable
     )
 
 
-def _alias(legacy_key: str, config_path: str, value: object, unit_transform: str = 'identity') -> LegacyParityAlias:
-    return LegacyParityAlias(
-        legacy_key=legacy_key,
+def _alias(runtime_key: str, config_path: str, value: object, unit_transform: str = 'identity') -> RuntimeAlias:
+    return RuntimeAlias(
+        runtime_key=runtime_key,
         config_path=config_path,
         value='' if value is None else str(value),
         unit_transform=unit_transform,
@@ -1127,12 +1127,12 @@ def _alias(legacy_key: str, config_path: str, value: object, unit_transform: str
 
 
 def _read_grouped_value(
-    aliases: dict[str, LegacyParityAlias],
+    aliases: dict[str, RuntimeAlias],
     read_entity: Callable[[str, object], object],
-    legacy_key: str,
+    runtime_key: str,
     default: object,
 ) -> object:
-    alias = aliases.get(legacy_key)
+    alias = aliases.get(runtime_key)
     if alias is None:
         return default
     raw_value = read_entity(alias.value, default)

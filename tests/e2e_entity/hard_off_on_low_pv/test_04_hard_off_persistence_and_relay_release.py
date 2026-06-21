@@ -44,7 +44,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 'pv_power_kw': 1.1,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -74,7 +74,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
                 'relay1': {

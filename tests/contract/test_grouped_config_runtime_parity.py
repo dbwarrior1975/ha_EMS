@@ -25,7 +25,7 @@ def _write_grouped_config_with_override(project_root, tmp_path, dotted_path, val
 
 
 @pytest.mark.unit
-def test_grouped_config_builds_same_ems_config_and_device_configs_as_compat_read_config(project_root):
+def test_grouped_config_builds_same_ems_config_and_device_configs_as_scalar_config_view(project_root):
     grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     validation = validate_grouped_ems_config(grouped_config)
     assert validation.ok is True
@@ -65,15 +65,15 @@ def test_grouped_config_builds_same_ems_config_and_device_configs_as_compat_read
         }
     )
 
-    compat_config = harness.policy_mod['read_config']()
+    scalar_config = harness.policy_mod['read_config']()
     grouped_config_view = build_ems_config_from_grouped_config(grouped_config, harness.store.values)
 
-    assert grouped_config_view == compat_config
-    assert build_device_configs(grouped_config_view) == build_device_configs(compat_config)
+    assert grouped_config_view == scalar_config
+    assert build_device_configs(grouped_config_view) == build_device_configs(scalar_config)
 
 
 @pytest.mark.unit
-def test_grouped_config_runtime_reader_matches_dict_parity_view(project_root):
+def test_grouped_config_runtime_reader_matches_dict_scalar_view(project_root):
     grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     validation = validate_grouped_ems_config(grouped_config)
     assert validation.ok is True
@@ -161,11 +161,11 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
         }
     )
 
-    compat_config = harness.policy_mod['_read_compat_config']()
+    scalar_config = harness.policy_mod['_read_scalar_config_view']()
     returned_config = harness.policy_mod['read_config']()
     status = harness.policy_mod['_GROUPED_CONFIG_DUAL_READ_STATUS']
 
-    assert returned_config == compat_config
+    assert returned_config == scalar_config
     assert status['enabled'] is True
     assert status['ok'] is True
     assert status['source'] == 'grouped_config'

@@ -27,7 +27,7 @@ def test_forecast_missing_keeps_runtime_alive(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_values': {

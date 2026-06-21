@@ -40,7 +40,7 @@ def test_goal_switch_to_max_export_clears_surplus(project_root):
                 'surplus_device_next_device_id': 'RELAY2',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': True, 'mode': 'burn', 'current_a': 28},
+                'EV_CHARGER': {'enabled': True, 'mode': 'burn'},
                 'RELAY1': {'enabled': False},
                 'RELAY2': {'enabled': False},
             },

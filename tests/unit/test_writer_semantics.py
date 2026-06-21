@@ -258,7 +258,7 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
 
 
 @pytest.mark.unit
-def test_writer_ev_uses_target_w_even_if_current_a_mirror_conflicts(project_root):
+def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies(
@@ -267,7 +267,6 @@ def test_writer_ev_uses_target_w_even_if_current_a_mirror_conflicts(project_root
             {
                 'device_id': 'EV_CHARGER',
                 'target_w': 5520,
-                'current_a': 28,
                 'enabled': True,
                 'mode': 'burn',
             }
@@ -389,7 +388,6 @@ def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(pr
                 {
                     'device_id': 'EV_CHARGER',
                     'target_w': 2760,
-                    'current_a': 12,
                     'enabled': True,
                     'mode': 'burn',
                 },
@@ -457,7 +455,6 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
             {
                 'device_id': 'EV_CHARGER',
                 'target_w': 0,
-                'current_a': 0,
                 'enabled': True,
                 'mode': 'release',
             },
@@ -521,7 +518,6 @@ def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
             {
                 'device_id': 'EV_CHARGER',
                 'target_w': 0,
-                'current_a': 0,
                 'enabled': False,
                 'mode': 'hard_off',
             }

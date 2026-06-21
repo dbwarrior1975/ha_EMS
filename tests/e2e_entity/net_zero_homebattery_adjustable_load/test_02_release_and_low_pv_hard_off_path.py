@@ -35,7 +35,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 1.4,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
@@ -57,7 +57,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 1.4,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -900},
             },
             'expect_policy': {
@@ -77,7 +77,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 0.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
@@ -97,7 +97,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 0.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -900},
             },
             'expect_policy': {
@@ -116,7 +116,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 1.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -1200},
             },
             'expect_policy': {
@@ -139,7 +139,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 1.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -1800},
             },
             'expect_policy': {
@@ -163,7 +163,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 ENT['pv_power_kw']: 1.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -2200},
             },
             'expect_policy': {

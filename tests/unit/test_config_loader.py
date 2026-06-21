@@ -9,7 +9,7 @@ from ems_adapter.config_loader import (
     SEVERITY_WARNING,
     build_ems_config_from_grouped_config,
     build_ems_config_from_grouped_reader,
-    legacy_parity_index,
+    runtime_alias_index,
     load_grouped_ems_config,
     load_and_validate_grouped_ems_config,
     validate_grouped_ems_config,
@@ -157,9 +157,9 @@ def test_validate_rejects_negative_step_numeric_constant(project_root):
 
 
 @pytest.mark.unit
-def test_legacy_parity_index_exposes_unit_transform_metadata(project_root):
+def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
-    aliases = legacy_parity_index(config)
+    aliases = runtime_alias_index(config)
 
     assert aliases['required_power_consumption_kw'].config_path == 'ems.runtime.required_power_w'
     assert aliases['required_power_consumption_kw'].unit_transform == 'W_TO_KW'
@@ -168,9 +168,9 @@ def test_legacy_parity_index_exposes_unit_transform_metadata(project_root):
 
 
 @pytest.mark.unit
-def test_legacy_parity_index_contains_expected_core_aliases(project_root):
+def test_runtime_alias_index_contains_expected_core_aliases(project_root):
     config = _load_example(project_root)
-    aliases = legacy_parity_index(config)
+    aliases = runtime_alias_index(config)
 
     assert aliases['control_profile'].config_path == 'ems.profiles.control'
     assert aliases['ramp_max_w'].config_path == 'ems.global_config.ramp_w'
@@ -179,7 +179,7 @@ def test_legacy_parity_index_contains_expected_core_aliases(project_root):
 
 
 @pytest.mark.unit
-def test_build_ems_config_from_grouped_config_no_longer_depends_on_legacy_alias_runtime(project_root, monkeypatch):
+def test_build_ems_config_from_grouped_config_no_longer_depends_on_runtime_alias_runtime(project_root, monkeypatch):
     config = _load_example(project_root)
     entity_values = {
         'input_number.ems_deadband_w': 75,
@@ -214,10 +214,10 @@ def test_build_ems_config_from_grouped_config_no_longer_depends_on_legacy_alias_
         'input_number.ems_surplus_relay2_priority': 1,
     }
 
-    def _fail_legacy_alias_runtime(_config):
-        raise AssertionError('legacy parity index must not be used by grouped runtime reader')
+    def _fail_runtime_alias_runtime(_config):
+        raise AssertionError('runtime alias index must not be used by grouped runtime reader')
 
-    monkeypatch.setattr('ems_adapter.config_loader.legacy_parity_index', _fail_legacy_alias_runtime)
+    monkeypatch.setattr('ems_adapter.config_loader.runtime_alias_index', _fail_runtime_alias_runtime)
 
     cfg = build_ems_config_from_grouped_config(config, entity_values)
 

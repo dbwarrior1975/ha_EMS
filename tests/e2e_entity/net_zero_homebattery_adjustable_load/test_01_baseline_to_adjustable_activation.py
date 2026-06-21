@@ -65,7 +65,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -1000.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 1400},
             },
             'expect_policy': {
@@ -89,7 +89,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -2800.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -113,7 +113,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -1120.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -137,7 +137,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -1843.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -159,7 +159,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -3140.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -182,7 +182,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -1840.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -205,7 +205,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -4140.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -229,7 +229,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -1500.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -253,7 +253,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -40.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -277,7 +277,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['grid_power_w']: -40.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 2000},
             },
             'expect_policy': {
@@ -302,7 +302,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 ENT['pv_power_kw']: 3.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 1000},
             },
             'expect_policy': {

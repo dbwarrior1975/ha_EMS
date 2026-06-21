@@ -4,7 +4,7 @@ from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
     build_ems_config_from_grouped_reader,
     build_ems_config_from_core_config,
-    legacy_parity_index,
+    runtime_alias_index,
     load_and_validate_grouped_ems_config,
 )
 from ems_adapter.ha_adapter import get_bool as _get_bool
@@ -131,7 +131,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
 
 def build_runtime_entities_from_grouped_config(config):
     ent = {}
-    alias_index = legacy_parity_index(config)
+    alias_index = runtime_alias_index(config)
     for key in (
         'control_profile',
         'goal_profile',
@@ -241,9 +241,9 @@ def read_runtime_context(read_bool=None, read_float=None, read_int=None, read_st
             read_str,
         )
 
-    compat_cfg = build_ems_config_from_grouped_reader(grouped_config, grouped_reader)
-    grouped_legacy_view = build_ems_config_from_core_config(grouped_cfg)
-    mismatches = _config_mismatches(grouped_legacy_view, compat_cfg)
+    scalar_cfg = build_ems_config_from_grouped_reader(grouped_config, grouped_reader)
+    grouped_scalar_view = build_ems_config_from_core_config(grouped_cfg)
+    mismatches = _config_mismatches(grouped_scalar_view, scalar_cfg)
     status['ok'] = not mismatches
     status['mismatches'] = mismatches
     status['strict'] = True

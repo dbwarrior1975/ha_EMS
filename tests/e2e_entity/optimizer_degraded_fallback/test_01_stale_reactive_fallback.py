@@ -25,7 +25,7 @@ def test_optimizer_stale_reactive_fallback(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 200},
             },
             'expect_values': {

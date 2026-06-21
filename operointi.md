@@ -314,6 +314,16 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 11. `config_grouped_production_ready`
 12. `device_policies`
 
+Tulkitse policy trace oikein:
+
+1. `device_policies` on writerin kanoninen ohjauspyynto
+2. `ev_current_a` on diagnostinen scalar-trace, ei osa `device_policies`-sopimusta
+3. writerin ampeeritotuus loytyy `actuator_writer_trace.ev.target_current_a`-kentasta
+4. scalar-kentat kuten `battery_target_w`, `relay1_command`, `relay2_command` ja
+   `surplus_dispatch_decision` ovat diagnostista trace-dataa
+5. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
+   toteutuneeseen actuator-traceen ja nykyiseen actuator-stateen
+
 Sen jalkeen tarkasta:
 
 1. `sensor.ems_dispatch_state_applier_trace`

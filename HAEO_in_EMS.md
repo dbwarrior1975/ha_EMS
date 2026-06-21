@@ -131,7 +131,7 @@ Nykyinen toteutunut malli:
 2. HAEO clampaa EV:ta watteina (`ev_limit_w`)
 3. device-policy kuljettaa writerille kanonisesti `target_w`-arvon
 4. writer muuntaa `target_w` -> selector `current_a`
-5. `current_a` julkaistaan edelleen trace-/compatibility-kayttoon
+5. `current_a` ei kuulu `device_policies`-payloadiin, vaan se julkaistaan vain trace- ja writer-diagnostiikkaan
 
 Tama tarkoittaa, etta dokumentaatiota ei pidä enää lukea niin, että
 `ev_limit_a` olisi EV:n ensisijainen tuotantokontrakti. Se on nyt

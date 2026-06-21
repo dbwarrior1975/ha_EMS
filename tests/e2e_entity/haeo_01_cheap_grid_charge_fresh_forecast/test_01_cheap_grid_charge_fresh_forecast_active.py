@@ -28,7 +28,7 @@ def test_haeo_cheap_grid_charge_fresh_forecast_active(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 1500},
-                'EV_CHARGER': {'current_a': 16, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
             },

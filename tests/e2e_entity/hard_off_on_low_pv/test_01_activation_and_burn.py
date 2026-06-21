@@ -68,7 +68,7 @@ def test_01_activation_and_burn(project_root):
                 'pv_power_kw': 3.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_writer_trace': {
                 'ev': {
@@ -98,7 +98,7 @@ def test_01_activation_and_burn(project_root):
                 'pv_power_kw': 3.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_writer_trace': {
                 'ev': {

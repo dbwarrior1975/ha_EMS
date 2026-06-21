@@ -42,3 +42,5 @@ def test_decision_trace_exposes_core_fields_and_battery_authority():
     assert attrs['configured_forecast'] == 'NONE'
     assert attrs['device_policy_parity_ok'] is True
     assert attrs['device_policies'][0]['device_id'] == 'HOME_BATTERY'
+    assert attrs['policy_trace_scalar_role'] == 'diagnostic_scalar'
+    assert attrs['policy_trace_canonical_contract'] == 'device_policies'

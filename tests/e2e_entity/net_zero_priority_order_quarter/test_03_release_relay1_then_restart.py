@@ -34,7 +34,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': (),
@@ -58,7 +58,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': (),
@@ -83,7 +83,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
                 'RELAY2': {'enabled': False, 'mode': 'relay'},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_dispatch_state': {
                 'active_surplus_device_ids': ('RELAY1',),

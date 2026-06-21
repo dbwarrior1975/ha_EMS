@@ -39,7 +39,7 @@ def test_max_export_hard_off_stability(project_root):
                 'surplus_device_next_device_id': 'RELAY1',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off', 'current_a': 0},
+                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off'},
                 'RELAY1': {'enabled': False},
                 'RELAY2': {'enabled': False},
             },
@@ -88,7 +88,7 @@ def test_max_export_hard_off_stability(project_root):
                 'surplus_device_next_device_id': 'RELAY1',
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off', 'current_a': 0},
+                'EV_CHARGER': {'enabled': False, 'mode': 'hard_off'},
                 'RELAY1': {'enabled': False},
                 'RELAY2': {'enabled': False},
             },

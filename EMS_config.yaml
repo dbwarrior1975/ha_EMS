@@ -1,50 +1,16 @@
-# EMS grouped configuration for production testing.
+# EMS grouped configuration for production.
 #
-# Default static path used by EMS:
+# Default runtime path used by EMS:
 # /config/EMS_config.yaml
 #
 # Copy this file to the Home Assistant /config directory with this exact name.
-# EMS_GROUPED_CONFIG_PATH is no longer required for the normal production test,
-# but it can still override this default path if needed.
+# EMS_GROUPED_CONFIG_PATH can override the path when needed, but normal
+# production use relies on the default location above.
 #
-# Test 1: dual-read only, safest first production check.
-# - Copy this file to /config/EMS_config.yaml.
-# - Leave EMS_CONFIG_SOURCE unset, or set it to legacy_entity_map.
-# - Expected trace:
-#   config_source = legacy_entity_map
-#   config_dual_read_ok = true
-#   config_dual_read_mismatches = ()
-#
-# Optional override parameter:
-# EMS_GROUPED_CONFIG_PATH=/config/EMS_config.yaml
-#
-# Test 2: strict grouped source.
-# - Enable grouped config as the requested source.
-# - Keep strict mode enabled so mismatches fall back to legacy config.
-# - Expected trace when ready:
-#   config_source = grouped_config
-#   config_requested_source = grouped_config
-#   config_source_strict_enabled = true
-#   config_grouped_production_ready = true
-#   config_grouped_production_ready_reason = ready
-#
-# Parameters for Test 2:
-# EMS_CONFIG_SOURCE=grouped
-# EMS_CONFIG_SOURCE_STRICT=true
-#
-# Optional explicit path override:
-# EMS_GROUPED_CONFIG_PATH=/config/EMS_config.yaml
-#
-# Test 3: legacy fallback gates, only after Test 2 is stable.
-# - Keep the Test 2 parameters.
-# - Then enable these gates one at a time, not both at once on the first run.
-# - Expected traces:
-#   dispatch applier: decision_source = device_trace
-#   writer trace: all policy_source values = device_policy
-#
-# Parameters for Test 3:
-# EMS_DISABLE_LEGACY_DISPATCH_FALLBACK=true
-# EMS_DISABLE_LEGACY_POLICY_SENSOR_FALLBACK=true
+# Runtime expectations:
+# - grouped config is the canonical configuration source
+# - EMS_config.yaml is mandatory
+# - missing or invalid config causes a visible runtime failure
 
 ems:
   profiles:

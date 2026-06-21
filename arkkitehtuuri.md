@@ -17,9 +17,11 @@ Nykyinen tuotantopolku perustuu kanonisesti naihin pintoihin:
 3. `active_surplus_devices`
 4. `previous_device_state`
 
-`policy_*`-sensorit ja osa `surplus_*`-pinnoista julkaistaan edelleen
-HA-yhteensopivuuspeileina, mutta ne eivat ole enaa runtime-polun ensisijainen
-totuus.
+`policy_*`-sensorit ja `surplus_*_active`-booleanit eivat kuulu enaa aktiiviseen
+tuotantopintaan. Jaljella olevat `surplus_*_pys`-sensorit ovat diagnostisia
+scalar-julkaisuja, mutta dispatch- ja writer-paatokset nojaavat kanonisesti
+`policy_decision_trace`-, `device_policies`-, `active_surplus_devices`- ja
+`previous_device_state`-pintoihin.
 
 Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon `business_logic_guide.md`.
 
@@ -38,8 +40,7 @@ flowchart LR
     TRACE --> W
     ACTIVE --> W
     W --> ACT[actuator_* entiteetit]
-    P --> PMIRROR[policy_* mirrorit]
-    L --> SMIRROR[surplus_* mirrorit]
+    P --> SDIAG[surplus_* scalar diagnostics]
     L --> LTRACE[dispatch_state_applier_trace]
     W --> WTRACE[actuator_writer_trace]
 ```
@@ -105,18 +106,13 @@ Julkaistavat kanoniset policy-entiteetit:
 2. `policy_decision_trace`
 3. `previous_device_state`
 
-Julkaistavat compatibility-peilit:
+Julkaistavat diagnostiset scalarit:
 
-1. `policy_battery_target_w`
-2. `policy_ev_current_a`
-3. `policy_relay1_command`
-4. `policy_relay2_command`
-5. `surplus_policy_active_pys`
-6. `surplus_next_target_pys`
-7. `surplus_next_threshold_pys`
-8. `surplus_release_candidate_pys`
-9. `surplus_explanation_pys`
-10. `surplus_dispatch_decision_pys`
+1. `surplus_policy_active_pys`
+2. `surplus_next_target_pys`
+3. `surplus_next_threshold_pys`
+4. `surplus_release_candidate_pys`
+5. `surplus_explanation_pys`
 
 ### 2. Dispatch State Applier
 
@@ -128,8 +124,7 @@ Vastuut:
    dispatch-paatoksen
 2. paivittaa kanonisen `active_surplus_devices`-tilan
 3. kirjoittaa `surplus_freeze_until`-ajan `input_datetime`-entiteettiin
-4. peilaa tarvittaessa legacy `surplus_*_active` -tilat HA-yhteensopivuutta varten
-5. julkaisee `sensor.ems_dispatch_state_applier_trace`-diagnostiikan
+4. julkaisee `sensor.ems_dispatch_state_applier_trace`-diagnostiikan
 
 Tama komponentti ei tee optimointia itse, vaan toteuttaa policy engine -komponentin paatoksen tilamuutoksiksi.
 
@@ -402,7 +397,7 @@ Nykyinen tuotantoketju tukee EV:lle erillista low-PV hard-off -tilaa.
 
 Semantiikka:
 
-1. policy voi julkaista `policy_ev_current_a = 0`
+1. `EV_CHARGER.target_w` voi olla `0`
 2. samalla attribuutti `ev_policy_mode` voi olla `hard_off`
 3. writer sammuttaa silloin laturin, mutta jattaa current-selectorin minimiin
 4. attribuutti `ev_low_pv_cycles` kertoo montako matalan PV:n sykliä on kertynyt
@@ -503,6 +498,16 @@ Keskeisia attribuutteja:
 22. `surplus_rpc_kw`
 23. `surplus_rpnz_w`
 24. `guard_reason`
+
+Tulkinta:
+
+1. `device_policies` on kanoninen writer-sopimus
+2. `ev_current_a` on diagnostinen scalar-kentta, kun taas EV:n kanoninen writer-sopimus
+   kulkee vain `device_policies[*].target_w`-arvona
+3. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
+4. scalar-kentat kuten `battery_target_w`, `relay1_command`, `relay2_command` ja
+   `surplus_dispatch_decision` ovat diagnostisia trace-kenttia
+5. writer ei lue ohjauspaatoksia naista scalar-kentista
 
 ### `actuator_writer_trace`
 

@@ -37,8 +37,8 @@ def read_config():
     return build_ems_config_from_core_config(read_core_config())
 
 
-def _read_compat_config():
-    # Parity helper exposes the current grouped-config-backed scalar view.
+def _read_scalar_config_view():
+    # Helper exposes the current grouped-config-backed scalar config view.
     return read_config()
     
 def read_profiles(entities):

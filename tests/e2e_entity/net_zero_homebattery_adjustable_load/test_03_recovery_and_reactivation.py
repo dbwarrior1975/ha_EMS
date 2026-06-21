@@ -32,7 +32,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 1.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -1800},
             },
             'expect_policy': {
@@ -56,7 +56,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 1.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': -2200},
             },
             'expect_policy': {
@@ -80,7 +80,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 0.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
@@ -103,7 +103,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 2.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
@@ -126,7 +126,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 5.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 800},
             },
             'expect_policy': {
@@ -150,7 +150,7 @@ def test_03_recovery_and_reactivation(project_root):
                 ENT['pv_power_kw']: 5.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
                 'HOME_BATTERY': {'target_w': 1800},
             },
             'expect_policy': {

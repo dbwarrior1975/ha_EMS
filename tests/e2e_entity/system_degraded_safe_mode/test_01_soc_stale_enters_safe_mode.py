@@ -22,7 +22,7 @@ def test_soc_stale_enters_safe_mode(project_root):
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'skip'},
                 'RELAY2': {'enabled': False, 'mode': 'skip'},
-                'EV_CHARGER': {'current_a': -1, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 0},
             },
             'expect_values': {

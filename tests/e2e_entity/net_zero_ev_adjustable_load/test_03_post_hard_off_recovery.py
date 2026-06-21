@@ -36,7 +36,7 @@ def test_03_post_hard_off_recovery(project_root):
                 ENT['pv_power_kw']: 0.0,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 500},
             },
             'expect_policy': {
@@ -61,7 +61,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
                 'ev_hard_off_release_ready_cycles': 0,
@@ -82,7 +82,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
                 'ev_hard_off_release_ready_cycles': 1,                
@@ -105,7 +105,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'current_a': 6, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'ev_hard_off_release_ready_cycles': 2,
@@ -129,7 +129,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'current_a': 6, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'battery_min_floor_reason': 'ev_active_floor_override',
@@ -152,7 +152,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'current_a': 10, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'ev_hard_off_active': False,

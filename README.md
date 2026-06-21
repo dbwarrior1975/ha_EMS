@@ -237,9 +237,8 @@ Keskeiset config-avaimet (EMS):
 Keskeiset surplus-state-avaimet (EMS):
 
 1. `surplus_freeze_until`
-2. `surplus_adjustable_active`
-3. `surplus_r1_active`
-4. `surplus_r2_active`
+2. `active_surplus_devices`
+3. `previous_device_state`
 
 Keskeiset releiden override- ja sallinta-avaimet (EMS):
 
@@ -268,6 +267,16 @@ Keskeiset policy-ulostuloavaimet (EMS):
 7. `surplus_explanation_pys`
 8. `active_surplus_devices`
 9. `previous_device_state`
+
+Oleellinen tulkinta:
+
+1. `device_policies` on writerin kanoninen ohjausrajapinta
+2. `policy_decision_trace` sisaltaa lisaksi scalar-kenttia kuten `battery_target_w`,
+   `ev_current_a`, `relay1_command`, `relay2_command` ja `surplus_dispatch_decision`
+3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan ne jaavat
+   `ev_current_a`-traceen ja writerin actuator-rajan `target_current_a`-kenttiin
+4. nuo scalar-kentat ovat diagnostinen trace-pinta, eivat writerin ensisijainen
+   sopimus
 
 Keskeiset actuator-avaimet (EMS):
 

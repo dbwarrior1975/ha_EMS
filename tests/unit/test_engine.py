@@ -208,7 +208,7 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
 
 
 @pytest.mark.unit
-def test_engine_trace_attrs_contain_device_policies_matching_legacy_outputs():
+def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
@@ -240,13 +240,11 @@ def test_engine_trace_attrs_contain_device_policies_matching_legacy_outputs():
     assert out.attrs['device_policy_parity_mismatch'] == ''
     assert policies_from_output['HOME_BATTERY'].target_w == out.battery_target_w
     assert policies_from_output['HOME_BATTERY'].enabled is out.battery_write_enabled
-    assert policies_from_output['EV_CHARGER'].current_a == out.ev_current_a
     assert policies_from_output['RELAY1'].enabled is True
     assert policies_from_output['RELAY2'].enabled is False
     assert policies['HOME_BATTERY']['target_w'] == out.battery_target_w
     assert policies['HOME_BATTERY']['enabled'] is out.battery_write_enabled
     assert policies['EV_CHARGER']['target_w'] == out.attrs['ev_target_w']
-    assert policies['EV_CHARGER']['current_a'] == out.ev_current_a
     assert policies['EV_CHARGER']['enabled'] is True
     assert policies['RELAY1']['target_w'] == 2500
     assert policies['RELAY1']['enabled'] is True
@@ -255,7 +253,7 @@ def test_engine_trace_attrs_contain_device_policies_matching_legacy_outputs():
 
 
 @pytest.mark.unit
-def test_engine_surplus_device_parity_trace_matches_legacy_activation():
+def test_engine_surplus_device_trace_matches_current_activation_mapping():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',

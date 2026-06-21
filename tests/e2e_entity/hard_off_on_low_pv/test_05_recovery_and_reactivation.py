@@ -45,7 +45,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_values': {
                 ENT['relay1']: False,
@@ -70,7 +70,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
                 'relay1': {
@@ -100,7 +100,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 0, 'enabled': False},
+                'EV_CHARGER': {'enabled': False},
             },
             'expect_values': {
                 ENT['actuator_ev_enabled']: False,
@@ -123,7 +123,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'current_a': 28, 'enabled': True},
+                'EV_CHARGER': {'enabled': True},
             },
             'expect_writer_trace': {
                 'ev': {
