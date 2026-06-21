@@ -153,8 +153,8 @@ def test_core_config_device_mapping_uses_yaml_capabilities_directly(project_root
     configs = _config_by_id(core_cfg)
 
     battery_cfg = configs['HOME_BATTERY']
-    assert battery_cfg.can_absorb_w is False
-    assert battery_cfg.can_produce_w is False
+    assert battery_cfg.can_absorb_w is True
+    assert battery_cfg.can_produce_w is True
     assert battery_cfg.min_absorb_w == 125
     assert battery_cfg.max_absorb_w == 4300
     assert battery_cfg.max_produce_w == 5100

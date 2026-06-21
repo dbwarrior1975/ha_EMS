@@ -1,5 +1,7 @@
 from ems_adapter.ha_adapter import get_attr, get_bool, get_float, get_int, get_str, publish_sensor, set_boolean, set_number
 from ems_core.domain.ev_power import ev_power_w_to_selector_current_a
+from ems_core.domain.models import EmsDeviceConfig
+from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capability_block_reason
 
 
 def _load_runtime_entities():
@@ -9,6 +11,15 @@ def _load_runtime_entities():
     from ems_adapter.runtime_context import read_runtime_entities
 
     return read_runtime_entities(get_bool, get_float, get_int, get_str)
+
+
+def _load_core_config():
+    reader = globals().get('read_core_config')
+    if reader is not None:
+        return reader()
+    from ems_adapter.runtime_context import read_core_config
+
+    return read_core_config(get_bool, get_float, get_int, get_str)
 
 
 def _ent(key, fallback, entities=None):
@@ -67,6 +78,55 @@ def _previous_device_state_mode(entities=None):
     return ''
 
 
+def _capability_device_config_for_id(device_id):
+    cfg = _load_core_config()
+    if device_id == 'HOME_BATTERY':
+        caps = cfg.home_battery.capabilities
+        policy = cfg.home_battery.policy
+        return EmsDeviceConfig(
+            device_id='HOME_BATTERY',
+            kind='BATTERY',
+            response_kind='continuous',
+            can_absorb_w=bool(caps.can_absorb_w),
+            can_produce_w=bool(caps.can_produce_w),
+            min_absorb_w=int(round(float(caps.min_absorb_w))),
+            max_absorb_w=int(round(float(caps.max_absorb_w))),
+            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+            step_w=max(1, int(round(float(caps.step_w)))),
+            priority=int(round(float(policy.priority))),
+        )
+    if device_id == 'EV_CHARGER':
+        caps = cfg.ev_charger.capabilities
+        policy = cfg.ev_charger.policy
+        return EmsDeviceConfig(
+            device_id='EV_CHARGER',
+            kind='EV_CHARGER',
+            response_kind='selector',
+            can_absorb_w=bool(caps.can_absorb_w),
+            can_produce_w=bool(caps.can_produce_w),
+            min_absorb_w=int(round(float(caps.min_absorb_w))),
+            max_absorb_w=int(round(float(caps.max_absorb_w))),
+            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+            step_w=max(1, int(round(float(caps.step_w)))),
+            priority=int(round(float(policy.priority))),
+        )
+    relay = cfg.relay1 if device_id == 'RELAY1' else cfg.relay2
+    caps = relay.capabilities
+    policy = relay.policy
+    return EmsDeviceConfig(
+        device_id=device_id,
+        kind='RELAY',
+        response_kind='relay',
+        can_absorb_w=bool(caps.can_absorb_w),
+        can_produce_w=bool(caps.can_produce_w),
+        min_absorb_w=int(round(float(caps.min_absorb_w))),
+        max_absorb_w=int(round(float(caps.max_absorb_w))),
+        max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+        step_w=max(1, int(round(float(caps.step_w)))),
+        priority=int(round(float(policy.priority))),
+    )
+
+
 def _write_battery_actuator(entities=None):
     control = get_str(_ent('control_profile', 'input_select.ems_control_profile', entities), 'AUTOMATIC')
 
@@ -100,6 +160,9 @@ def _write_battery_actuator(entities=None):
         }
 
     target_w = _device_policy_target_w(device_policy, default=0)
+    capability_cfg = _capability_device_config_for_id('HOME_BATTERY')
+    capability_reason = capability_block_reason(capability_cfg, target_w)
+    target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
     battery_entity = _ent('actuator_battery_setpoint_w', 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point', entities)
     current_w = get_float(battery_entity, 0)
     deadband = get_float(_ent('deadband_w', 'input_number.ems_deadband_w', entities), 100)
@@ -116,6 +179,7 @@ def _write_battery_actuator(entities=None):
             'target_w': target_w,
             'delta_w': delta,
             'policy_source': policy_source,
+            'capability_reason': capability_reason,
         }
 
     step = max(min(delta, ramp), -ramp)
@@ -125,7 +189,7 @@ def _write_battery_actuator(entities=None):
     return {
         'target': 'victron',
         'action': 'write',
-        'reason': 'manual_safe_clamp' if control == 'MANUAL_SAFE' else 'state_changed',
+        'reason': capability_reason or ('manual_safe_clamp' if control == 'MANUAL_SAFE' else 'state_changed'),
         'written': True,
         'current_w': current_w,
         'policy_target_w': target_w,
@@ -155,12 +219,18 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
     step_a = get_int(_ent('ev_current_step_a', 'input_number.ems_ev_current_step_a', entities), 4)
     phases = get_int(_ent('ev_charger_phases', 'input_number.ems_ev_charger_phases', entities), 1)
     ev_policy_mode = str(device_policy.get('mode') or _previous_device_state_mode(entities) or '')
+    capability_reason = ''
     if ev_policy_mode == 'skip':
         strategy_a = -1
     else:
         # EV device policy is watt-based in the canonical production contract.
         # Any current_a payload is treated only as compatibility/trace metadata.
         target_w = _device_policy_target_w(device_policy, default=0)
+        capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER')
+        capability_reason = capability_block_reason(capability_cfg, target_w)
+        target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
+        if capability_reason:
+            ev_policy_mode = 'hard_off'
         strategy_a = ev_power_w_to_selector_current_a(
             target_w,
             phases,
@@ -190,7 +260,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
         return {
             'target': 'ev',
             'action': 'enable_and_set_current',
-            'reason': 'state_changed' if (enabled_changed or current_changed) else 'already_matching',
+            'reason': capability_reason or ('state_changed' if (enabled_changed or current_changed) else 'already_matching'),
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
             'target_current_a': strategy_a,
@@ -213,7 +283,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
         return {
             'target': 'ev',
             'action': 'hard_off',
-            'reason': 'hard_off',
+            'reason': capability_reason or 'hard_off',
             'written': enabled_changed or current_changed,
             'policy_current_a': strategy_a,
             'target_current_a': min_a,
@@ -229,7 +299,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
         return {
             'target': 'ev',
             'action': 'restore_min_current',
-            'reason': 'restore_min_current',
+            'reason': capability_reason or 'restore_min_current',
             'written': True,
             'previous_current_a': current_level,
             'target_current_a': min_a,
@@ -239,7 +309,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
     return {
         'target': 'ev',
         'action': 'skip',
-        'reason': 'already_released',
+        'reason': capability_reason or 'already_released',
         'written': False,
         'policy_current_a': strategy_a,
         'current_a': current_level,
@@ -259,10 +329,18 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
         }
 
     policy_source = 'device_policy'
+    capability_reason = ''
+    if device_id:
+        capability_cfg = _capability_device_config_for_id(device_id)
+        desired_target_w = _device_policy_target_w(device_policy, default=0)
+        capability_reason = capability_block_reason(capability_cfg, desired_target_w)
     if str(device_policy.get('mode') or '') == 'skip':
         strategy = -1
     else:
-        strategy = 1 if _device_policy_enabled(device_policy) else 0
+        if capability_reason:
+            strategy = 0
+        else:
+            strategy = 1 if _device_policy_enabled(device_policy) else 0
     is_on = get_bool(actuator_ent)
 
     if strategy < 0:
@@ -279,7 +357,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
         return {
             'target': label,
             'action': 'turn_on',
-            'reason': 'state_changed',
+            'reason': capability_reason or 'state_changed',
             'written': True,
             'policy_source': policy_source,
         }
@@ -289,7 +367,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
         return {
             'target': label,
             'action': 'turn_off',
-            'reason': 'state_changed',
+            'reason': capability_reason or 'state_changed',
             'written': True,
             'policy_source': policy_source,
         }
@@ -297,7 +375,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
     return {
         'target': label,
         'action': 'skip',
-        'reason': 'already_matching',
+        'reason': capability_reason or 'already_matching',
         'written': False,
         'policy_command': strategy,
         'is_on': is_on,

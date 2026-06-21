@@ -74,6 +74,9 @@ Tarkeä rajaus:
 3. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
 4. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
+5. device capability -booleanit ovat kovia runtime-rajoja:
+   `can_absorb_w=false` estaa positiivisen `target_w`:n ja `can_produce_w=false`
+   estaa negatiivisen `target_w`:n
 
 ## Nopeat suunnistusdokumentit
 
@@ -277,6 +280,15 @@ Oleellinen tulkinta:
    `ev_current_a`-traceen ja writerin actuator-rajan `target_current_a`-kenttiin
 4. nuo scalar-kentat ovat diagnostinen trace-pinta, eivat writerin ensisijainen
    sopimus
+
+Capability-semantiiikka:
+
+1. `can_absorb_w=false` estaa laitteen kayton lataus-/kulutussuuntaan
+2. `can_produce_w=false` estaa laitteen kayton purku-/tuotantosuuntaan
+3. battery policy clampataan capabilityjen mukaan ennen writeria, ja writer tekee
+   saman tarkistuksen viela viimeisena turvallisuusrajana
+4. tuotanto-YAML:ssa `HOME_BATTERY.can_absorb_w=false` ja
+   `HOME_BATTERY.can_produce_w=false` yhdessa on validaatiovirhe
 
 Keskeiset actuator-avaimet (EMS):
 

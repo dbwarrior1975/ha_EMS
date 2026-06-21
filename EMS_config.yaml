@@ -11,6 +11,9 @@
 # - grouped config is the canonical configuration source
 # - EMS_config.yaml is mandatory
 # - missing or invalid config causes a visible runtime failure
+# - capability booleans are hard runtime limits:
+#   can_absorb_w=false blocks positive target_w
+#   can_produce_w=false blocks negative target_w
 
 ems:
   profiles:
@@ -45,8 +48,8 @@ ems:
     HOME_BATTERY:
       kind: BATTERY
       capabilities:
-        can_absorb_w: false
-        can_produce_w: false
+        can_absorb_w: true
+        can_produce_w: true
         min_absorb_w: input_number.ems_home_battery_min_absorb_w
         max_absorb_w: input_number.ems_max_battery_charge_w
         max_produce_w: input_number.ems_max_battery_discharge_w

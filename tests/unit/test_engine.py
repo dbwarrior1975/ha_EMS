@@ -1,7 +1,52 @@
 import pytest
 from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
+from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from tests.helpers import make_profiles, make_cfg, make_m, make_haeo, make_nz
+
+
+def _core_cfg_with_capability_overrides(project_root, **device_capability_overrides):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    for device_id, overrides in device_capability_overrides.items():
+        grouped['ems']['devices'][device_id]['capabilities'].update(overrides)
+
+    values = {
+        'input_number.ems_deadband_w': 50,
+        'input_number.ems_ramp_max_w': 5000,
+        'input_number.ems_strict_limits_max_w': 4600,
+        'input_number.ems_surplus_freeze_s': 30,
+        'input_number.ems_haeo_stale_timeout_s': 300,
+        'input_number.ems_nz_battery_floor_default_w': 100,
+        'input_number.ems_nz_battery_floor_ev_active_w': 0,
+        'input_select.ems_adjustable_surplus_load': 'EV_CHARGER',
+        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_number.ems_adjustable_surplus_activation_w': 2000,
+        'input_number.ems_home_battery_min_absorb_w': 100,
+        'input_number.ems_max_battery_charge_w': 3700,
+        'input_number.ems_max_battery_discharge_w': 4000,
+        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_battery_protect_soc': 2,
+        'input_number.ems_battery_protect_soc_recovery_margin': 1,
+        'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
+        'input_number.ems_battery_protect_charge_floor_w': 0,
+        'input_number.ems_surplus_ev_priority': 3,
+        'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
+        'input_number.ems_ev_hard_off_low_pv_cycles': 2,
+        'input_number.ems_ev_hard_off_release_cycles': 2,
+        'input_number.ems_ev_min_current_a': 6,
+        'input_number.ems_ev_max_current_a': 16,
+        'input_number.ems_ev_current_step_a': 2,
+        'input_number.ems_ev_charger_phases': 1,
+        'input_number.ems_ev_voltage_v': 230,
+        'input_number.ems_ev_force_current_a': 0,
+        'input_number.ems_surplus_relay1_priority': 2,
+        'input_number.ems_relay1_nominal_absorb_w': 2500,
+        'input_number.ems_relay1_power_kw': 2500,
+        'input_number.ems_surplus_relay2_priority': 1,
+        'input_number.ems_relay2_nominal_absorb_w': 5000,
+        'input_number.ems_relay2_power_kw': 5000,
+    }
+    return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
 
 @pytest.mark.unit
@@ -383,6 +428,54 @@ def test_engine_max_export_haeo_battery_target_and_explanation():
     )
     assert out.battery_target_w == -2500
     assert out.explanation == 'Export-oriented policy with HAEO forecast assistance'
+
+
+@pytest.mark.unit
+def test_engine_blocks_max_export_when_battery_cannot_produce(project_root):
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT, forecast=ForecastProfile.NONE)
+    cfg = _core_cfg_with_capability_overrides(project_root, HOME_BATTERY={'can_produce_w': False})
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+    )
+
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert out.battery_target_w == 0
+    assert policies['HOME_BATTERY'].target_w == 0
+    assert policies['HOME_BATTERY'].reason == 'capability_blocked_produce'
+    assert 'HOME_BATTERY:capability_blocked_produce' in out.attrs['capability_blocked_devices']
+
+
+@pytest.mark.unit
+def test_engine_disables_ev_adjustable_when_ev_cannot_absorb(project_root):
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = _core_cfg_with_capability_overrides(project_root, EV_CHARGER={'can_absorb_w': False})
+    nz = make_nz(rpnz_w=500, required_power_consumption_kw=2.5)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(), make_haeo(), nz, 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=False,
+        relay2_surplus_allowed=False,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+    )
+
+    assert out.surplus_dispatch_decision == 'NOOP'
+    assert out.attrs['surplus_device_targets'][0]['device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_device_targets'][0]['enabled'] is False
 
 
 @pytest.mark.unit

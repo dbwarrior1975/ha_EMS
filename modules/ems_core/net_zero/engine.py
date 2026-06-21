@@ -1,8 +1,9 @@
 from ems_core.domain.models import (
     ControlProfile, GoalProfile, ForecastProfile, GuardProfile, DominantLimitation,
     HaeoTargets, HaeoNetZeroPlan, SurplusTargetConfig, SurplusDispatchInput, NetZeroOutputs,
-    DevicePolicy,
+    DevicePolicy, EmsDeviceConfig,
 )
+from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capability_block_reason
 from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
     ev_max_power_w,
@@ -200,6 +201,134 @@ def _device_policy_payload(policy):
         'reason': policy.reason,
     }
     return payload
+
+
+def _capability_device_config_for_id(cfg, device_id):
+    if not hasattr(cfg, 'home_battery'):
+        if device_id == 'HOME_BATTERY':
+            return EmsDeviceConfig(
+                device_id='HOME_BATTERY',
+                kind='BATTERY',
+                response_kind='continuous',
+                can_absorb_w=True,
+                can_produce_w=True,
+                min_absorb_w=0,
+                max_absorb_w=int(round(float(cfg.max_solar_charge_w))),
+                max_produce_w=int(round(abs(float(cfg.max_battery_discharge_w)))),
+                step_w=max(1, int(round(float(cfg.deadband_w)))),
+                priority=int(round(float(cfg.adjustable_surplus_load_priority))),
+            )
+        if device_id == 'EV_CHARGER':
+            return EmsDeviceConfig(
+                device_id='EV_CHARGER',
+                kind='EV_CHARGER',
+                response_kind='selector',
+                can_absorb_w=True,
+                can_produce_w=False,
+                min_absorb_w=int(ev_min_power_w(cfg)),
+                max_absorb_w=int(ev_max_power_w(cfg)),
+                max_produce_w=0,
+                step_w=max(1, int(ev_power_step_w(cfg))),
+                priority=int(round(float(cfg.ev_priority))),
+            )
+        relay_power_kw = cfg.relay1_power_kw if device_id == 'RELAY1' else cfg.relay2_power_kw
+        relay_priority = cfg.relay1_priority if device_id == 'RELAY1' else cfg.relay2_priority
+        relay_power_w = int(round(float(relay_power_kw) * 1000.0))
+        return EmsDeviceConfig(
+            device_id=device_id,
+            kind='RELAY',
+            response_kind='relay',
+            can_absorb_w=True,
+            can_produce_w=False,
+            min_absorb_w=relay_power_w,
+            max_absorb_w=relay_power_w,
+            max_produce_w=0,
+            step_w=max(1, relay_power_w),
+            priority=int(round(float(relay_priority))),
+        )
+    if device_id == 'HOME_BATTERY':
+        caps = cfg.home_battery.capabilities
+        policy = cfg.home_battery.policy
+        return EmsDeviceConfig(
+            device_id='HOME_BATTERY',
+            kind='BATTERY',
+            response_kind='continuous',
+            can_absorb_w=bool(caps.can_absorb_w),
+            can_produce_w=bool(caps.can_produce_w),
+            min_absorb_w=int(round(float(caps.min_absorb_w))),
+            max_absorb_w=int(round(float(caps.max_absorb_w))),
+            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+            step_w=max(1, int(round(float(caps.step_w)))),
+            priority=int(round(float(policy.priority))),
+        )
+    if device_id == 'EV_CHARGER':
+        caps = cfg.ev_charger.capabilities
+        policy = cfg.ev_charger.policy
+        return EmsDeviceConfig(
+            device_id='EV_CHARGER',
+            kind='EV_CHARGER',
+            response_kind='selector',
+            can_absorb_w=bool(caps.can_absorb_w),
+            can_produce_w=bool(caps.can_produce_w),
+            min_absorb_w=int(round(float(caps.min_absorb_w))),
+            max_absorb_w=int(round(float(caps.max_absorb_w))),
+            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+            step_w=max(1, int(round(float(caps.step_w)))),
+            priority=int(round(float(policy.priority))),
+        )
+    relay = cfg.relay1 if device_id == 'RELAY1' else cfg.relay2
+    caps = relay.capabilities
+    policy = relay.policy
+    return EmsDeviceConfig(
+        device_id=device_id,
+        kind='RELAY',
+        response_kind='relay',
+        can_absorb_w=bool(caps.can_absorb_w),
+        can_produce_w=bool(caps.can_produce_w),
+        min_absorb_w=int(round(float(caps.min_absorb_w))),
+        max_absorb_w=int(round(float(caps.max_absorb_w))),
+        max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+        step_w=max(1, int(round(float(caps.step_w)))),
+        priority=int(round(float(policy.priority))),
+    )
+
+
+def _enforce_device_policy_capabilities(cfg, device_policies, ev_current_a):
+    sanitized = []
+    blocked = []
+    effective_ev_current_a = int(ev_current_a)
+    for policy in device_policies:
+        device_cfg = _capability_device_config_for_id(cfg, policy.device_id)
+        clamped_target_w = clamp_target_w_for_capabilities(device_cfg, policy.target_w)
+        block_reason = capability_block_reason(device_cfg, policy.target_w)
+        enabled = bool(policy.enabled)
+        mode = policy.mode
+        reason = policy.reason
+        if block_reason:
+            blocked.append(policy.device_id + ':' + block_reason)
+            if policy.device_id == 'HOME_BATTERY':
+                enabled = True
+                mode = 'power'
+            elif policy.device_id == 'EV_CHARGER':
+                enabled = False
+                mode = 'restore_min'
+                effective_ev_current_a = 0
+            else:
+                enabled = False
+                mode = 'relay'
+            reason = block_reason
+        if policy.device_id == 'EV_CHARGER' and (not enabled or clamped_target_w <= 0):
+            effective_ev_current_a = 0
+        sanitized.append(
+            DevicePolicy(
+                device_id=policy.device_id,
+                target_w=int(clamped_target_w),
+                enabled=enabled,
+                mode=mode,
+                reason=reason,
+            )
+        )
+    return tuple(sanitized), effective_ev_current_a, tuple(blocked)
 
 
 def _device_policy_payloads(device_policies):
@@ -698,13 +827,16 @@ def compute_net_zero_engine_outputs(
     adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.ev_priority))
     relay1_enabled = bool(relay1_surplus_allowed)
     relay2_enabled = bool(relay2_surplus_allowed)
+    adjustable_capable = bool(_capability_device_config_for_id(cfg, adjustable_surplus_load).can_absorb_w)
+    relay1_capable = bool(_capability_device_config_for_id(cfg, 'RELAY1').can_absorb_w)
+    relay2_capable = bool(_capability_device_config_for_id(cfg, 'RELAY2').can_absorb_w)
     targets = (
         SurplusTargetConfig(
             'ADJUSTABLE',
             priority=adjustable_priority,
             rank=1,
             threshold_kw=adjustable_threshold_kw,
-            enabled=True,
+            enabled=adjustable_capable,
             force_on=False,
             active=adjustable_active_current,
         ),
@@ -713,7 +845,7 @@ def compute_net_zero_engine_outputs(
             priority=cfg.relay1_priority,
             rank=2,
             threshold_kw=cfg.relay1_power_kw,
-            enabled=relay1_enabled,
+            enabled=bool(relay1_enabled and relay1_capable),
             force_on=relay1_force_on,
             active=relay1_net_zero_active,
         ),
@@ -722,7 +854,7 @@ def compute_net_zero_engine_outputs(
             priority=cfg.relay2_priority,
             rank=3,
             threshold_kw=cfg.relay2_power_kw,
-            enabled=relay2_enabled,
+            enabled=bool(relay2_enabled and relay2_capable),
             force_on=relay2_force_on,
             active=relay2_net_zero_active,
         ),
@@ -732,12 +864,15 @@ def compute_net_zero_engine_outputs(
         adjustable_device_id=adjustable_surplus_load,
         adjustable_priority=adjustable_priority,
         adjustable_active=adjustable_active_current,
+        adjustable_enabled=adjustable_capable,
         relay1_enabled=relay1_enabled,
         relay1_force_on=relay1_force_on,
         relay1_active=relay1_net_zero_active,
+        relay1_capable=relay1_capable,
         relay2_enabled=relay2_enabled,
         relay2_force_on=relay2_force_on,
         relay2_active=relay2_net_zero_active,
+        relay2_capable=relay2_capable,
     )
     surplus_device_legacy_targets = device_targets_to_legacy_targets(surplus_device_targets)
 
@@ -975,12 +1110,17 @@ def compute_net_zero_engine_outputs(
         relay1_command=relay1_command,
         relay2_command=relay2_command,
     )
-    legacy_outputs = _legacy_outputs_from_device_policies(device_policies, ev_current_a=ev_current_a)
+    device_policies, effective_ev_current_a, capability_blocked_devices = _enforce_device_policy_capabilities(
+        cfg,
+        device_policies,
+        ev_current_a,
+    )
+    legacy_outputs = _legacy_outputs_from_device_policies(device_policies, ev_current_a=effective_ev_current_a)
     device_policy_parity_mismatch = _device_policy_parity_mismatch(
         device_policies,
         battery_target_w=battery_target_w,
         battery_write_enabled=battery_write_enabled,
-        ev_current_a=ev_current_a,
+        ev_current_a=effective_ev_current_a,
         relay1_command=relay1_command,
         relay2_command=relay2_command,
     )
@@ -1022,6 +1162,7 @@ def compute_net_zero_engine_outputs(
             'device_policy_parity_ok': device_policy_parity_mismatch == '',
             'device_policy_parity_mismatch': device_policy_parity_mismatch,
             'device_policies': _device_policy_payloads(device_policies),
+            'capability_blocked_devices': capability_blocked_devices,
             'surplus_primary_target': primary_release_target,
             'surplus_freeze_until_ts': (
                 combo_change_freeze_until_ts

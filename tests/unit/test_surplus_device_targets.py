@@ -108,6 +108,53 @@ def test_explicit_adjustable_activation_overrides_device_default_threshold():
 
 
 @pytest.mark.unit
+def test_adjustable_target_is_disabled_when_device_cannot_absorb():
+    cfg = make_cfg(adjustable_surplus_activation=2000)
+
+    targets = build_surplus_device_targets(
+        cfg,
+        adjustable_device_id='HOME_BATTERY',
+        adjustable_priority=3,
+        adjustable_active=False,
+        adjustable_enabled=False,
+        relay1_enabled=True,
+        relay1_force_on=False,
+        relay1_active=False,
+        relay1_capable=True,
+        relay2_enabled=True,
+        relay2_force_on=False,
+        relay2_active=False,
+        relay2_capable=True,
+    )
+
+    assert targets[0].device_id == 'HOME_BATTERY'
+    assert targets[0].enabled is False
+
+
+@pytest.mark.unit
+def test_relay_target_is_disabled_when_device_cannot_absorb():
+    cfg = make_cfg(relay1_power_kw=2.5)
+
+    targets = build_surplus_device_targets(
+        cfg,
+        adjustable_device_id='EV_CHARGER',
+        adjustable_priority=3,
+        adjustable_active=False,
+        relay1_enabled=True,
+        relay1_force_on=True,
+        relay1_active=False,
+        relay1_capable=False,
+        relay2_enabled=True,
+        relay2_force_on=False,
+        relay2_active=False,
+        relay2_capable=True,
+    )
+
+    assert targets[1].device_id == 'RELAY1'
+    assert targets[1].enabled is False
+
+
+@pytest.mark.unit
 def test_device_target_export_mapping_preserves_threshold_and_state():
     cfg = make_cfg(relay1_power_kw=2.5)
     relay1 = build_surplus_device_targets(

@@ -154,6 +154,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
     devices = ems.get('devices', {})
     if isinstance(devices, dict):
         _validate_devices(devices, issues)
+        _validate_device_capability_semantics(ems, devices, issues)
     else:
         devices = {}
 
@@ -857,6 +858,42 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
     max_absorb = capabilities.get('max_absorb_w')
     if _is_number(min_absorb) and _is_number(max_absorb) and float(max_absorb) < float(min_absorb):
         issues.append(_issue(f'{device_path}.capabilities.max_absorb_w', SEVERITY_ERROR, 'must be >= min_absorb_w'))
+    if capabilities.get('can_absorb_w') is False and 'max_absorb_w' in capabilities:
+        issues.append(_issue(f'{device_path}.capabilities.max_absorb_w', SEVERITY_WARNING, 'max_absorb_w is ignored when can_absorb_w=false'))
+    max_produce = capabilities.get('max_produce_w')
+    if capabilities.get('can_produce_w') is False and 'max_produce_w' in capabilities:
+        issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_WARNING, 'max_produce_w is ignored when can_produce_w=false'))
+
+
+def _validate_device_capability_semantics(ems: dict, devices: dict, issues: list[ConfigValidationIssue]) -> None:
+    battery = devices.get('HOME_BATTERY')
+    if isinstance(battery, dict):
+        battery_caps = battery.get('capabilities')
+        if isinstance(battery_caps, dict):
+            if battery_caps.get('can_absorb_w') is False and battery_caps.get('can_produce_w') is False:
+                issues.append(
+                    _issue(
+                        'ems.devices.HOME_BATTERY.capabilities',
+                        SEVERITY_ERROR,
+                        'HOME_BATTERY must define at least one enabled direction: can_absorb_w=true or can_produce_w=true',
+                    )
+                )
+
+    global_config = ems.get('global_config')
+    if not isinstance(global_config, dict):
+        return
+
+    adjustable_surplus_load = global_config.get('adjustable_surplus_load')
+    if isinstance(adjustable_surplus_load, str) and adjustable_surplus_load in devices:
+        adjustable_caps = devices.get(adjustable_surplus_load, {}).get('capabilities')
+        if isinstance(adjustable_caps, dict) and adjustable_caps.get('can_absorb_w') is False:
+            issues.append(
+                _issue(
+                    'ems.global_config.adjustable_surplus_load',
+                    SEVERITY_ERROR,
+                    'adjustable_surplus_load must reference a device with can_absorb_w=true',
+                )
+            )
 
 
 def _validate_role_constraints(role_constraints: dict, devices: dict, issues: list[ConfigValidationIssue]) -> None:

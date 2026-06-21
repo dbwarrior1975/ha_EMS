@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 
 def _load_writer_module(project_root):
@@ -72,6 +73,7 @@ def _load_writer_module(project_root):
         'publish_sensor': publish_sensor,
         'ENT': ENT,
     }
+    _install_core_capabilities(ns)
 
     code = compile(src, str(path), 'exec')
     exec(code, ns)
@@ -85,6 +87,28 @@ def _install_device_policies(mod, policies):
         return default
 
     mod['get_attr'] = get_attr
+
+
+def _install_core_capabilities(mod, **overrides):
+    device_defaults = {
+        'HOME_BATTERY': dict(can_absorb_w=True, can_produce_w=True, min_absorb_w=0, max_absorb_w=4000, max_produce_w=4000, step_w=50, priority=1),
+        'EV_CHARGER': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=1380, max_absorb_w=6440, max_produce_w=0, step_w=460, priority=1),
+        'RELAY1': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=2500, max_absorb_w=2500, max_produce_w=0, step_w=2500, priority=1),
+        'RELAY2': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=5000, max_absorb_w=5000, max_produce_w=0, step_w=5000, priority=1),
+    }
+    for device_id, values in overrides.items():
+        device_defaults[device_id].update(values)
+
+    def _device(device_id):
+        caps = SimpleNamespace(**device_defaults[device_id])
+        return SimpleNamespace(capabilities=caps, policy=SimpleNamespace(priority=device_defaults[device_id]['priority']))
+
+    mod['read_core_config'] = lambda: SimpleNamespace(
+        home_battery=_device('HOME_BATTERY'),
+        ev_charger=_device('EV_CHARGER'),
+        relay1=_device('RELAY1'),
+        relay2=_device('RELAY2'),
+    )
 
 
 @pytest.mark.unit
@@ -197,6 +221,7 @@ def test_writer_ev_does_not_fallback_to_legacy_current_without_device_policy(pro
 @pytest.mark.unit
 def test_writer_battery_can_read_device_policy_target(project_root):
     mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod, HOME_BATTERY={'can_absorb_w': True, 'can_produce_w': False})
 
     _install_device_policies(
         mod,
@@ -225,8 +250,38 @@ def test_writer_battery_can_read_device_policy_target(project_root):
 
 
 @pytest.mark.unit
+def test_writer_battery_clamps_disallowed_discharge_to_zero(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod, HOME_BATTERY={'can_absorb_w': True, 'can_produce_w': False})
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': -1200,
+                'enabled': True,
+                'mode': 'power',
+            }
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 1
+    state['input_number.ems_ramp_max_w'] = 5000
+    state[ENT['actuator_battery_setpoint_w']] = -800
+
+    result = mod['_write_battery_actuator']()
+
+    assert result['written'] is True
+    assert result['reason'] == 'capability_blocked_produce'
+    assert state[ENT['actuator_battery_setpoint_w']] == 0
+
+
+@pytest.mark.unit
 def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
     mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod)
 
     _install_device_policies(
         mod,
@@ -255,6 +310,38 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
     assert result['target_current_a'] == 16
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 16
+
+
+@pytest.mark.unit
+def test_writer_ev_hard_offs_when_absorb_is_disallowed(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod, EV_CHARGER={'can_absorb_w': False})
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 3680,
+                'enabled': True,
+                'mode': 'burn',
+            }
+        ],
+    )
+
+    state[ENT['actuator_ev_enabled']] = True
+    state[ENT['actuator_ev_current_a']] = 16
+    state['input_number.ems_ev_min_current_a'] = 4
+    state['input_number.ems_ev_max_current_a'] = 32
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is True
+    assert result['reason'] == 'capability_blocked_absorb'
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 4
 
 
 @pytest.mark.unit
@@ -292,6 +379,7 @@ def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(p
 @pytest.mark.unit
 def test_writer_relay_device_policy_overrides_legacy_command(project_root):
     mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod)
 
     _install_device_policies(
         mod,
@@ -317,6 +405,37 @@ def test_writer_relay_device_policy_overrides_legacy_command(project_root):
 
     assert result['written'] is True
     assert result['policy_source'] == 'device_policy'
+    assert state[ENT['actuator_relay1']] is False
+
+
+@pytest.mark.unit
+def test_writer_relay_turns_off_when_absorb_is_disallowed(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(mod, RELAY1={'can_absorb_w': False})
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'RELAY1',
+                'target_w': 2500,
+                'enabled': True,
+                'mode': 'relay',
+            }
+        ],
+    )
+
+    state[ENT['actuator_relay1']] = True
+
+    result = mod['_write_relay_actuator'](
+        ENT['policy_relay1_command'],
+        ENT['actuator_relay1'],
+        'relay1',
+        device_id='RELAY1',
+    )
+
+    assert result['written'] is True
+    assert result['reason'] == 'capability_blocked_absorb'
     assert state[ENT['actuator_relay1']] is False
 
 

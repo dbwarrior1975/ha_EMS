@@ -157,6 +157,29 @@ def test_validate_rejects_negative_step_numeric_constant(project_root):
 
 
 @pytest.mark.unit
+def test_validate_rejects_home_battery_with_both_directions_disabled(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['HOME_BATTERY']['capabilities']['can_absorb_w'] = False
+    config['ems']['devices']['HOME_BATTERY']['capabilities']['can_produce_w'] = False
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.devices.HOME_BATTERY.capabilities' in _error_paths(result)
+
+
+@pytest.mark.unit
+def test_validate_warns_when_disabled_absorb_direction_keeps_positive_limit(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['capabilities']['can_absorb_w'] = False
+
+    result = validate_grouped_ems_config(config)
+
+    warning_paths = {issue.path for issue in result.issues if issue.severity == SEVERITY_WARNING}
+    assert 'ems.devices.EV_CHARGER.capabilities.max_absorb_w' in warning_paths
+
+
+@pytest.mark.unit
 def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
     aliases = runtime_alias_index(config)

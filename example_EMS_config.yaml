@@ -37,7 +37,7 @@ ems:
     HOME_BATTERY:
       kind: BATTERY
       capabilities:
-        can_absorb_w: true
+        can_absorb_w: false
         can_produce_w: true
         min_absorb_w: input_number.ems_home_battery_min_absorb_w
         max_absorb_w: input_number.ems_max_battery_charge_w
