@@ -1,12 +1,12 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_goal_switch_to_max_export_clears_surplus(project_root):
     h = build_harness(project_root)
+    E = h.ent
 
     seed_active_surplus_devices(
         h,
@@ -24,9 +24,9 @@ def test_goal_switch_to_max_export_clears_surplus(project_root):
             'at_s': 90,
             'note': 't90 goal changes to MAX_EXPORT; surplus states clear and EV target remains max current this cycle',
             'set': {
-                ENT['goal_profile']: 'MAX_EXPORT',
-                ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 500,
+                E['goal_profile']: 'MAX_EXPORT',
+                E['required_power_consumption_kw']: 6.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
@@ -48,26 +48,26 @@ def test_goal_switch_to_max_export_clears_surplus(project_root):
                 'active_surplus_device_ids': (),
             },
             'expect_writer_trace': {
-                'ev': {
+                'EV_CHARGER': {
                     'reason': 'already_matching',
                     'written': False,
                     'target_current_a': 28,
                 },
-                'relay1': {
+                'RELAY1': {
                     'reason': 'state_changed',
                     'written': True,
                 },
-                'relay2': {
+                'RELAY2': {
                     'reason': 'already_matching',
                     'written': False,
                 },
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 28,
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
-                ENT['actuator_battery_setpoint_w']: -200,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 28,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
+                E['actuator_battery_setpoint_w']: -200,
             },
         },
     ]

@@ -1,5 +1,6 @@
 import pytest
 
+from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from ems_core.domain.models import ControlProfile, ForecastProfile, GoalProfile, GuardProfile
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from tests.helpers import make_cfg, make_haeo, make_profiles
@@ -24,6 +25,93 @@ def _haeo_profiles(**overrides):
     )
     data.update(overrides)
     return make_profiles(**data)
+
+
+def _core_cfg_with_selected_custom_ev(
+    project_root,
+    *,
+    selected_ev_device_id='EV_GARAGE',
+):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped['ems']['devices']['EV_GARAGE'] = {
+        'kind': 'EV_CHARGER',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
+            'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
+            'step_w': 'input_number.ems_ev_garage_power_step_w',
+        },
+        'policy': {
+            'priority': 'input_number.ems_surplus_ev_garage_priority',
+            'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
+            'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
+            'hard_off_release_cycles': 'input_number.ems_ev_garage_release_cycles',
+        },
+        'adapter': {
+            'enabled': 'switch.ev_garage_enabled',
+            'current_a': 'number.ev_garage_current_a',
+            'current_min_a': 'input_number.ems_ev_garage_min_current_a',
+            'current_max_a': 'input_number.ems_ev_garage_max_current_a',
+            'current_step_a': 'input_number.ems_ev_garage_current_step_a',
+            'phases': 'input_number.ems_ev_garage_phases',
+            'voltage_v': 'input_number.ems_ev_garage_voltage_v',
+            'force_current_a': 'input_number.ems_ev_garage_force_current_a',
+        },
+    }
+
+    values = {
+        'input_number.ems_deadband_w': 50,
+        'input_number.ems_ramp_max_w': 5000,
+        'input_number.ems_strict_limits_max_w': 4600,
+        'input_number.ems_surplus_freeze_s': 30,
+        'input_number.ems_haeo_stale_timeout_s': 300,
+        'input_number.ems_nz_battery_floor_default_w': 100,
+        'input_number.ems_nz_battery_floor_ev_active_w': 0,
+        'input_select.ems_adjustable_surplus_load': selected_ev_device_id,
+        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_number.ems_adjustable_surplus_activation_w': 2000,
+        'input_number.ems_home_battery_min_absorb_w': 100,
+        'input_number.ems_max_battery_charge_w': 3700,
+        'input_number.ems_max_battery_discharge_w': 4000,
+        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_battery_protect_soc': 2,
+        'input_number.ems_battery_protect_soc_recovery_margin': 1,
+        'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
+        'input_number.ems_battery_protect_charge_floor_w': 0,
+        'input_number.ems_surplus_ev_priority': 3,
+        'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
+        'input_number.ems_ev_hard_off_low_pv_cycles': 2,
+        'input_number.ems_ev_hard_off_release_cycles': 2,
+        'input_number.ems_ev_min_current_a': 6,
+        'input_number.ems_ev_max_current_a': 16,
+        'input_number.ems_ev_current_step_a': 2,
+        'input_number.ems_ev_charger_phases': 1,
+        'input_number.ems_ev_voltage_v': 230,
+        'input_number.ems_ev_force_current_a': 0,
+        'input_number.ems_surplus_relay1_priority': 2,
+        'input_number.ems_relay1_nominal_absorb_w': 2500,
+        'input_number.ems_relay1_power_kw': 2500,
+        'input_number.ems_surplus_relay2_priority': 1,
+        'input_number.ems_relay2_nominal_absorb_w': 5000,
+        'input_number.ems_relay2_power_kw': 5000,
+        'input_number.ems_ev_garage_min_power_w': 2300,
+        'input_number.ems_ev_garage_max_power_w': 6900,
+        'input_number.ems_ev_garage_power_step_w': 2300,
+        'input_number.ems_surplus_ev_garage_priority': 4,
+        'input_boolean.ems_ev_garage_surplus_allowed': True,
+        'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
+        'input_number.ems_ev_garage_low_pv_cycles': 2,
+        'input_number.ems_ev_garage_release_cycles': 2,
+        'input_number.ems_ev_garage_min_current_a': 10,
+        'input_number.ems_ev_garage_max_current_a': 30,
+        'input_number.ems_ev_garage_current_step_a': 10,
+        'input_number.ems_ev_garage_phases': 1,
+        'input_number.ems_ev_garage_voltage_v': 230,
+        'input_number.ems_ev_garage_force_current_a': 0,
+    }
+    return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
 
 @pytest.mark.unit
@@ -159,3 +247,57 @@ def test_limits_are_clamped_to_device_bounds():
     assert plan.ev_limit_w == 2300
     assert plan.device_limits_w == {'HOME_BATTERY': 2500, 'EV_CHARGER': 2300}
     assert plan.ev_limit_a == 10
+
+
+@pytest.mark.unit
+def test_custom_selected_ev_device_id_is_used_in_haeo_plan(project_root):
+    cfg = _core_cfg_with_selected_custom_ev(project_root)
+
+    plan = compute_haeo_net_zero_plan(
+        _haeo_profiles(),
+        cfg,
+        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=5.0),
+        now_ts=0.0,
+    )
+
+    assert plan.active is True
+    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.primary_load == 'EV_GARAGE'
+    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_GARAGE': 5000}
+
+
+@pytest.mark.unit
+def test_custom_selected_ev_device_limits_and_current_quantization_are_used(project_root):
+    cfg = _core_cfg_with_selected_custom_ev(project_root)
+
+    plan = compute_haeo_net_zero_plan(
+        _haeo_profiles(),
+        cfg,
+        _fresh_haeo(battery_target_kw=1.0, ev_target_kw=9.0),
+        now_ts=0.0,
+    )
+
+    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.device_limits_w == {'HOME_BATTERY': 1000, 'EV_GARAGE': 6900}
+    assert plan.ev_limit_w == 6900
+    assert plan.ev_limit_a == 30
+
+
+@pytest.mark.unit
+def test_tie_keeps_previous_custom_ev_primary_device_id(project_root):
+    cfg = _core_cfg_with_selected_custom_ev(project_root)
+
+    plan = compute_haeo_net_zero_plan(
+        _haeo_profiles(),
+        cfg,
+        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=2.0),
+        now_ts=30.0,
+        previous_quarter_key='0',
+        previous_primary_device_id='EV_GARAGE',
+    )
+
+    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.primary_load == 'EV_GARAGE'
+    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.reason == 'tie_keep_previous'

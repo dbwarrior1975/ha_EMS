@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import run_steps
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
@@ -9,6 +8,7 @@ from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 def test_03_release_relay1_then_restart(project_root):
     """Phase 3: final RELAY1 release and start of the next activation cycle."""
     h = build_harness(project_root)
+    E = h.ent
 
     # Seed post-adjustable-release state so this phase is independent.
     seed_active_surplus_devices(
@@ -25,8 +25,8 @@ def test_03_release_relay1_then_restart(project_root):
             'at_s': 120,
             'note': 't120 RELAY1 becomes the final release decision',
             'set': {
-                ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.0,
+                E['required_power_consumption_kw']: 0.0,
+                E['rpnz_w']: 0.0,
             },
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
@@ -40,17 +40,17 @@ def test_03_release_relay1_then_restart(project_root):
                 'active_surplus_device_ids': (),
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_relay2']: False,
-                ENT['actuator_ev_current_a']: 6,
+                E['actuator_relay1']: True,
+                E['actuator_relay2']: False,
+                E['actuator_ev_current_a']: 6,
             },
         },
         {
             'at_s': 121,
             'note': 't121 release visibility clears and policy idles below RELAY1 threshold',
             'set': {
-                ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.1,
+                E['required_power_consumption_kw']: 0.0,
+                E['rpnz_w']: 0.1,
             },
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
@@ -64,16 +64,16 @@ def test_03_release_relay1_then_restart(project_root):
                 'active_surplus_device_ids': (),
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
             },
         },
         {
             'at_s': 150,
             'note': 't150 next cycle starts and RELAY1 is activated again',
             'set': {
-                ENT['required_power_consumption_kw']: 3.0,
-                ENT['rpnz_w']: 0.1,
+                E['required_power_consumption_kw']: 3.0,
+                E['rpnz_w']: 0.1,
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 165.0,
@@ -89,9 +89,9 @@ def test_03_release_relay1_then_restart(project_root):
                 'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
-                ENT['actuator_ev_enabled']: True,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
+                E['actuator_ev_enabled']: True,
             },
         },
     ]

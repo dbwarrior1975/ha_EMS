@@ -9,6 +9,37 @@ from ems_core.domain.models import SurplusDispatchDecision
 from tests.helpers import make_cfg
 
 
+def _relay_candidates(
+    *,
+    relay1_enabled=True,
+    relay1_force_on=False,
+    relay1_active=False,
+    relay1_capable=True,
+    relay2_enabled=True,
+    relay2_force_on=False,
+    relay2_active=False,
+    relay2_capable=True,
+):
+    return (
+        {
+            'device_id': 'RELAY1',
+            'priority': 2,
+            'threshold_w': 2500,
+            'enabled': bool(relay1_enabled and relay1_capable),
+            'force_on': bool(relay1_force_on),
+            'active': bool(relay1_active),
+        },
+        {
+            'device_id': 'RELAY2',
+            'priority': 1,
+            'threshold_w': 5000,
+            'enabled': bool(relay2_enabled and relay2_capable),
+            'force_on': bool(relay2_force_on),
+            'active': bool(relay2_active),
+        },
+    )
+
+
 @pytest.mark.unit
 def test_ev_adjustable_device_target_uses_ev_power_delta_when_no_explicit_activation():
     cfg = make_cfg(
@@ -24,12 +55,7 @@ def test_ev_adjustable_device_target_uses_ev_power_delta_when_no_explicit_activa
         adjustable_device_id='EV_CHARGER',
         adjustable_priority=4,
         adjustable_active=False,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(),
     )
 
     adjustable = targets[0]
@@ -54,12 +80,7 @@ def test_home_battery_adjustable_device_target_uses_max_solar_charge_when_no_exp
         adjustable_device_id='HOME_BATTERY',
         adjustable_priority=3,
         adjustable_active=True,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(),
     )
 
     adjustable = targets[0]
@@ -83,24 +104,14 @@ def test_explicit_adjustable_activation_overrides_device_default_threshold():
         adjustable_device_id='EV_CHARGER',
         adjustable_priority=2,
         adjustable_active=False,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(),
     )
     battery_targets = build_surplus_device_targets(
         cfg,
         adjustable_device_id='HOME_BATTERY',
         adjustable_priority=2,
         adjustable_active=False,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(),
     )
 
     assert ev_targets[0].threshold_w == 2000
@@ -117,14 +128,7 @@ def test_adjustable_target_is_disabled_when_device_cannot_absorb():
         adjustable_priority=3,
         adjustable_active=False,
         adjustable_enabled=False,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay1_capable=True,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
-        relay2_capable=True,
+        relay_candidates=_relay_candidates(),
     )
 
     assert targets[0].device_id == 'HOME_BATTERY'
@@ -140,14 +144,12 @@ def test_relay_target_is_disabled_when_device_cannot_absorb():
         adjustable_device_id='EV_CHARGER',
         adjustable_priority=3,
         adjustable_active=False,
-        relay1_enabled=True,
-        relay1_force_on=True,
-        relay1_active=False,
-        relay1_capable=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
-        relay2_capable=True,
+        relay_candidates=_relay_candidates(
+            relay1_enabled=True,
+            relay1_force_on=True,
+            relay1_active=False,
+            relay1_capable=False,
+        ),
     )
 
     assert targets[1].device_id == 'RELAY1'
@@ -162,12 +164,11 @@ def test_device_target_export_mapping_preserves_threshold_and_state():
         adjustable_device_id='EV_CHARGER',
         adjustable_priority=2,
         adjustable_active=False,
-        relay1_enabled=False,
-        relay1_force_on=True,
-        relay1_active=True,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(
+            relay1_enabled=False,
+            relay1_force_on=True,
+            relay1_active=True,
+        ),
     )[1]
 
     legacy = device_target_to_legacy_target(relay1)
@@ -189,12 +190,7 @@ def test_device_dispatch_export_mapping_maps_device_id_to_decision_name():
         adjustable_device_id='EV_CHARGER',
         adjustable_priority=3,
         adjustable_active=False,
-        relay1_enabled=True,
-        relay1_force_on=False,
-        relay1_active=False,
-        relay2_enabled=True,
-        relay2_force_on=False,
-        relay2_active=False,
+        relay_candidates=_relay_candidates(),
     )
 
     legacy = device_dispatch_to_legacy_dispatch(

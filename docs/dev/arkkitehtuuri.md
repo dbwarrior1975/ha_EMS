@@ -23,7 +23,11 @@ scalar-julkaisuja, mutta dispatch- ja writer-paatokset nojaavat kanonisesti
 `policy_decision_trace`-, `device_policies`-, `active_surplus_devices`- ja
 `previous_device_state`-pintoihin.
 
-Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon `business_logic_guide.md`.
+Legacy scalar- ja compatibility-viewt elavat vain erillisissa deprecated
+adapter -poluissa.
+
+Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon
+`docs/user/business_logic_guide.md`.
 
 ## Kokonaiskuva
 
@@ -40,7 +44,7 @@ flowchart LR
     TRACE --> W
     ACTIVE --> W
     W --> ACT[actuator_* entiteetit]
-    P --> SDIAG[surplus_* scalar diagnostics]
+    P --> SDIAG[surplus_* scalar diagnostics\n(deprecated adapter only)]
     L --> LTRACE[dispatch_state_applier_trace]
     W --> WTRACE[actuator_writer_trace]
 ```
@@ -91,9 +95,9 @@ Vastuut:
 4. arvioi guard-tilan `evaluate_guard()`-funktion kautta
 5. lukee HAEO-ennusteen tilan ja tuoreuden
 6. laskee net zero -moottorin ulostulot `compute_net_zero_engine_outputs()`-funktion kautta
-7. julkaisee kanoniset `device_policies`, `policy_decision_trace` ja
-   `previous_device_state` -ulostulot
-8. julkaisee lisaksi `policy_*`- ja `surplus_*`-peileja HA-yhteensopivuutta varten
+7. julkaisee kanoniset `device_policies`, `policy_decision_trace`,
+   `active_surplus_devices` ja `previous_device_state` -ulostulot
+8. legacy scalar-diagnostiikka kuuluu vain deprecated adapter -polkuun
 
 Koodin triggerit:
 
@@ -104,7 +108,8 @@ Julkaistavat kanoniset policy-entiteetit:
 
 1. `device_policies`
 2. `policy_decision_trace`
-3. `previous_device_state`
+3. `active_surplus_devices`
+4. `previous_device_state`
 
 Julkaistavat diagnostiset scalarit:
 
@@ -157,14 +162,15 @@ Tiedosto: `modules/ems_core/domain/models.py`
 Projektin keskeiset mallit:
 
 1. `Profiles`
-2. `EmsConfig`
-3. `RuntimeMeasurements`
-4. `HaeoTargets`
-5. `NetZeroState`
-6. `SurplusTargetConfig`
-7. `SurplusDispatchInput`
-8. `SurplusDispatchDecision`
-9. `NetZeroOutputs`
+2. `CoreConfig`
+3. `EmsConfig` (deprecated adapter-view)
+4. `RuntimeMeasurements`
+5. `HaeoTargets`
+6. `NetZeroState`
+7. `SurplusTargetConfig`
+8. `SurplusDispatchInput`
+9. `SurplusDispatchDecision`
+10. `NetZeroOutputs`
 
 ### Profiilit
 
@@ -201,6 +207,10 @@ Keskeiset tiedostot:
 
 Nykyinen tuotantopolku lukee entity-id:t ensisijaisesti `runtime_context`-
 kerroksen kautta grouped `EMS_config.yaml` -rakenteesta.
+
+`read_config()` palauttaa nykyisin `CoreConfig`-instanssin. `EmsConfig`-view
+on rajattu erilliseen deprecated adapter -polkuun, jota ei pidetä release-
+contractina.
 
 Keskeiset entity-ryhmat ovat edelleen:
 
@@ -250,6 +260,13 @@ Tama kayttaytyminen on varmennettu myos skenaariotesteissa.
 Tiedosto: `modules/ems_core/net_zero/engine.py`
 
 Moottori yhdistaa profiilit, guard-tilan, HAEO:n, akun setpoint-laskennan, EV-strategian ja surplus-allokaation yhdeksi `NetZeroOutputs`-tulokseksi.
+
+Huomio legacy-signature-velasta: `compute_net_zero_engine_outputs(...)`
+kantaa viela `relay1_*` / `relay2_*` compatibility-parametreja seka niihin
+liittyvia force-state-parametreja. Tuotantopolun canonical runtime state on
+silti device-id-pohjainen `CoreConfig`, `device_policies`,
+`surplus_device_targets`, `active_surplus_devices` ja writer trace `devices`.
+Legacy signature on P2-tekninen velka, ei uusi integraatiosopimus.
 
 ### Ennusteen roolit
 
@@ -481,33 +498,27 @@ Keskeisia attribuutteja:
 5. `effective_forecast`
 6. `dominant_limitation`
 7. `explanation`
-8. `battery_target_w`
-9. `battery_write_enabled`
-10. `ev_current_a`
-11. `relay1_command`
-12. `relay2_command`
-13. `surplus_policy_active`
-14. `surplus_next_target`
-15. `surplus_next_threshold_kw`
-16. `surplus_release_candidate`
-17. `surplus_dispatch_decision`
-18. `surplus_explanation`
-19. `configured_forecast`
-20. `active_stack`
-21. `surplus_freeze_until_ts`
-22. `surplus_rpc_kw`
-23. `surplus_rpnz_w`
-24. `guard_reason`
+8. `battery_write_enabled`
+9. `surplus_policy_active`
+10. `surplus_next_target`
+11. `surplus_next_threshold_kw`
+12. `surplus_release_candidate`
+13. `surplus_dispatch_decision`
+14. `surplus_explanation`
+15. `configured_forecast`
+16. `active_stack`
+17. `surplus_freeze_until_ts`
+18. `surplus_rpc_kw`
+19. `surplus_rpnz_w`
+20. `guard_reason`
 
 Tulkinta:
 
 1. `device_policies` on kanoninen writer-sopimus
-2. `ev_current_a` on diagnostinen scalar-kentta, kun taas EV:n kanoninen writer-sopimus
-   kulkee vain `device_policies[*].target_w`-arvona
-3. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
-4. scalar-kentat kuten `battery_target_w`, `relay1_command`, `relay2_command` ja
-   `surplus_dispatch_decision` ovat diagnostisia trace-kenttia
-5. writer ei lue ohjauspaatoksia naista scalar-kentista
+2. legacy scalar-peilit eivat kuulu release-contractiin
+3. EV:n kanoninen writer-sopimus kulkee vain `device_policies[*].target_w`-arvona
+4. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
+5. writer ei lue ohjauspaatoksia legacy scalar -peileista
 
 ### `actuator_writer_trace`
 

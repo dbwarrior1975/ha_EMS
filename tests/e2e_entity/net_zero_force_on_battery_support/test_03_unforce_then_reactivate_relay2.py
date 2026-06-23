@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
@@ -9,6 +8,7 @@ from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 def test_03_unforce_then_reactivate_relay2(project_root):
     """Phase 3: remove user force and re-activate RELAY2 through normal surplus path."""
     h = build_harness(project_root)
+    E = h.ent
 
     # Seed post-t210 state so phase is independent from previous phases.
     seed_active_surplus_devices(
@@ -20,7 +20,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
         actuator_ev_current_a=6,
     )
     h.set_entities({
-        ENT['relay2_force_on']: True,
+        E['relay2_force_on']: True,
     })
 
     steps = [
@@ -28,10 +28,10 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'at_s': 240,
             'note': 't240 user removes RELAY2 force and the relay turns off at actuator level',
             'set': {
-                ENT['relay2_force_on']: False,
-                ENT['required_power_consumption_kw']: -3.0,
-                ENT['rpnz_w']: -0.015,
-                ENT['grid_power_w']: 2500.0,
+                E['relay2_force_on']: False,
+                E['required_power_consumption_kw']: -3.0,
+                E['rpnz_w']: -0.015,
+                E['grid_power_w']: 2500.0,
             },
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
@@ -44,27 +44,27 @@ def test_03_unforce_then_reactivate_relay2(project_root):
                 'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
-                'relay1': {
+                'RELAY1': {
                     'reason': 'already_matching',
                     'written': False,
                 },
-                'relay2': {
+                'RELAY2': {
                     'reason': 'already_matching',
                     'written': False,
                 },
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: True,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: True,
             },
         },
         {
             'at_s': 270,
             'note': 't270 RPC now triggers RELAY2 through ordinary surplus logic, but actuator state remains unchanged this step',
             'set': {
-                ENT['required_power_consumption_kw']: 8.0,
-                ENT['rpnz_w']: 0.015,
-                ENT['grid_power_w']: -2500.0,
+                E['required_power_consumption_kw']: 8.0,
+                E['rpnz_w']: 0.015,
+                E['grid_power_w']: -2500.0,
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
@@ -82,27 +82,27 @@ def test_03_unforce_then_reactivate_relay2(project_root):
                 'freeze_until_ts': 285.0,
             },
             'expect_writer_trace': {
-                'relay1': {
+                'RELAY1': {
                     'reason': 'already_matching',
                     'written': False,
                 },
-                'relay2': {
+                'RELAY2': {
                     'reason': 'state_changed',
                     'written': True,
                 },
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
             },
         },
         {
             'at_s': 284,
             'note': 't284 RELAY2 freeze is still active and prevents RELAY1 activation',
             'set': {
-                ENT['required_power_consumption_kw']: 3.0,
-                ENT['rpnz_w']: 0.115,
-                ENT['grid_power_w']: -500.0,
+                E['required_power_consumption_kw']: 3.0,
+                E['rpnz_w']: 0.115,
+                E['grid_power_w']: -500.0,
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
@@ -116,18 +116,18 @@ def test_03_unforce_then_reactivate_relay2(project_root):
                 'RELAY2': {'enabled': True, 'mode': 'relay'},
             },
             'expect_writer_trace': {
-                'relay1': {
+                'RELAY1': {
                     'reason': 'already_matching',
                     'written': False,
                 },
-                'relay2': {
+                'RELAY2': {
                     'reason': 'state_changed',
                     'written': True,
                 },
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: True,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: True,
             },
         },
     ]

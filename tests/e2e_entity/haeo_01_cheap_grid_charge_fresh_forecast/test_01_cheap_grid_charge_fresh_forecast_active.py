@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.haeo_01_cheap_grid_charge_fresh_forecast.scenario_steps import build_harness, run_steps
 
 @pytest.mark.scenario
@@ -10,14 +9,15 @@ def test_haeo_cheap_grid_charge_fresh_forecast_active(project_root):
     CHEAP_GRID_CHARGE battery and EV targets without local fallback.
     """
     h = build_harness(project_root)
+    E = h.ent
 
     steps = [
         {
             'at_s': 0,
             'note': 'fresh HAEO forecast drives cheap-grid-charge targets',
             'set': {
-                ENT['required_power_consumption_kw']: 1500.0,
-                ENT['rpnz_w']: 100.0,
+                E['required_power_consumption_kw']: 1500.0,
+                E['rpnz_w']: 100.0,
             },
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
@@ -37,16 +37,16 @@ def test_haeo_cheap_grid_charge_fresh_forecast_active(project_root):
             },
             'expect_writer_trace': {
                 'victron': {'action': 'write'},
-                'ev': {'action': 'enable_and_set_current'},
-                'relay1': {'action': 'skip'},
-                'relay2': {'action': 'skip'},
+                'EV_CHARGER': {'action': 'enable_and_set_current'},
+                'RELAY1': {'action': 'skip'},
+                'RELAY2': {'action': 'skip'},
             },
             'expect_values': {
-                ENT['actuator_battery_setpoint_w']: 1000,
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 16,
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
+                E['actuator_battery_setpoint_w']: 1000,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 16,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
             },
         },
     ]

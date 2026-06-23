@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.haeo_02_net_zero_homebattery_primary_ev_adjustable.scenario_steps import (
     build_harness,
     run_steps,
@@ -15,15 +14,16 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
     primary and EV_CHARGER becomes adjustable surplus for this quarter.
     """
     h = build_harness(project_root)
+    E = h.ent
 
     steps = [
         {
             'at_s': 0,
             'note': 'quarter start: internal HAEO plan selects HOME_BATTERY primary and EV adjustable',
             'set': {
-                ENT['required_power_consumption_kw']: 4.5,
-                ENT['rpnz_w']: 6000.0,
-                ENT['grid_power_w']: 0.0,
+                E['required_power_consumption_kw']: 4.5,
+                E['rpnz_w']: 6000.0,
+                E['grid_power_w']: 0.0,
             },
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
@@ -33,7 +33,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'dominant_limitation': 'OPTIMIZATION_ACTIVE',
                 'explanation': 'HAEO net zero plan active',
                 'haeo_nz_plan_active': True,
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
                 'surplus_device_next_target': 'ADJUSTABLE',
                 'surplus_device_next_device_id': 'EV_CHARGER',
@@ -53,28 +52,28 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
             },
             'expect_writer_trace': {
                 'victron': {'action': 'write'},
-                'ev': {
+                'EV_CHARGER': {
                     'action': 'skip',
                     'reason': 'already_released',
                 },
-                'relay1': {'action': 'skip'},
-                'relay2': {'action': 'skip'},
+                'RELAY1': {'action': 'skip'},
+                'RELAY2': {'action': 'skip'},
             },
             'expect_values': {
-                ENT['actuator_battery_setpoint_w']: 3000,
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
+                E['actuator_battery_setpoint_w']: 3000,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
             },
         },
         {
             'at_s': 30,
             'note': 'next policy cycle: EV adjustable state is active and EV current is capped by HAEO limit',
             'set': {
-                ENT['required_power_consumption_kw']: 4.5,
-                ENT['rpnz_w']: 6000.0,
-                ENT['grid_power_w']: 0.0,
+                E['required_power_consumption_kw']: 4.5,
+                E['rpnz_w']: 6000.0,
+                E['grid_power_w']: 0.0,
             },
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
@@ -84,7 +83,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'dominant_limitation': 'OPTIMIZATION_ACTIVE',
                 'explanation': 'HAEO net zero plan active',
                 'haeo_nz_plan_active': True,
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'NOOP',
                 'surplus_device_next_target': 'NONE',
                 'surplus_device_next_device_id': '',
@@ -104,32 +102,32 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
             },
             'expect_writer_trace': {
                 'victron': {'action': 'skip'},
-                'ev': {
+                'EV_CHARGER': {
                     'action': 'enable_and_set_current',
                     'policy_current_a': 8,
                     'target_current_a': 8,
                 },
-                'relay1': {'action': 'skip'},
-                'relay2': {'action': 'skip'},
+                'RELAY1': {'action': 'skip'},
+                'RELAY2': {'action': 'skip'},
             },
             'expect_values': {
-                ENT['actuator_battery_setpoint_w']: 3000,
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 8,
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
+                E['actuator_battery_setpoint_w']: 3000,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 8,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
             },
         },
         {
             'at_s': 900,
             'note': 'new quarter: HAEO flips priority to EV primary and old adjustable state must be cleared',
             'set': {
-                ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 7000.0,
-                ENT['grid_power_w']: 0.0,
-                ENT['battery_heartbeat']: 0.0,
-                ENT['haeo_battery_active_power_fresh_source']: 2.0,
-                ENT['haeo_ev_active_power_fresh_source']: 2.0,
+                E['required_power_consumption_kw']: 6.0,
+                E['rpnz_w']: 7000.0,
+                E['grid_power_w']: 0.0,
+                E['battery_heartbeat']: 0.0,
+                E['haeo_battery_active_power_fresh_source']: 2.0,
+                E['haeo_ev_active_power_fresh_source']: 2.0,
             },
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
@@ -139,7 +137,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'dominant_limitation': 'OPTIMIZATION_ACTIVE',
                 'explanation': 'HAEO net zero plan active',
                 'haeo_nz_plan_active': True,
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'CLEAR_ALL',
                 'surplus_device_next_target': 'NONE',
                 'surplus_device_next_device_id': '',

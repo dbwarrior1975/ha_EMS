@@ -72,6 +72,7 @@ def _load_writer_module(project_root):
         'set_number': set_number,
         'publish_sensor': publish_sensor,
         'ENT': ENT,
+        'read_runtime_entities': lambda *args, **kwargs: {},
     }
     _install_core_capabilities(ns)
 
@@ -97,17 +98,27 @@ def _install_core_capabilities(mod, **overrides):
         'RELAY2': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=5000, max_absorb_w=5000, max_produce_w=0, step_w=5000, priority=1),
     }
     for device_id, values in overrides.items():
+        if device_id not in device_defaults:
+            device_defaults[device_id] = dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=0, max_absorb_w=0, max_produce_w=0, step_w=1, priority=1)
         device_defaults[device_id].update(values)
 
     def _device(device_id):
-        caps = SimpleNamespace(**device_defaults[device_id])
-        return SimpleNamespace(capabilities=caps, policy=SimpleNamespace(priority=device_defaults[device_id]['priority']))
+        kind = device_defaults[device_id].get('kind')
+        if kind is None:
+            kind = 'BATTERY' if device_id == 'HOME_BATTERY' else ('EV_CHARGER' if device_id == 'EV_CHARGER' else 'RELAY')
+        cap_values = {key: value for key, value in device_defaults[device_id].items() if key != 'kind'}
+        caps = SimpleNamespace(**cap_values)
+        return SimpleNamespace(device_id=device_id, kind=kind, capabilities=caps, policy=SimpleNamespace(priority=device_defaults[device_id]['priority']))
+
+    devices = {device_id: _device(device_id) for device_id in device_defaults}
 
     mod['read_core_config'] = lambda: SimpleNamespace(
-        home_battery=_device('HOME_BATTERY'),
-        ev_charger=_device('EV_CHARGER'),
-        relay1=_device('RELAY1'),
-        relay2=_device('RELAY2'),
+        home_battery=devices['HOME_BATTERY'],
+        ev_charger=devices['EV_CHARGER'],
+        relay1=devices['RELAY1'],
+        relay2=devices['RELAY2'],
+        devices=devices,
+        device_by_id=lambda device_id: devices.get(device_id),
     )
 
 
@@ -547,9 +558,9 @@ def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(pr
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
     assert result['victron']['policy_source'] == 'device_policy'
-    assert result['ev']['policy_source'] == 'device_policy'
-    assert result['relay1']['policy_source'] == 'device_policy'
-    assert result['relay2']['policy_source'] == 'device_policy'
+    assert result['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
+    assert result['devices']['RELAY1']['policy_source'] == 'device_policy'
+    assert result['devices']['RELAY2']['policy_source'] == 'device_policy'
     assert state[ENT['actuator_battery_setpoint_w']] == 500
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 12
@@ -557,6 +568,178 @@ def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(pr
     assert state[ENT['actuator_relay2']] is False
     assert writer_trace['attrs']['writer_policy_contract'] == 'device_policy_primary'
     
+
+@pytest.mark.unit
+def test_writer_loop_writes_third_relay_from_device_registry(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(
+        mod,
+        RELAY3={'max_absorb_w': 7500, 'min_absorb_w': 7500, 'step_w': 7500, 'priority': 4},
+    )
+
+    ENT['devices'] = {
+        'RELAY3': {
+            'enabled': 'switch.relay_3_2',
+        },
+    }
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'power',
+            },
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'release',
+            },
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+            {
+                'device_id': 'RELAY2',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+            {
+                'device_id': 'RELAY3',
+                'target_w': 7500,
+                'enabled': True,
+                'mode': 'relay',
+            },
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 100
+    state['input_number.ems_ramp_max_w'] = 500
+    state[ENT['actuator_battery_setpoint_w']] = 0
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    state[ENT['actuator_relay1']] = False
+    state[ENT['actuator_relay2']] = False
+    state['switch.relay_3_2'] = False
+
+    result = mod['ems_actuator_writers_loop']()
+    writer_trace = state['sensor.ems_actuator_writer_trace']
+
+    assert result['devices']['RELAY3']['written'] is True
+    assert result['devices']['RELAY3']['action'] == 'turn_on'
+    assert state['switch.relay_3_2'] is True
+    assert writer_trace['attrs']['devices']['RELAY3']['policy_source'] == 'device_policy'
+
+
+@pytest.mark.unit
+def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(
+        mod,
+        GARAGE_EV={
+            'kind': 'EV_CHARGER',
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 1380,
+            'max_absorb_w': 3680,
+            'step_w': 460,
+            'max_produce_w': 0,
+            'priority': 4,
+        },
+    )
+
+    ENT['devices'] = {
+        'EV_CHARGER': {
+            'kind': 'EV_CHARGER',
+            'enabled': ENT['actuator_ev_enabled'],
+            'current_a': ENT['actuator_ev_current_a'],
+            'current_min_a': 'input_number.ems_ev_min_current_a',
+            'current_max_a': 'input_number.ems_ev_max_current_a',
+            'current_step_a': 'input_number.ems_ev_current_step_a',
+            'phases': 'input_number.ems_ev_charger_phases',
+        },
+        'GARAGE_EV': {
+            'kind': 'EV_CHARGER',
+            'enabled': 'switch.garage_ev_enabled',
+            'current_a': 'number.garage_ev_current_a',
+            'current_min_a': 'input_number.garage_ev_min_current_a',
+            'current_max_a': 'input_number.garage_ev_max_current_a',
+            'current_step_a': 'input_number.garage_ev_current_step_a',
+            'phases': 'input_number.garage_ev_phases',
+        },
+    }
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'power',
+            },
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'restore_min',
+                'reason': 'inactive_ev_policy',
+            },
+            {
+                'device_id': 'GARAGE_EV',
+                'target_w': 3680,
+                'enabled': True,
+                'mode': 'burn',
+            },
+            {
+                'device_id': 'RELAY1',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+            {
+                'device_id': 'RELAY2',
+                'target_w': 0,
+                'enabled': False,
+                'mode': 'skip',
+            },
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 100
+    state['input_number.ems_ramp_max_w'] = 500
+    state[ENT['actuator_battery_setpoint_w']] = 0
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    state['switch.garage_ev_enabled'] = False
+    state['number.garage_ev_current_a'] = 6
+    state['input_number.garage_ev_min_current_a'] = 6
+    state['input_number.garage_ev_max_current_a'] = 16
+    state['input_number.garage_ev_current_step_a'] = 2
+    state['input_number.garage_ev_phases'] = 1
+    state[ENT['actuator_relay1']] = False
+    state[ENT['actuator_relay2']] = False
+
+    result = mod['ems_actuator_writers_loop']()
+    writer_trace = state['sensor.ems_actuator_writer_trace']
+
+    assert result['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
+    assert result['devices']['GARAGE_EV']['policy_source'] == 'device_policy'
+    assert result['devices']['GARAGE_EV']['action'] == 'enable_and_set_current'
+    assert result['devices']['GARAGE_EV']['target_current_a'] == 16
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 6
+    assert state['switch.garage_ev_enabled'] is True
+    assert state['number.garage_ev_current_a'] == 16
+    assert writer_trace['attrs']['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
+    assert writer_trace['attrs']['devices']['GARAGE_EV']['target_current_a'] == 16
+
     
 @pytest.mark.unit
 def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(project_root):
@@ -622,9 +805,9 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
     # Writer trace pitää kertoa mitä tapahtui
     trace = state['sensor.ems_actuator_writer_trace']
     assert trace['value'] == 'ACTIVE'
-    assert trace['attrs']['ev']['written'] is True
-    assert trace['attrs']['ev']['reason'] == 'restore_min_current'
-    assert trace['attrs']['ev']['target_current_a'] == 4
+    assert trace['attrs']['devices']['EV_CHARGER']['written'] is True
+    assert trace['attrs']['devices']['EV_CHARGER']['reason'] == 'restore_min_current'
+    assert trace['attrs']['devices']['EV_CHARGER']['target_current_a'] == 4
 
 
 @pytest.mark.unit

@@ -1,12 +1,12 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.system_degraded_safe_mode.scenario_steps import build_harness, run_steps
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_writer_freeze_in_system_degraded(project_root):
     h = build_harness(project_root)
+    E = h.ent
     seed_active_surplus_devices(
         h,
         active_device_ids=('RELAY1', 'EV_CHARGER'),
@@ -20,30 +20,30 @@ def test_writer_freeze_in_system_degraded(project_root):
             'at_s': 1000,
             'note': 'degraded clears latches and skips relay writes while restoring ev minimum',
             'set': {
-                ENT['required_power_consumption_kw']: 4.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 4.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'guard': 'DEGRADED',
                 'dominant_limitation': 'SYSTEM_DEGRADED',
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 0.0,
+                E['actuator_relay1']: True,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 0.0,
             },
             'expect_writer_trace': {
                 'victron': {
                     'reason': 'deadband',
                 },
-                'ev': {
+                'EV_CHARGER': {
                     'reason': 'restore_min_current',
                 },
-                'relay1': {
+                'RELAY1': {
                     'reason': 'policy_skip',
                 },
-                'relay2': {
+                'RELAY2': {
                     'reason': 'policy_skip',
                 },
             },

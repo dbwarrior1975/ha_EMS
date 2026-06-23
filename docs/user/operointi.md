@@ -13,13 +13,16 @@ Nykyisen tuotantopolun ensisijainen totuus ei ole enaa yksittaisissa
 2. `sensor.ems_device_policies_pyscript`
 3. `sensor.ems_active_surplus_devices`
 4. `sensor.ems_previous_device_state`
+5. `sensor.ems_actuator_writer_trace`
 
 Kaytannollinen tulkinta:
 
 1. `policy_decision_trace` kertoo miksi EMS paatti niin kuin paatti
-2. `device_policies` kertoo mita writerille pyydetaan kanonisessa muodossa
-3. `active_surplus_devices` kertoo mitka surplus-kohteet ovat kanonisesti aktiivisia
-4. `previous_device_state` kantaa yli syklien erityisesti EV:n edellisen moodin muistia
+2. `device_policies` kertoo mita writerille pyydetaan kanonisessa device-id-muodossa
+3. `policy_decision_trace.surplus_device_targets` kertoo surplus-kohteiden valintapinnan
+4. `active_surplus_devices` kertoo mitka surplus-kohteet ovat kanonisesti aktiivisia
+5. `actuator_writer_trace.devices` kertoo mita writer teki device-id-kohtaisesti
+6. `previous_device_state` kantaa yli syklien erityisesti EV:n edellisen moodin muistia
 
 Poistetut legacy-peilit:
 
@@ -69,15 +72,15 @@ Keskeiset konfiguraatioentiteetit:
 15. `input_number.ems_ev_hard_off_release_cycles`
 16. `input_number.ems_ev_current_step_a`
 17. `input_number.ems_haeo_stale_timeout_s`
-18. `input_number.ems_relay1_power_kw`
-19. `input_number.ems_relay2_power_kw`
+18. relekohtaiset power/helper-entityt, esimerkiksi `input_number.ems_relay_sauna_power_kw`
+19. relekohtaiset nominal/step-helperit, esimerkiksi `input_number.ems_relay_sauna_nominal_absorb_w`
 20. `input_number.ems_nz_battery_floor_default_w`
 21. `input_number.ems_nz_battery_floor_ev_active_w`
 22. `input_select.ems_adjustable_surplus_load`
 23. `input_select.ems_adjustable_primary_load`
 24. `input_number.ems_adjustable_surplus_activation_w`
 25. `input_number.ems_adjustable_surplus_load_priority`
-26. prioriteettientiteetit relay1:lle, relay2:lle ja EV:lle
+26. device-id-kohtaiset prioriteettientiteetit releille ja EV-latureille
 
 Floor-semanttiikka NET_ZEROssa:
 
@@ -117,10 +120,19 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 ### Releiden override- ja sallintaentiteetit
 
+Releiden entityt ovat device-id-kohtaisia. Legacy-esimerkissa ne voivat olla:
+
 1. `input_boolean.ems_relay1_enabled_import_zero`
 2. `input_boolean.ems_relay2_enabled_import_zero`
 3. `input_boolean.ems_relay1_force_on`
 4. `input_boolean.ems_relay2_force_on`
+
+Generic-esimerkissa sama pinta voi olla:
+
+1. `input_boolean.ems_relay_sauna_enabled_import_zero`
+2. `input_boolean.ems_relay_boiler_enabled_import_zero`
+3. `input_boolean.ems_relay_sauna_force_on`
+4. `input_boolean.ems_relay_boiler_force_on`
 
 ### HAEO-entiteetit
 
@@ -136,6 +148,8 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 1. `sensor.ems_policy_decision_trace_pyscript`
 2. `sensor.ems_device_policies_pyscript`
 3. `sensor.ems_previous_device_state`
+4. `sensor.ems_active_surplus_devices`
+5. `policy_decision_trace.surplus_device_targets`
 
 ### Kanoniset surplus-tilat
 
@@ -160,11 +174,18 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 4. `switch.relay_1_2`
 5. `switch.relay_2_2`
 
+Nimet ylla ovat legacy-esimerkin Home Assistant -entityja. Canonical EMS-pinta
+ei sido releita nimiin `RELAY1` tai `RELAY2`, vaan writer trace raportoi
+toteuman device-id-kohtaisesti `sensor.ems_actuator_writer_trace` -sensorin
+`devices`-mapissa.
+
 ### Diagnostiikka
 
 1. `sensor.ems_policy_decision_trace_pyscript`
 2. `sensor.ems_actuator_writer_trace`
 3. `sensor.ems_dispatch_state_applier_trace`
+4. deprecated scalar- ja compatibility-avaimet elavat vain adapteri-/debug-polussa,
+   eivat kanonisessa operointisopimuksessa
 
 ## Operatiivinen kayttaytyminen profiileittain
 
@@ -273,29 +294,39 @@ HAEO:n nykyinen rooli on rajattu. Koodin perusteella se tekee seuraavaa:
 
 ## Surplus-kuormien operointi
 
-Nykyinen kohdejoukko on:
+Legacy-esimerkissa kohteet voivat olla `EV_CHARGER`, `RELAY1` ja `RELAY2`.
+Yleisessa n-device-configissa surplus-kohdejoukko muodostuu device registrysta:
 
-1. EV
-2. RELAY1
-3. RELAY2
+1. kaikki `kind: RELAY` -laitteet, joilla `can_absorb_w=true` ja `surplus_allowed` on paalla
+2. valittu `kind: EV_CHARGER` -laite selected-single boundaryn mukaan
+3. tarvittaessa `HOME_BATTERY`, jos se on valittu adjustable-surplus-rooliin
 
-Aktivointi- ja vapautusjarjestys riippuu prioriteeteista. Quarter-harnessin oletusasetuksissa prioriteetit ovat:
+Aktivointi ja vapautus tapahtuvat canonical `device_id`:n perusteella.
+Aktivointi- ja vapautusjarjestys riippuu prioriteeteista.
+
+Legacy-esimerkin prioriteetit:
 
 1. `RELAY1 = 3`
-2. `EV = 2`
+2. `EV_CHARGER = 2`
 3. `RELAY2 = 1`
 
-Talla asetuksella aktivointijarjestys on:
+Generic-esimerkin prioriteetit:
 
-1. RELAY1
-2. EV
-3. RELAY2
+1. `RELAY_SAUNA = 3`
+2. `EV_GARAGE = 2`
+3. `RELAY_BOILER = 1`
+
+Generic-esimerkin aktivointijarjestys on:
+
+1. `RELAY_SAUNA`
+2. `EV_GARAGE`
+3. `RELAY_BOILER`
 
 Ja vapautusjarjestys on:
 
-1. RELAY2
-2. EV
-3. RELAY1
+1. `RELAY_BOILER`
+2. `EV_GARAGE`
+3. `RELAY_SAUNA`
 
 ## Tarkeimmat diagnostiset tarkastukset
 
@@ -309,19 +340,20 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 6. `surplus_policy_active`
 7. `surplus_device_dispatch_decision`
 8. `surplus_explanation`
-9. `surplus_freeze_until_ts`
-10. `config_source`
-11. `config_grouped_production_ready`
-12. `device_policies`
+9. `surplus_device_targets`
+10. `surplus_device_dispatch_target`
+11. `surplus_device_dispatch_device_id`
+12. `surplus_freeze_until_ts`
+13. `config_source`
+14. `config_grouped_production_ready`
+15. `device_policies`
 
 Tulkitse policy trace oikein:
 
 1. `device_policies` on writerin kanoninen ohjauspyynto
-2. `ev_current_a` on diagnostinen scalar-trace, ei osa `device_policies`-sopimusta
-3. writerin ampeeritotuus loytyy `actuator_writer_trace.ev.target_current_a`-kentasta
-4. scalar-kentat kuten `battery_target_w`, `relay1_command`, `relay2_command` ja
-   `surplus_dispatch_decision` ovat diagnostista trace-dataa
-5. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
+2. legacy scalar-peilit eivat kuulu release-sopimukseen
+3. writerin ampeeritotuus loytyy `actuator_writer_trace.devices.<device_id>.target_current_a`-kentasta valitulle EV:lle
+4. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
    toteutuneeseen actuator-traceen ja nykyiseen actuator-stateen
 
 Sen jalkeen tarkasta:
@@ -339,12 +371,12 @@ Tarkista jarjestyksessa:
 2. `guard`
 3. `sensor.ems_device_policies_pyscript` / `device_policies`
 4. `sensor.ems_active_surplus_devices`
-5. `actuator_writer_trace.ev`
+5. `actuator_writer_trace.devices.<ev_device_id>`
 
 Tulkitse:
 
-1. jos `EV_CHARGER.enabled = false` ja `target_w = 0`, EV:ta ei pyydeta aktiiviseksi
-2. jos `EV_CHARGER.enabled = true` ja `target_w > 0`, writer muuntaa pyynnon ampeereiksi
+1. jos valitun EV-device-id:n `enabled = false` ja `target_w = 0`, EV:ta ei pyydeta aktiiviseksi
+2. jos valitun EV-device-id:n `enabled = true` ja `target_w > 0`, writer muuntaa pyynnon ampeereiksi
 3. writer-tracen `reason` kertoo, kirjoitettiinko oikeasti vai oliko tila jo valmiiksi oikea
 
 ### EV jaa vaaraan virtaan
@@ -375,7 +407,7 @@ Tarkista:
 2. `relay*_force_on`
 3. `sensor.ems_active_surplus_devices`
 4. `device_policies`
-5. `actuator_writer_trace.relay*`
+5. `actuator_writer_trace.devices.<relay_device_id>`
 
 ### Akku ei reagoi
 

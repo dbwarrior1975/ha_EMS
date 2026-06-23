@@ -189,3 +189,79 @@ def test_core_config_device_states_use_core_capability_power_for_relays(project_
     assert states['RELAY1'].measured_power_w == 2500
     assert states['RELAY2'].measured_power_w == 5000
     assert states['EV_CHARGER'].measured_power_w == 2300
+
+
+@pytest.mark.unit
+def test_core_config_device_registry_exposes_extra_relay_without_fixed_dataclass_field(project_root):
+    grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_config['ems']['devices']['RELAY3'] = {
+        'kind': 'RELAY',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 'input_number.ems_relay3_power_kw',
+            'max_absorb_w': 'input_number.ems_relay3_power_kw',
+            'step_w': 'input_number.ems_relay3_power_kw',
+        },
+        'policy': {
+            'priority': 'input_number.ems_surplus_relay3_priority',
+            'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
+            'force_on': 'input_boolean.ems_relay3_force_on',
+        },
+        'adapter': {
+            'enabled': 'switch.relay_3_2',
+        },
+    }
+    values = {
+        'input_number.ems_relay3_power_kw': 7500,
+        'input_number.ems_surplus_relay3_priority': 4,
+        'input_boolean.ems_relay3_enabled_import_zero': True,
+        'input_boolean.ems_relay3_force_on': False,
+        'switch.relay_3_2': False,
+    }
+    core_cfg = build_core_config_from_grouped_reader(
+        grouped_config,
+        lambda entity_id, default: values.get(entity_id, default),
+    )
+    m = make_m()
+
+    configs = _config_by_id(core_cfg)
+    states = _state_by_id(core_cfg, m)
+    devices = _device_by_id(core_cfg, m)
+
+    assert configs['RELAY3'].kind == 'RELAY'
+    assert configs['RELAY3'].max_absorb_w == 7500
+    assert states['RELAY3'].available is False
+    assert states['RELAY3'].guard_state == 'UNWIRED'
+    assert devices['RELAY3'].state.device_id == 'RELAY3'
+
+
+@pytest.mark.unit
+def test_core_config_device_states_map_custom_relay_ids_without_fixed_relay_names(project_root):
+    grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_config['ems']['devices']['POOL_PUMP'] = grouped_config['ems']['devices'].pop('RELAY1')
+    grouped_config['ems']['devices']['BOILER'] = grouped_config['ems']['devices'].pop('RELAY2')
+    values = {
+        'input_number.ems_relay1_power_kw': 2500,
+        'input_number.ems_relay2_power_kw': 5000,
+        'input_number.ems_ev_charger_phases': 1,
+    }
+    core_cfg = build_core_config_from_grouped_reader(
+        grouped_config,
+        lambda entity_id, default: values.get(entity_id, default),
+    )
+    m = make_m(
+        relay1_on=True,
+        relay2_on=False,
+        relay_states={
+            'POOL_PUMP': {'active': True},
+            'BOILER': {'active': False},
+        },
+    )
+
+    states = _state_by_id(core_cfg, m)
+
+    assert states['POOL_PUMP'].active is True
+    assert states['POOL_PUMP'].measured_power_w == 2500
+    assert states['BOILER'].active is False
+    assert states['BOILER'].measured_power_w == 0

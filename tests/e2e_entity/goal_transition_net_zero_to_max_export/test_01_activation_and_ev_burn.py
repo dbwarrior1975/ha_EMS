@@ -1,19 +1,19 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
 
 @pytest.mark.scenario
 def test_activation_and_ev_burn_window(project_root):
     h = build_harness(project_root)
+    E = h.ent
 
     steps = [
         {
             'at_s': 0,
             'note': 't0 NET_ZERO activates relay1 first',
             'set': {
-                ENT['required_power_consumption_kw']: 3.5,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 3.5,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
@@ -34,17 +34,17 @@ def test_activation_and_ev_burn_window(project_root):
                 'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 200,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 200,
             },
         },
         {
             'at_s': 30,
             'note': 't30 NET_ZERO activates EV next',
             'set': {
-                ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 6.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
@@ -53,7 +53,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_device_dispatch_target': 'ADJUSTABLE',
                 'surplus_device_dispatch_device_id': 'EV_CHARGER',
                 'surplus_device_dispatch_contract': 'device_id_primary',
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
+                'surplus_explanation': 'Raw RPC 6.000 kW >= EV_CHARGER threshold 5.060 kW',
                 'surplus_device_next_target': 'ADJUSTABLE',
                 'surplus_device_next_device_id': 'EV_CHARGER',
             },
@@ -65,18 +65,18 @@ def test_activation_and_ev_burn_window(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 400,
+                E['actuator_relay1']: True,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 400,
             },
         },
         {
             'at_s': 44,
             'note': 't44 EV burn visible while activation freeze blocks additional surplus changes',
             'set': {
-                ENT['required_power_consumption_kw']: 2.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 2.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
@@ -97,24 +97,24 @@ def test_activation_and_ev_burn_window(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_writer_trace': {
-                'ev': {
+                'EV_CHARGER': {
                     'reason': 'state_changed',
                     'written': True,
                 },
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 28,
-                ENT['actuator_battery_setpoint_w']: 600,
+                E['actuator_relay1']: True,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 28,
+                E['actuator_battery_setpoint_w']: 600,
             },
         },
         {
             'at_s': 60,
             'note': 't60 EV burn is active at max current',
             'set': {
-                ENT['required_power_consumption_kw']: 1.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 1.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
                 'goal': 'NET_ZERO',
@@ -135,9 +135,9 @@ def test_activation_and_ev_burn_window(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: True,
-                ENT['actuator_ev_current_a']: 28,
-                ENT['actuator_battery_setpoint_w']: 800,
+                E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 28,
+                E['actuator_battery_setpoint_w']: 800,
             },
         },
     ]

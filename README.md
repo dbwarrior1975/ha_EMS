@@ -1,6 +1,14 @@
 # Home Assistant EMS
 
-Tama repositorio sisaltaa Home Assistant / Pyscript -pohjaisen EMS-ohjauksen, jonka paatarkoitus on ohjata akkua, EV-laturia ja kahta relekuormaa eri energiatavoitteiden mukaan.
+Tama repositorio sisaltaa Home Assistant / Pyscript -pohjaisen EMS-ohjauksen.
+EMS ohjaa yhta `HOME_BATTERY`-akkua, `0-n` `kind: RELAY` -laitetta ja
+`0-n` `kind: EV_CHARGER` -laturia eri energiatavoitteiden mukaan.
+
+Releiden dispatch ja writer-pinta ovat device-id-pohjaisia. EV-latureiden
+nykyinen tuotantoraja on selected-single boundary: useampi EV voi olla
+konfiguroituna, mutta yksi EV valitaan aktiiviseksi adjustable-laitteeksi
+kerrallaan. Multi-EV simultaneous power split, EV-round-robin ja usean
+`HOME_BATTERY`-akun tuki eivat kuulu tahan releaseen.
 
 Nykyiset tuetut goal-profiilit ovat:
 
@@ -30,17 +38,18 @@ Top-level tuotantoketju koostuu kolmesta paakomponentista:
 
 Vastuut lyhyesti:
 
-1. policy engine laskee akun, EV:n ja releiden policy-ulostulot
+1. policy engine laskee device-id-pohjaiset policy-ulostulot akulle, valitulle EV:lle ja releille
 2. dispatch state applier muuntaa surplus-dispatch-paatokset sisaisiksi dispatch state-tiloiksi
 3. actuator writer loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
 Lisadokumentaatio:
 
-1. `arkkitehtuuri.md`
-2. `operointi.md`
-3. `testausautomaatio.md`
-4. `tilakaavio.md`
-5. `business_logic_guide.md`
+1. `docs/dev/arkkitehtuuri.md`
+2. `docs/user/operointi.md`
+3. `docs/dev/testausautomaatio.md`
+4. `docs/dev/tilakaavio.md`
+5. `docs/user/business_logic_guide.md`
+6. `docs/user/EMS_parametrointi_guide.md`
 
 ## Konfiguraatio
 
@@ -70,20 +79,41 @@ tuotantokaytossa sita ei tarvita.
 Tarkeä rajaus:
 
 1. grouped `EMS_config.yaml` on nykyinen kanoninen konfiguraatio
-2. runtime rakentaa entity-id:t `runtime_context`-kerroksen kautta
-3. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
-4. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
+2. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
+3. `read_config()` palauttaa `CoreConfig`-instanssin; legacy scalar-view on vain
+   deprecated adapter -polussa
+4. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
+5. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
-5. device capability -booleanit ovat kovia runtime-rajoja:
+6. device capability -booleanit ovat kovia runtime-rajoja:
    `can_absorb_w=false` estaa positiivisen `target_w`:n ja `can_produce_w=false`
    estaa negatiivisen `target_w`:n
+
+## Config examples and test fixtures
+
+Kayttajan ensisijainen lahtopohja on root-tason `example_EMS_config.yaml`.
+Se nayttaa grouped YAML -rakenteen ja oletuslaitteet, mutta sita tulee sovittaa
+oman Home Assistant -ympariston entity-id:ihin ennen tuotantoa.
+
+Lisaksi `tests/e2e_entity/*/EMS_config.yaml` -tiedostot ovat testattuja
+skenaariokohtaisia esimerkkeja eri kardinaliteettirajoille:
+
+1. `tests/e2e_entity/net_zero_no_relays_ev_only/EMS_config.yaml` kuvaa 0 relay -tapauksen
+2. `tests/e2e_entity/net_zero_no_ev_relays_only/EMS_config.yaml` kuvaa 0 EV -tapauksen
+3. `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_config.yaml` kuvaa 3 reletta
+4. `tests/e2e_entity/net_zero_two_ev_one_relay/EMS_config.yaml` kuvaa 2 EV + selected-single -rajan
+5. `tests/e2e_entity/custom_device_ids_selected_single_ev/EMS_config.yaml` kuvaa custom device-id:t
+
+Fixtureja voi kayttaa lisareferenssina, mutta tuotantoon kayttajan tulee
+kopioida ja sovittaa root example tai `docs/user/config_examples.md`:n
+minimiesimerkki. Root example ei tarkoita, etta vain sen laitemaara olisi tuettu.
 
 ## Nopeat suunnistusdokumentit
 
 Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
 
-1. `tilakaavio.md` kokoaa yhteen guard-tilojen ja surplus-dispatch-statejen siirtymalogiikan.
-2. `business_logic_guide.md` kuvaa EMS:n energiastrategian kayttajan nakokulmasta.
+1. `docs/dev/tilakaavio.md` kokoaa yhteen guard-tilojen ja surplus-dispatch-statejen siirtymalogiikan.
+2. `docs/user/business_logic_guide.md` kuvaa EMS:n energiastrategian kayttajan nakokulmasta.
 
 ## Tuetut semantiikat
 
@@ -92,9 +122,21 @@ Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
 Paikallinen quarter-balancing -tila.
 
 1. akulle lasketaan net-zero-target
-2. surplus-policy aktivoi kohteita prioriteettien mukaan (`ADJUSTABLE`, `RELAY1`, `RELAY2`)
-3. `ADJUSTABLE` voi olla EV-laturi tai kotiakku konfiguraation mukaan
+2. surplus-policy aktivoi absorboivia deviceja device-id-pohjaisessa priority orderissa
+3. selected-single EV tai kotiakku voi toimia adjustable-surplus-roolissa konfiguraation mukaan
 4. EV voi menna low-PV-tilanteessa `hard_off`-polkuun nykyisen policy-attribuutin kautta
+
+Canonical integraatiopinta on device-id-pohjainen:
+
+1. `sensor.ems_device_policies_pyscript`
+2. `sensor.ems_active_surplus_devices`
+3. `sensor.ems_policy_decision_trace_pyscript`
+4. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
+
+Legacy decision-nimet, kuten `RELAY1`, `RELAY2`, `EV_CHARGER` ja
+`ADJUSTABLE`, voivat nakya compatibility-diagnostiikassa tai yksittaisina
+validin device-id:n esimerkkeina. Uusia dashboardeja tai automaatioita ei tule
+rakentaa niiden varaan canonical sopimuksena.
 
 Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
 
@@ -229,13 +271,11 @@ Keskeiset config-avaimet (EMS):
 21. `adjustable_primary_load`
 22. `adjustable_surplus_activation`
 23. `adjustable_surplus_load_priority`
-24. `relay1_power_kw`
-25. `relay2_power_kw`
-26. `relay1_priority`
-27. `relay2_priority`
-28. `ev_priority`
-29. `surplus_freeze_s`
-30. `haeo_stale_timeout_s`
+24. relekohtaiset power/priority-avaimet device-id:n mukaan
+25. EV-kohtaiset power/priority-avaimet device-id:n mukaan
+26. legacy adapter -polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
+27. `surplus_freeze_s`
+28. `haeo_stale_timeout_s`
 
 Keskeiset surplus-state-avaimet (EMS):
 
@@ -245,10 +285,9 @@ Keskeiset surplus-state-avaimet (EMS):
 
 Keskeiset releiden override- ja sallinta-avaimet (EMS):
 
-1. `relay1_surplus_allowed`
-2. `relay2_surplus_allowed`
-3. `relay1_force_on`
-4. `relay2_force_on`
+1. canonical grouped configissa releilla on device-id-kohtaiset `policy.surplus_allowed` -entityt
+2. canonical grouped configissa releilla on device-id-kohtaiset `policy.force_on` -entityt
+3. legacy adapter -polussa voi yha nakya `relay1_surplus_allowed`, `relay2_surplus_allowed`, `relay1_force_on` ja `relay2_force_on`
 
 Keskeiset HAEO-avaimet (EMS):
 
@@ -274,12 +313,12 @@ Keskeiset policy-ulostuloavaimet (EMS):
 Oleellinen tulkinta:
 
 1. `device_policies` on writerin kanoninen ohjausrajapinta
-2. `policy_decision_trace` sisaltaa lisaksi scalar-kenttia kuten `battery_target_w`,
-   `ev_current_a`, `relay1_command`, `relay2_command` ja `surplus_dispatch_decision`
-3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan ne jaavat
-   `ev_current_a`-traceen ja writerin actuator-rajan `target_current_a`-kenttiin
-4. nuo scalar-kentat ovat diagnostinen trace-pinta, eivat writerin ensisijainen
-   sopimus
+2. `policy_decision_trace` on canonical decision trace; legacy scalar-diagnostiikka
+   elaa vain erillisessa deprecated adapter -polussa, ei tuotantosopimuksena
+3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
+   actuator-rajan `target_current_a`-kenttiin
+4. `policy_decision_trace`-kentista tehdyt scalar-peilit eivat ole release-contractin
+   osa
 
 Capability-semantiiikka:
 
@@ -418,10 +457,12 @@ Erityisen hyodyllisia attribuutteja:
 
 ## Tunnetut rajoitteet
 
-1. EMS tukee nyt kovakoodatusti akkua, EV:ta ja kahta relekuormaa
-2. `DEGRADED` ei pakota kaikkia jo paalla olevia aktuaattoreita pois paalta
-3. goal-switchauksen automatiikkaa ei ole dokumentoitu taman repon sisalla
-4. projekti ei sisalla valmista Home Assistant YAML -kokoonpanoa
+1. tuettu akkumalli on yksi `HOME_BATTERY`
+2. useampi EV voi olla konfiguroituna, mutta tuotantoraja on selected-single EV
+3. multi-EV simultaneous power split ja EV-round-robin eivat kuulu tahan releaseen
+4. `DEGRADED` ei pakota kaikkia jo paalla olevia aktuaattoreita pois paalta
+5. goal-switchauksen automatiikkaa ei ole dokumentoitu taman repon sisalla
+6. projekti ei sisalla valmista Home Assistant YAML -kokoonpanoa
 
 ## Rollback / disable
 

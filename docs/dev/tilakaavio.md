@@ -120,6 +120,6 @@ Huomio aikajarjestykseen:
 
 Lisalukeminen:
 
-1. `ems_step_model.md`
-2. `arkkitehtuuri.md`
-3. `operointi.md`
+1. `docs/dev/ems_step_model.md`
+2. `docs/dev/arkkitehtuuri.md`
+3. `docs/user/operointi.md`

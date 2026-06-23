@@ -1,15 +1,40 @@
 # Release Notes
 
-Paivays: 2026-06-16
+Paivays: 2026-06-22
 
 ## Scope
 
 Tama release lanceeraa EMS:n, jossa:
 
 1. grouped `EMS_config.yaml` on kanoninen konfiguraatio
-2. device model on tuotantopolun ensisijainen malli
-3. writerien kanoninen ohjausrajapinta on `device_policies`
-4. EV writerin kanoninen input on `target_w`
+2. tuotantoruntime rakentaa `CoreConfig`-mallin grouped konfiguraatiosta
+3. device model on tuotantopolun ensisijainen malli
+4. writerien kanoninen ohjausrajapinta on `device_policies`
+5. EV writerin kanoninen input on `target_w`
+
+## N-device support
+
+Tama release tukee:
+
+1. yhta `HOME_BATTERY`-akkua
+2. `0-n` `kind: RELAY` -laitetta configissa, policyssa, dispatchissa ja writerissa
+3. `0-n` `kind: EV_CHARGER` -laturia konfiguroituna
+4. usean EV:n selected-single boundarya: yksi EV valitaan aktiiviseksi adjustable-laitteeksi kerrallaan
+5. 0 EV -configia
+6. 0 relay -configia
+7. custom device-id:ita, esimerkiksi `RELAY_SAUNA`, `RELAY_BOILER`, `EV_MAIN` ja `EV_GARAGE`
+
+Tama release ei toteuta:
+
+1. multi-EV simultaneous power splitia
+2. round-robinia usealle EV:lle
+3. useaa `HOME_BATTERY`-akkua
+4. legacy scalar trace -kenttien poistamista kaikista compatibility-polkuista
+5. kaikkien core API legacy-parametrien poistoa
+
+HAEO NET_ZERO custom EV -polku tukee selected EV device-id:ta unit-tasolla.
+EMS-internal HAEO combo -semantiikan laajemmat muutokset ovat jatkotyota siltä
+osin kuin niita ei ole katettu nykyisilla e2e-testeilla.
 
 ## Breaking changes
 
@@ -27,6 +52,9 @@ Seuraavat Home Assistant -entityt poistuvat eivatka paivity enaa:
 Jos Home Assistant -automaatiot, dashboardit tai template-sensorit ovat
 nojaaneet naihin entityihin, ne on paivitettava.
 
+Lisaksi legacy scalar -view on rajattu deprecated adapter -polkuun. Tuotantokoodi
+ei enaa nojaa `EmsConfig`-parityyn runtime-polussa.
+
 ## Canonical replacements
 
 Kayta jatkossa ensisijaisesti naita:
@@ -35,7 +63,8 @@ Kayta jatkossa ensisijaisesti naita:
 2. `sensor.ems_device_policies_pyscript`
 3. `sensor.ems_active_surplus_devices`
 4. `sensor.ems_previous_device_state`
-5. `input_datetime.ems_surplus_freeze_until`
+5. `sensor.ems_actuator_writer_trace`
+6. `input_datetime.ems_surplus_freeze_until`
 
 Konkreettinen tulkinta:
 
@@ -44,8 +73,16 @@ Konkreettinen tulkinta:
    - `surplus_device_dispatch_action`
    - `surplus_device_dispatch_target`
    - `surplus_device_dispatch_device_id`
+   - `surplus_device_targets`
 3. aktiivinen surplus-tila luetaan `active_surplus_devices.device_ids`
    -attribuutista
+4. writerin toteuma luetaan `sensor.ems_actuator_writer_trace` -sensorin
+   `devices`-mapista
+
+Vanhat `relay1`, `relay2`, `ev`, `RELAY1`, `RELAY2`, `EV_CHARGER` ja
+`ADJUSTABLE`-nimet voivat nakya compatibility-diagnostiikassa tai yksittaisina
+validin device-id:n esimerkkeina. Uusia dashboardeja tai automaatioita ei tule
+rakentaa niiden varaan canonical integraatiosopimuksena.
 
 ## Configuration
 
@@ -67,6 +104,8 @@ näkyvästi.
 3. dispatch trace on device-id-pohjainen, ei legacy boolean -pohjainen
 4. EV:n amperit ovat edelleen adapteri- ja actuator-rajalla mukana, mutta
    core/writer contract on wattipohjainen
+5. useampi EV voi olla konfiguroituna, mutta vain selected EV saa aktiivisen
+   adjustable-policyroolin yhdella policy-kierroksella
 
 ## Upgrade note for HA users
 

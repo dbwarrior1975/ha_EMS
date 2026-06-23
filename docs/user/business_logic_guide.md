@@ -112,7 +112,7 @@ Tama on tietoinen toimintatapa, joka kannattaa kasitella erillisena riski- ja op
 
 ## Liittyvat dokumentit
 
-1. `tilakaavio.md`
-2. `arkkitehtuuri.md`
-3. `operointi.md`
-4. `ems_step_model.md`
+1. `docs/dev/tilakaavio.md`
+2. `docs/dev/arkkitehtuuri.md`
+3. `docs/user/operointi.md`
+4. `docs/dev/ems_step_model.md`

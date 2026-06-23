@@ -2,8 +2,6 @@ import os
 
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
-    build_ems_config_from_grouped_reader,
-    build_ems_config_from_core_config,
     runtime_alias_index,
     load_and_validate_grouped_ems_config,
 )
@@ -20,6 +18,7 @@ _GROUPED_CONFIG_DUAL_READ_STATUS = {
 }
 
 _DEFAULT_GROUPED_CONFIG_PATH = '/config/EMS_config.yaml'
+_MAX_VALIDATION_ISSUES_IN_ERROR = 8
 
 def _read_grouped_entity(entity_id, default, read_bool, read_float, read_int, read_str):
     if isinstance(default, bool):
@@ -34,6 +33,18 @@ def _read_grouped_entity(entity_id, default, read_bool, read_float, read_int, re
 def _set_grouped_config_status(status):
     _GROUPED_CONFIG_DUAL_READ_STATUS.clear()
     _GROUPED_CONFIG_DUAL_READ_STATUS.update(status)
+
+
+def _format_validation_issues(issues, limit=_MAX_VALIDATION_ISSUES_IN_ERROR):
+    formatted = []
+    for issue in tuple(issues or ())[:limit]:
+        path = getattr(issue, 'path', '') or '<unknown>'
+        message = getattr(issue, 'message', '') or 'validation error'
+        formatted.append(f'{path}: {message}')
+    remaining = max(0, len(tuple(issues or ())) - len(formatted))
+    if remaining:
+        formatted.append(f'... and {remaining} more')
+    return tuple(formatted)
 
 
 def _config_mismatches(left_cfg, right_cfg):
@@ -97,6 +108,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         issue_paths = []
         for issue in validation.errors:
             issue_paths.append(issue.path)
+        issue_details = _format_validation_issues(validation.errors)
         status = {
             'enabled': True,
             'ok': False,
@@ -104,9 +116,11 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
             'path': path,
             'reason': 'validation_failed',
             'issues': tuple(issue_paths),
+            'issue_details': issue_details,
         }
         _set_grouped_config_status(status)
-        raise ValueError('Grouped EMS config validation failed')
+        detail_text = '; '.join(issue_details) if issue_details else 'unknown validation error'
+        raise ValueError(f'Grouped EMS config validation failed: {detail_text}')
 
     def grouped_reader(entity_id, default):
         return _read_grouped_entity(
@@ -197,6 +211,7 @@ def build_runtime_entities_from_grouped_config(config):
     state = ems.get('state', {})
     outputs = ems.get('policy_outputs', {})
     haeo = ems.get('haeo', {})
+    devices = ems.get('devices', {})
     if isinstance(runtime, dict):
         ent['grid_power_w'] = runtime.get('grid_power_w')
         ent['hourly_energy_balance'] = runtime.get('hourly_energy_balance_kwh')
@@ -218,9 +233,54 @@ def build_runtime_entities_from_grouped_config(config):
         ent['haeo_ev_battery_power_active'] = haeo.get('ev_power_active')
         ent['haeo_battery_active_power_fresh_source'] = haeo.get('battery_fresh_source')
         ent['haeo_ev_active_power_fresh_source'] = haeo.get('ev_fresh_source')
+    device_entities = {}
+    relay_device_ids = []
+    ev_device_ids = []
+    if isinstance(devices, dict):
+        for device_id, device in devices.items():
+            if not isinstance(device, dict):
+                continue
+            kind = str(device.get('kind') or '')
+            policy = device.get('policy', {}) if isinstance(device.get('policy'), dict) else {}
+            adapter = device.get('adapter', {}) if isinstance(device.get('adapter'), dict) else {}
+            capabilities = device.get('capabilities', {}) if isinstance(device.get('capabilities'), dict) else {}
+            entry = {
+                'device_id': str(device_id),
+                'kind': kind,
+            }
+            if kind == 'BATTERY':
+                entry['target_w'] = adapter.get('target_w')
+                entry['measured_power_w'] = adapter.get('measured_power_w')
+            elif kind == 'EV_CHARGER':
+                ev_device_ids.append(str(device_id))
+                entry['enabled'] = adapter.get('enabled')
+                entry['current_a'] = adapter.get('current_a')
+                entry['current_min_a'] = adapter.get('current_min_a')
+                entry['current_max_a'] = adapter.get('current_max_a')
+                entry['current_step_a'] = adapter.get('current_step_a')
+                entry['phases'] = adapter.get('phases')
+                entry['voltage_v'] = adapter.get('voltage_v')
+                entry['force_current_a'] = adapter.get('force_current_a')
+                entry['surplus_allowed'] = policy.get('surplus_allowed')
+                entry['priority'] = policy.get('priority')
+            elif kind == 'RELAY':
+                relay_device_ids.append(str(device_id))
+                entry['enabled'] = adapter.get('enabled')
+                entry['surplus_allowed'] = policy.get('surplus_allowed')
+                entry['force_on'] = policy.get('force_on')
+                entry['priority'] = policy.get('priority')
+                entry['max_absorb_w'] = capabilities.get('max_absorb_w')
+            filtered_entry = {}
+            for key, value in entry.items():
+                if value not in (None, ''):
+                    filtered_entry[key] = value
+            device_entities[str(device_id)] = filtered_entry
+    ent['devices'] = device_entities
+    ent['relay_device_ids'] = tuple(relay_device_ids)
+    ent['ev_device_ids'] = tuple(ev_device_ids)
     filtered = {}
     for key, value in ent.items():
-        if value:
+        if value or key in {'devices', 'relay_device_ids', 'ev_device_ids'}:
             filtered[key] = value
     return filtered
 
@@ -230,25 +290,12 @@ def read_runtime_context(read_bool=None, read_float=None, read_int=None, read_st
     read_float = read_float or _get_float
     read_int = read_int or _get_int
     read_str = read_str or _get_str
-    grouped_cfg, grouped_entities, status, grouped_config = _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str)
-    def grouped_reader(entity_id, default):
-        return _read_grouped_entity(
-            entity_id,
-            default,
-            read_bool,
-            read_float,
-            read_int,
-            read_str,
-        )
-
-    scalar_cfg = build_ems_config_from_grouped_reader(grouped_config, grouped_reader)
-    grouped_scalar_view = build_ems_config_from_core_config(grouped_cfg)
-    mismatches = _config_mismatches(grouped_scalar_view, scalar_cfg)
-    status['ok'] = not mismatches
-    status['mismatches'] = mismatches
+    grouped_cfg, grouped_entities, status, _grouped_config = _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str)
+    status['ok'] = True
+    status['mismatches'] = ()
     status['strict'] = True
     status['source'] = 'grouped_config'
-    status['reason'] = 'matched' if not mismatches else 'parity_mismatch'
+    status['reason'] = 'loaded'
     _set_grouped_config_status(status)
     return grouped_cfg, grouped_entities
 

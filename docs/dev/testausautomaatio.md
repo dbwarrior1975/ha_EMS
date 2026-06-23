@@ -79,6 +79,21 @@ tuotantoketjua suoraan tiedostotasolla:
 `tests/scenarios/` sisaltaa kevyempia regressio-/semantiikkatesteja, mutta ei
 ole enaa projektin ensisijainen e2e-pinta.
 
+Nykyinen e2e-malli:
+
+1. jokaisella `tests/e2e_entity/<scenario>/` -kansiolla on oma
+   `EMS_config.yaml`
+2. `QuarterScenarioHarness(... scenario_dir=Path(__file__).parent)` lataa
+   saman scenario YAML:n seka runtimelle etta testin entity registryksi
+3. testit ja seed-helperit kayttavat vain `h.ent`- ja
+   `h.device_entity(device_id, field)` -pintaa
+4. root-tason `EMS_config.yaml` ei saa vaikuttaa e2e-skenaarion device
+   registryyn, entity-id -hakuun tai seedaukseen
+
+Root YAML -kytkenta on erikseen regressiosuojattu testissa
+`tests/contract/test_grouped_config_runtime_parity.py::
+test_scenario_harness_registry_is_isolated_from_root_ent`.
+
 ### Smoke-testit
 
 Hakemisto: `tests/smoke/`
@@ -171,7 +186,8 @@ Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 11. `tests/e2e_entity/system_degraded_safe_mode/`
 12. `tests/scenarios/test_regressions.py`
 
-Jokaisessa splitatussa e2e-kansiossa on oma `scenario_overview.md`, joka kertoo vaihejakojen tarkoituksen.
+Jokaisessa splitatussa e2e-kansiossa on oma `EMS_config.yaml`, ja useimmissa
+myos `scenario_overview.md`, joka kertoo vaihejakojen tarkoituksen.
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 
@@ -211,6 +227,9 @@ Lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 2. Lisaa writerille tarvittaessa lisaedge-testeja, jotka erottavat:
    `NET_ZERO` release-to-min-current
    ja `MAX_EXPORT` hard-off -semantiikan.
+3. Pida `tests/e2e_entity/` tiukasti scenario-YAML -pohjaisena:
+   uudet testit rakentavat harnessin `scenario_dir`-parametrilla eivatka saa
+   lukea root `EMS_config.yaml`:n entity registrya implisiittisesti.
 
 ## Avoimet kysymykset / jatkokehitys
 

@@ -2,12 +2,27 @@ from ems_core.domain.ev_power import ev_max_power_w, ev_min_power_w
 from ems_core.domain.models import SurplusDeviceTarget, SurplusTargetConfig, SurplusDispatchDecision
 
 
+def _ev_absorb_range_w(cfg, device):
+    if device is not None and str(getattr(device, 'kind', '')) == 'EV_CHARGER':
+        adapter = device.adapter
+        phases = max(1, int(round(float(adapter.phases))))
+        min_a = max(0, int(round(float(adapter.current_min_a))))
+        max_a = max(min_a, int(round(float(adapter.current_max_a))))
+        return max((max_a - min_a) * phases * 230, 0)
+    return max(int(ev_max_power_w(cfg) - ev_min_power_w(cfg)), 0)
+
+
 def _adjustable_threshold_w(cfg, adjustable_device_id):
     configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
     if configured_activation_w > 0.0:
         return max(int(round(configured_activation_w)), 0)
-    if adjustable_device_id == 'EV_CHARGER':
-        return max(int(ev_max_power_w(cfg) - ev_min_power_w(cfg)), 0)
+    device = cfg.device_by_id(adjustable_device_id) if hasattr(cfg, 'device_by_id') else None
+    is_ev = (
+        adjustable_device_id == 'EV_CHARGER'
+        or (device is not None and str(getattr(device, 'kind', '')) == 'EV_CHARGER')
+    )
+    if is_ev:
+        return _ev_absorb_range_w(cfg, device)
     return max(int(round(float(cfg.max_solar_charge_w))), 0)
 
 
@@ -18,16 +33,9 @@ def build_surplus_device_targets(
     adjustable_priority,
     adjustable_active,
     adjustable_enabled=True,
-    relay1_enabled,
-    relay1_force_on,
-    relay1_active,
-    relay1_capable=True,
-    relay2_enabled,
-    relay2_force_on,
-    relay2_active,
-    relay2_capable=True,
+    relay_candidates=None,
 ):
-    return (
+    targets = [
         SurplusDeviceTarget(
             device_id=str(adjustable_device_id),
             decision_name='ADJUSTABLE',
@@ -37,28 +45,29 @@ def build_surplus_device_targets(
             enabled=bool(adjustable_enabled),
             force_on=False,
             active=bool(adjustable_active),
-        ),
-        SurplusDeviceTarget(
-            device_id='RELAY1',
-            decision_name='RELAY1',
-            priority=int(cfg.relay1_priority),
-            rank=2,
-            threshold_w=max(int(round(float(cfg.relay1_power_kw) * 1000.0)), 0),
-            enabled=bool(relay1_enabled and relay1_capable),
-            force_on=bool(relay1_force_on),
-            active=bool(relay1_active),
-        ),
-        SurplusDeviceTarget(
-            device_id='RELAY2',
-            decision_name='RELAY2',
-            priority=int(cfg.relay2_priority),
-            rank=3,
-            threshold_w=max(int(round(float(cfg.relay2_power_kw) * 1000.0)), 0),
-            enabled=bool(relay2_enabled and relay2_capable),
-            force_on=bool(relay2_force_on),
-            active=bool(relay2_active),
-        ),
-    )
+        )
+    ]
+    relay_candidates = tuple(relay_candidates or ())
+    next_rank = 2
+    for relay in relay_candidates:
+        device_id = str(relay.get('device_id') or '')
+        threshold_w = max(int(round(float(relay.get('threshold_w', 0) or 0))), 0)
+        if not device_id:
+            continue
+        targets.append(
+            SurplusDeviceTarget(
+                device_id=device_id,
+                decision_name=device_id,
+                priority=int(relay.get('priority', 0) or 0),
+                rank=next_rank,
+                threshold_w=threshold_w,
+                enabled=bool(relay.get('enabled', True)),
+                force_on=bool(relay.get('force_on', False)),
+                active=bool(relay.get('active', False)),
+            )
+        )
+        next_rank += 1
+    return tuple(targets)
 
 
 def device_target_to_legacy_target(target):

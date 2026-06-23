@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, Literal, Union
+from typing import Optional, Union
 
 
 class ControlProfile:
@@ -246,19 +246,27 @@ class CoreRoleConstraintsConfig:
             self.by_role = {}
 
 
+CoreDeviceConfig = Union[
+    'CoreBatteryDeviceConfig',
+    'CoreEvChargerDeviceConfig',
+    'CoreRelayDeviceConfig',
+]
+
+
 @dataclass
 class CoreConfig:
     profiles: CoreProfilesConfig
     global_config: CoreGlobalConfig
     home_battery: CoreBatteryDeviceConfig
-    ev_charger: CoreEvChargerDeviceConfig
-    relay1: CoreRelayDeviceConfig
-    relay2: CoreRelayDeviceConfig
     runtime: CoreRuntimeConfig
     state: CoreStateConfig
     policy_outputs: CorePolicyOutputsConfig
     haeo: Optional[CoreHaeoConfig] = None
     role_constraints: Optional[CoreRoleConstraintsConfig] = None
+    devices: Optional[dict[str, CoreDeviceConfig]] = None
+    ev_charger: Optional[CoreEvChargerDeviceConfig] = None
+    relay1: Optional[CoreRelayDeviceConfig] = None
+    relay2: Optional[CoreRelayDeviceConfig] = None
     deadband_w: Optional[ScalarRef] = None
     ramp_max_w: Optional[ScalarRef] = None
     strict_limits_max_w: Optional[ScalarRef] = None
@@ -295,6 +303,14 @@ class CoreConfig:
     def __post_init__(self):
         if self.role_constraints is None:
             self.role_constraints = CoreRoleConstraintsConfig()
+        if self.devices is None:
+            self.devices = {}
+        if 'HOME_BATTERY' not in self.devices:
+            self.devices['HOME_BATTERY'] = self.home_battery
+        self.home_battery = self._resolve_home_battery_device()
+        self.ev_charger = self._resolve_ev_compat_device()
+        self.relay1 = self._resolve_relay_compat_device(0)
+        self.relay2 = self._resolve_relay_compat_device(1)
         if self.deadband_w is None:
             self.deadband_w = self.global_config.deadband_w
         if self.ramp_max_w is None:
@@ -319,21 +335,21 @@ class CoreConfig:
             self.battery_protect_min_cell_voltage_v = self.home_battery.guard.protect_min_cell_voltage_v
         if self.battery_protect_charge_floor_w is None:
             self.battery_protect_charge_floor_w = self.home_battery.guard.protect_min_absorb_w
-        if self.ev_min_current_a is None:
+        if self.ev_min_current_a is None and self.ev_charger is not None:
             self.ev_min_current_a = self.ev_charger.adapter.current_min_a
-        if self.ev_max_current_a is None:
+        if self.ev_max_current_a is None and self.ev_charger is not None:
             self.ev_max_current_a = self.ev_charger.adapter.current_max_a
-        if self.ev_charger_phases is None:
+        if self.ev_charger_phases is None and self.ev_charger is not None:
             self.ev_charger_phases = self.ev_charger.adapter.phases
-        if self.ev_force_current_a is None:
+        if self.ev_force_current_a is None and self.ev_charger is not None:
             self.ev_force_current_a = self.ev_charger.adapter.force_current_a
-        if self.ev_hard_off_pv_threshold_kw is None:
+        if self.ev_hard_off_pv_threshold_kw is None and self.ev_charger is not None:
             self.ev_hard_off_pv_threshold_kw = self.ev_charger.policy.low_pv_threshold_w
-        if self.ev_hard_off_low_pv_cycles is None:
+        if self.ev_hard_off_low_pv_cycles is None and self.ev_charger is not None:
             self.ev_hard_off_low_pv_cycles = self.ev_charger.policy.hard_off_low_pv_cycles
-        if self.ev_hard_off_release_cycles is None:
+        if self.ev_hard_off_release_cycles is None and self.ev_charger is not None:
             self.ev_hard_off_release_cycles = self.ev_charger.policy.hard_off_release_cycles
-        if self.ev_current_step_a is None:
+        if self.ev_current_step_a is None and self.ev_charger is not None:
             self.ev_current_step_a = self.ev_charger.adapter.current_step_a
         if self.nz_battery_floor_default_w is None:
             self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
@@ -349,16 +365,72 @@ class CoreConfig:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
         if self.adjustable_surplus_load_priority is None:
             self.adjustable_surplus_load_priority = self.home_battery.policy.priority
-        if self.relay1_power_kw is None:
+        if self.relay1_power_kw is None and self.relay1 is not None:
             self.relay1_power_kw = self.relay1.capabilities.max_absorb_w
-        if self.relay2_power_kw is None:
+        if self.relay2_power_kw is None and self.relay2 is not None:
             self.relay2_power_kw = self.relay2.capabilities.max_absorb_w
-        if self.relay1_priority is None:
+        if self.relay1_priority is None and self.relay1 is not None:
             self.relay1_priority = self.relay1.policy.priority
-        if self.relay2_priority is None:
+        if self.relay2_priority is None and self.relay2 is not None:
             self.relay2_priority = self.relay2.policy.priority
-        if self.ev_priority is None:
+        if self.ev_priority is None and self.ev_charger is not None:
             self.ev_priority = self.ev_charger.policy.priority
+
+    def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
+        if self.devices is None:
+            return None
+        return self.devices.get(device_id)
+
+    def _resolve_home_battery_device(self) -> CoreBatteryDeviceConfig:
+        device = self.device_by_id('HOME_BATTERY')
+        if device is not None and str(device.kind) == 'BATTERY':
+            return device
+        return self.home_battery
+
+    def first_device_by_kind(self, kind: str) -> Optional[CoreDeviceConfig]:
+        devices = self.devices_by_kind(kind)
+        if not devices:
+            return None
+        return devices[0]
+
+    def nth_device_by_kind(self, kind: str, index: int) -> Optional[CoreDeviceConfig]:
+        devices = self.devices_by_kind(kind)
+        if index < 0 or index >= len(devices):
+            return None
+        return devices[index]
+
+    def _resolve_ev_compat_device(self) -> Optional[CoreEvChargerDeviceConfig]:
+        device = self.device_by_id('EV_CHARGER')
+        if device is not None and str(device.kind) == 'EV_CHARGER':
+            return device
+        return self.first_device_by_kind('EV_CHARGER')
+
+    def _resolve_relay_compat_device(self, index: int) -> Optional[CoreRelayDeviceConfig]:
+        preferred_id = f'RELAY{index + 1}'
+        device = self.device_by_id(preferred_id)
+        if device is not None and str(device.kind) == 'RELAY':
+            return device
+        return self.nth_device_by_kind('RELAY', index)
+
+    def devices_by_kind(self, kind: str) -> tuple[CoreDeviceConfig, ...]:
+        if self.devices is None:
+            return ()
+        items = []
+        for device in self.devices.values():
+            if str(device.kind) == str(kind):
+                items.append(device)
+        return tuple(items)
+
+    def surplus_capable_devices(self) -> tuple[CoreDeviceConfig, ...]:
+        if self.devices is None:
+            return ()
+        items = []
+        for device in self.devices.values():
+            if str(device.kind) == 'BATTERY':
+                continue
+            if bool(device.capabilities.can_absorb_w):
+                items.append(device)
+        return tuple(items)
 
 
 @dataclass
@@ -374,6 +446,8 @@ class RuntimeMeasurements:
     charger_current_a: int
     relay1_on: bool
     relay2_on: bool
+    relay_states: Optional[dict[str, dict]] = None
+    ev_states: Optional[dict[str, dict]] = None
 
 
 @dataclass
@@ -454,7 +528,7 @@ class DevicePolicy:
 @dataclass
 class SurplusDeviceTarget:
     device_id: str
-    decision_name: Literal['ADJUSTABLE', 'RELAY1', 'RELAY2']
+    decision_name: str
     priority: int
     rank: int
     threshold_w: int
@@ -465,7 +539,7 @@ class SurplusDeviceTarget:
 
 @dataclass
 class SurplusTargetConfig:
-    name: Literal['EV', 'BATTERY', 'ADJUSTABLE', 'RELAY1', 'RELAY2']
+    name: str
     priority: int
     rank: int
     threshold_kw: float
@@ -496,9 +570,6 @@ class SurplusDispatchDecision:
 class NetZeroOutputs:
     battery_write_enabled: bool
     battery_target_w: int
-    ev_current_a: int
-    relay1_command: int
-    relay2_command: int
     surplus_policy_active: bool
     surplus_next_target: str
     surplus_next_threshold_kw: float

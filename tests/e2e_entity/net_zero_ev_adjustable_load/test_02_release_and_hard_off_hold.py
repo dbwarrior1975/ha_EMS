@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import run_steps
 from tests.e2e_entity.refactored_runner import seed_previous_device_state
@@ -10,6 +9,7 @@ from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 def test_02_release_and_hard_off_hold(project_root):
     """Phase 2: relay/adjustable releases and EV hard-off hold behavior."""
     h = build_harness(project_root)
+    E = h.ent
 
     seed_active_surplus_devices(
         h,
@@ -19,7 +19,7 @@ def test_02_release_and_hard_off_hold(project_root):
         actuator_battery_setpoint_w=2500,
     )
     h.set_entities({
-        ENT['surplus_freeze_until']: 104.0,
+        E['surplus_freeze_until']: 104.0,
     })
     seed_previous_device_state(h, mode='burn')
 
@@ -28,10 +28,10 @@ def test_02_release_and_hard_off_hold(project_root):
             'at_s': 135,
             'note': 't135 PV 1.7 kW: low RPNZ triggers RELEASE_RELAY1 and adjustable path remains active.',
             'set': {
-                ENT['required_power_consumption_kw']: -3.4,
-                ENT['rpnz_w']: -10.0,
-                ENT['grid_power_w']: 3290.0,
-                ENT['pv_power_kw']: 1.7,
+                E['required_power_consumption_kw']: -3.4,
+                E['rpnz_w']: -10.0,
+                E['grid_power_w']: 3290.0,
+                E['pv_power_kw']: 1.7,
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True},
@@ -44,24 +44,24 @@ def test_02_release_and_hard_off_hold(project_root):
                 'battery_to_ev_loop_risk': 0.0,
             },
             'expect_values': {
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 1500,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 1500,
             },
         },
         {
             'at_s': 150,
             'note': 't150 PV below threshold: RELEASE_ADJUSTABLE occurs and battery target ramps down per limits.',
             'set': {
-                ENT['required_power_consumption_kw']: -4.0,
-                ENT['rpnz_w']: -100.0,
-                ENT['grid_power_w']: 2320.0,
+                E['required_power_consumption_kw']: -4.0,
+                E['rpnz_w']: -100.0,
+                E['grid_power_w']: 2320.0,
                 
 
-                ENT['pv_power_kw']: 1.5,
+                E['pv_power_kw']: 1.5,
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
@@ -69,124 +69,125 @@ def test_02_release_and_hard_off_hold(project_root):
                 'battery_to_ev_loop_risk': False,
             },
             'expect_values': {
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 500,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 160,
             'note': 't160 PV 0.0 kW: EV enters HARD_OFF after low-PV persistence criteria are met.',
             'set': {
-                ENT['required_power_consumption_kw']: 0.5,
-                ENT['rpnz_w']: -80.0,
-                ENT['grid_power_w']: -2020.0,
-                ENT['pv_power_kw']: 0.0,
+                E['required_power_consumption_kw']: 0.5,
+                E['rpnz_w']: -80.0,
+                E['grid_power_w']: -2020.0,
+                E['pv_power_kw']: 0.0,
             },
-                'expect_device_policies': {
-                    'EV_CHARGER': {'enabled': False},
-                    'HOME_BATTERY': {'target_w': 1500},
-                },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 500},
+            },
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'activation_gate_hold',
                 'battery_to_ev_loop_risk': False,
             },
             'expect_values': {
-                ENT['actuator_battery_setpoint_w']: 1500,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 180,
             'note': 't180 PV 1.0 kW: hold state with EV disabled and battery setpoint held by gate logic.',
             'set': {
-                ENT['required_power_consumption_kw']: 0.9,
-                ENT['rpnz_w']: -50.0,
-                ENT['grid_power_w']: -500.0,
-                ENT['pv_power_kw']: 1.0,
+                E['required_power_consumption_kw']: 0.9,
+                E['rpnz_w']: -50.0,
+                E['grid_power_w']: -500.0,
+                E['pv_power_kw']: 1.0,
             },
-                'expect_device_policies': {
-                    'EV_CHARGER': {'enabled': False},
-                    'HOME_BATTERY': {'target_w': 1700},
-                },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 500},
+            },
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'activation_gate_hold',
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 1700,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 210,
             'note': 't210 PV 1.0 kW with negative RPNZ: remain in hold path while waiting below ADJUSTABLE threshold.',
             'set': {
-                ENT['required_power_consumption_kw']: 1.4,
-                ENT['rpnz_w']: -40.0,
-                ENT['grid_power_w']: -900.0,
-                ENT['pv_power_kw']: 1.0,
+                E['required_power_consumption_kw']: 1.4,
+                E['rpnz_w']: -40.0,
+                E['grid_power_w']: -900.0,
+                E['pv_power_kw']: 1.0,
             },
-                'expect_device_policies': {
-                    'EV_CHARGER': {'enabled': False},
-                    'HOME_BATTERY': {'target_w': 2100},
-                },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 500},
+            },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'Waiting for HOME_BATTERY; raw RPC below threshold',
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'activation_gate_hold',
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 2100,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 226,
             'note': 't226 PV 1.0 kW with negative RPNZ: EV remains hard-off and battery command stays held.',
             'set': {
-                ENT['required_power_consumption_kw']: 1.9,
-                ENT['rpnz_w']: -10.0,
-                ENT['grid_power_w']: -1200.0,
-                ENT['pv_power_kw']: 1.0,
+                E['required_power_consumption_kw']: 1.9,
+                E['rpnz_w']: -10.0,
+                E['grid_power_w']: -1200.0,
+                E['pv_power_kw']: 1.0,
             },
-                'expect_device_policies': {
-                    'EV_CHARGER': {'enabled': False},
-                    'HOME_BATTERY': {'target_w': 2500},
-                },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 500},
+            },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'Waiting for HOME_BATTERY; raw RPC below threshold',
                 'battery_min_floor_w': 0.0,
+                'battery_min_floor_reason': 'activation_gate_hold',
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 2500,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
         {
             'at_s': 240,
             'note': 't240 post-release: baseline floor semantics continue with hard-off still active.',
             'set': {
-                ENT['required_power_consumption_kw']: 1.95,
-                ENT['rpnz_w']: -5.0,
-                ENT['grid_power_w']: -2300.0,
-                ENT['pv_power_kw']: 0.0,
+                E['required_power_consumption_kw']: 1.95,
+                E['rpnz_w']: -5.0,
+                E['grid_power_w']: -2300.0,
+                E['pv_power_kw']: 0.0,
             },
-                'expect_device_policies': {
-                    'EV_CHARGER': {'enabled': False},
-                    'HOME_BATTERY': {'target_w': 2500},
-                },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 500},
+            },
             'expect_policy': {
                 'ev_hard_off_active': True,
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'activation_gate_hold',
             },
             'expect_values': {
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
-                ENT['actuator_battery_setpoint_w']: 2500,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 500,
             },
         },
     ]

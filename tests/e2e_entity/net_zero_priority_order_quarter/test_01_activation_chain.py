@@ -1,24 +1,23 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import run_steps
 
 @pytest.mark.scenario
 def test_01_activation_chain(project_root):
-    """Phase 1: activation order RELAY1 -> ADJUSTABLE(EV) -> RELAY2."""
+    """Phase 1: activation order RELAY1 -> EV_CHARGER -> RELAY2."""
     h = build_harness(project_root)
+    E = h.ent
 
     steps = [
         {
             'at_s': 0,
             'note': 't0 raw RPC crosses RELAY1 threshold so first activation decision targets RELAY1',
             'set': {
-                ENT['required_power_consumption_kw']: 3.5,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 3.5,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
                 'surplus_device_next_target': 'RELAY1',
                 'surplus_device_next_device_id': 'RELAY1',
@@ -34,25 +33,24 @@ def test_01_activation_chain(project_root):
                 'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                ENT['actuator_relay1']: False,
-                ENT['actuator_relay2']: False,
-                ENT['actuator_ev_enabled']: False,
+                E['actuator_relay1']: False,
+                E['actuator_relay2']: False,
+                E['actuator_ev_enabled']: False,
             },
         },
         {
             'at_s': 30,
             'note': 't30 RELAY1 is visible and EV becomes the next target once its threshold is reached',
             'set': {
-                ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 6.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
                 'surplus_device_next_target': 'ADJUSTABLE',
                 'surplus_device_next_device_id': 'EV_CHARGER',
                 'surplus_freeze_until_ts': 45.0,
-                'surplus_explanation': 'Raw RPC 6.000 kW >= ADJUSTABLE threshold 5.060 kW',
+                    'surplus_explanation': 'Raw RPC 6.000 kW >= EV_CHARGER threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
             },
             'expect_device_policies': {
@@ -63,19 +61,18 @@ def test_01_activation_chain(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER'),
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_relay2']: False,
+                E['actuator_relay1']: True,
+                E['actuator_relay2']: False,
             },
         },
         {
             'at_s': 60,
             'note': 't60 EV burn is visible and RELAY2 becomes eligible as the third activation',
             'set': {
-                ENT['required_power_consumption_kw']: 6.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 6.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'ACTIVATE_RELAY2',
                 'surplus_device_next_target': 'RELAY2',
                 'surplus_device_next_device_id': 'RELAY2',
@@ -92,20 +89,19 @@ def test_01_activation_chain(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2'),
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_relay2']: False,
-                ENT['actuator_ev_current_a']: 28,
+                E['actuator_relay1']: True,
+                E['actuator_relay2']: False,
+                E['actuator_ev_current_a']: 28,
             },
         },
         {
             'at_s': 61,
             'note': 't61 RELAY2 command is now visible and all three surplus targets are stably active',
             'set': {
-                ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 500,
+                E['required_power_consumption_kw']: 0.0,
+                E['rpnz_w']: 500,
             },
             'expect_policy': {
-                'surplus_device_parity_ok': True,
                 'surplus_device_dispatch_decision': 'NOOP',
                 'surplus_device_next_target': 'NONE',
                 'surplus_device_next_device_id': '',
@@ -122,9 +118,9 @@ def test_01_activation_chain(project_root):
                 'active_surplus_device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2'),
             },
             'expect_values': {
-                ENT['actuator_relay1']: True,
-                ENT['actuator_relay2']: True,
-                ENT['actuator_ev_current_a']: 28,
+                E['actuator_relay1']: True,
+                E['actuator_relay2']: True,
+                E['actuator_ev_current_a']: 28,
             },
         },
     ]

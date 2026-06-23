@@ -1,10 +1,10 @@
 # E2E refactoring guidance
 
-Paivays: 2026-06-16
+Paivays: 2026-06-23
 
 Tama dokumentti ohjaa e2e-testien paivitysta kohti nykyista EMS-sopimusta.
 
-Nykytila 2026-06-16:
+Nykytila 2026-06-23:
 
 - e2e-harnessissa on canonical previous-device-state ja active-device-state -helperit
 - `tests/e2e_entity` on jo pitkalla canonical device-policy/device-dispatch -mallissa
@@ -12,6 +12,12 @@ Nykytila 2026-06-16:
 - xfail liittyy tarkoitukselliseen tulevaan HAEO combo-semantiikkaan, ei legacy-polun puutteeseen
 - runnerissa on nyt fail-fast guardit, jotka estavat legacy behavioral assert
   -pinnan palaamisen e2e-steppeihin
+- jokainen e2e-skenaario lataa oman `EMS_config.yaml`:n, ja se on testin ainoa
+  config-totuus
+- `QuarterScenarioHarness` rakentaa `h.ent`-registryn samasta scenario
+  YAML:sta, jota runtime kayttaa
+- root `tests.entity_ids.ENT` ei ole sallittu e2e-polussa, ei edes
+  device-seedauksen fallbackina
 
 ## Tavoite
 
@@ -29,6 +35,24 @@ Valittu linja on nyt tiukempi:
 - legacy policy sensorit eivat ole sallittu behavioral assert -pinta e2e-kansiossa
 - testin tulee todistaa uusi device-policy/device-dispatch tuotantoketju suoraan
 - harness lukee grouped-configin tiedostosta `EMS_config.yaml`
+- harnessiin sidottu entity-haku tapahtuu `h.ent`- ja
+  `h.device_entity(device_id, field)` -pinnan kautta
+
+## Scenario YAML rule
+
+`tests/e2e_entity/`-kansion jokainen skenaario on eristetty root-configista.
+Kaytannossa tama tarkoittaa:
+
+1. rakenna harness aina `scenario_dir=Path(__file__).parent` -parametrilla,
+   ellei testin tarkoitus ole eksplisiittisesti root-config contract
+2. hae globaalit entityt `h.ent`-registrysta
+3. hae laitekohtaiset entityt `h.device_entity(device_id, field)` -helperilla
+4. ala importtaa `tests.entity_ids.ENT`:a e2e-testiin, `scenario_steps.py`:hin
+   tai seedaushelperiin
+
+Jos jokin uusi skenaario tarvitsee paikallisen entity-id mapin tai root-config
+lisayksen vain testia varten, rakenne on vaaralla tasolla ja se tulee korjata
+scenario-YAML:iin tai harness-helperiin.
 
 ## Suosi naita assertteja
 

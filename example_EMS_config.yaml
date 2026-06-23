@@ -37,7 +37,7 @@ ems:
     HOME_BATTERY:
       kind: BATTERY
       capabilities:
-        can_absorb_w: false
+        can_absorb_w: true
         can_produce_w: true
         min_absorb_w: input_number.ems_home_battery_min_absorb_w
         max_absorb_w: input_number.ems_max_battery_charge_w
@@ -68,6 +68,7 @@ ems:
         step_w: input_number.ems_ev_power_step_w
       policy:
         priority: input_number.ems_surplus_ev_priority
+        surplus_allowed: input_boolean.ems_ev_surplus_allowed
         low_pv_threshold_w: input_number.ems_ev_hard_off_pv_threshold_kw
         hard_off_low_pv_cycles: input_number.ems_ev_hard_off_low_pv_cycles
         hard_off_release_cycles: input_number.ems_ev_hard_off_release_cycles

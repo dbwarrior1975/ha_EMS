@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from tests.entity_ids import ENT
+from ems_adapter.config_loader import load_grouped_ems_config
+from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 
 
@@ -59,6 +60,7 @@ class QuarterScenarioHarness:
         step_s: int = 30,
         cfg_overrides: dict | None = None,
         grouped_config_path: Path | None = None,
+        scenario_dir: Path | None = None,
     ):
         self.project_root = Path(project_root)
         self.store = FakeEntityStore()
@@ -66,11 +68,17 @@ class QuarterScenarioHarness:
         self.step_s = int(step_s)
         self.cfg_overrides = dict(cfg_overrides or {})
         self.history = []
-        self.grouped_config_path = Path(grouped_config_path) if grouped_config_path is not None else None
-        if self.grouped_config_path is None and not os.environ.get('EMS_GROUPED_CONFIG_PATH', '').strip():
-            default_grouped_path = self.project_root / 'EMS_config.yaml'
-            if default_grouped_path.exists():
-                self.grouped_config_path = default_grouped_path
+        self.scenario_dir = Path(scenario_dir) if scenario_dir is not None else None
+        self.grouped_config_path = self._resolve_grouped_config_path(
+            project_root=self.project_root,
+            grouped_config_path=grouped_config_path,
+            scenario_dir=self.scenario_dir,
+        )
+        self.grouped_config = None
+        self.ent = {}
+        if self.grouped_config_path is not None and self.grouped_config_path.exists():
+            self.grouped_config = load_grouped_ems_config(self.grouped_config_path)
+            self.ent = build_runtime_entities_from_grouped_config(self.grouped_config)
 
         if self.grouped_config_path is not None:
             os.environ['EMS_GROUPED_CONFIG_PATH'] = str(self.grouped_config_path)
@@ -82,6 +90,63 @@ class QuarterScenarioHarness:
         )
         self.writer_mod = self._load_module(self.project_root / 'ems_actuator_writers.py', kind='writer')
         self._seed_defaults()
+
+    def entity(self, key):
+        return self.ent[key]
+
+    def _entity_id(self, key):
+        entity_id = self.ent.get(key)
+        if not entity_id:
+            raise KeyError(
+                f"missing runtime entity key={key} config={self.grouped_config_path}"
+            )
+        return entity_id
+
+    def _optional_entity_id(self, key):
+        return self.ent.get(key)
+
+    def device_entity(self, device_id, field):
+        device = (self.ent.get('devices') or {}).get(device_id) or {}
+        entity_id = device.get(field)
+        if not entity_id:
+            raise KeyError(
+                f"missing scenario runtime entity for device_id={device_id} field={field} "
+                f"config={self.grouped_config_path}"
+            )
+        return entity_id
+
+    def dev(self, device_id, field):
+        return self.device_entity(device_id, field)
+
+    @staticmethod
+    def _resolve_grouped_config_path(
+        *,
+        project_root: Path,
+        grouped_config_path: Path | None = None,
+        scenario_dir: Path | None = None,
+    ) -> Path | None:
+        if grouped_config_path is not None:
+            return Path(grouped_config_path)
+
+        if scenario_dir is not None:
+            scenario_path = Path(scenario_dir)
+            candidate = scenario_path / 'EMS_config.yaml'
+            if candidate.exists():
+                return candidate
+            raise FileNotFoundError(
+                f"scenario_dir requires EMS_config.yaml: {scenario_path}"
+            )
+
+        env_grouped_path = os.environ.get('EMS_GROUPED_CONFIG_PATH', '').strip()
+        if env_grouped_path:
+            return Path(env_grouped_path)
+
+        for filename in ('example_EMS_config.yaml', 'EMS_config.yaml'):
+            candidate = Path(project_root) / filename
+            if candidate.exists():
+                return candidate
+
+        return None
 
     def set_entities(self, mapping: dict):
         self.store.set_now(self.now)
@@ -130,77 +195,88 @@ class QuarterScenarioHarness:
 
     def _seed_defaults(self):
         self.store.set_now(self.now)
-        defaults = {
-            ENT['control_profile']: 'AUTOMATIC',
-            ENT['goal_profile']: 'NET_ZERO',
-            ENT['forecast_profile']: 'NONE',
-            ENT['guard_profile']: 'NORMAL_LIMITS',
-            ENT['battery_protect_soc']: 2,
-            ENT['battery_protect_soc_recovery_margin']: 1,
-            ENT['battery_protect_min_cell_voltage_v']: 3.03,
-            ENT['deadband_w']: 50,
-            ENT['ramp_max_w']: 1000,
-            ENT['strict_limits_max_w']: 4600,
-            ENT['max_battery_discharge_w']: 4600,
-            ENT['max_solar_charge_w']: 3700,
-            ENT['ev_min_current_a']: 6,
-            ENT['ev_max_current_a']: 28,
-            ENT['ev_charger_phases']: 1,
-            ENT['ev_force_current_a']: 0,
-            ENT['ev_current_step_a']: 4,
-            ENT['ev_hard_off_pv_threshold_kw']: 1.6,
-            ENT['ev_hard_off_low_pv_cycles']: 2,
-            ENT['ev_hard_off_release_cycles']: 2,
-            ENT['haeo_stale_timeout_s']: 300,
-            ENT['relay1_power_kw']: 2.5,
-            ENT['relay2_power_kw']: 5.0,
-            ENT['relay1_priority']: 3,
-            ENT['relay2_priority']: 1,
-            ENT['ev_priority']: 2,
-            ENT['soc']: 50.0,
-            ENT['min_cell_voltage_v']: 3.20,
-            ENT['battery_heartbeat']: 0.0,
-            ENT['grid_power_w']: 0.0,
-            ENT['current_battery_sp']: 100.0,
-            ENT['hourly_energy_balance']: 0.0,
-            ENT['charger_control']: False,
-            ENT['charger_current']: 6,
-            ENT['relay1']: False,
-            ENT['relay2']: False,
-            ENT['required_power_consumption_kw']: 0.0,
-            ENT['rpnz_w']: 500.0,
-            ENT['pv_power_kw']: 3.5,
-            ENT['surplus_freeze_until']: None,
-            ENT['relay1_surplus_allowed']: True,
-            ENT['relay2_surplus_allowed']: True,
-            ENT['relay1_force_on']: False,
-            ENT['relay2_force_on']: False,
-            ENT['actuator_battery_setpoint_w']: 0.0,
-            ENT['actuator_ev_current_a']: 6,
-            ENT['actuator_ev_enabled']: False,
-            ENT['actuator_relay1']: False,
-            ENT['actuator_relay2']: False,
-        }
+        default_specs = (
+            ('control_profile', 'AUTOMATIC'),
+            ('goal_profile', 'NET_ZERO'),
+            ('forecast_profile', 'NONE'),
+            ('guard_profile', 'NORMAL_LIMITS'),
+            ('battery_protect_soc', 2),
+            ('battery_protect_soc_recovery_margin', 1),
+            ('battery_protect_min_cell_voltage_v', 3.03),
+            ('deadband_w', 50),
+            ('ramp_max_w', 1000),
+            ('strict_limits_max_w', 4600),
+            ('max_battery_discharge_w', 4600),
+            ('max_solar_charge_w', 3700),
+            ('ev_min_current_a', 6),
+            ('ev_max_current_a', 28),
+            ('ev_charger_phases', 1),
+            ('ev_force_current_a', 0),
+            ('ev_current_step_a', 4),
+            ('ev_hard_off_pv_threshold_kw', 1.6),
+            ('ev_hard_off_low_pv_cycles', 2),
+            ('ev_hard_off_release_cycles', 2),
+            ('haeo_stale_timeout_s', 300),
+            ('relay1_power_kw', 2.5),
+            ('relay2_power_kw', 5.0),
+            ('relay1_priority', 3),
+            ('relay2_priority', 1),
+            ('ev_priority', 2),
+            ('soc', 50.0),
+            ('min_cell_voltage_v', 3.20),
+            ('battery_heartbeat', 0.0),
+            ('grid_power_w', 0.0),
+            ('current_battery_sp', 100.0),
+            ('hourly_energy_balance', 0.0),
+            ('charger_control', False),
+            ('charger_current', 6),
+            ('relay1', False),
+            ('relay2', False),
+            ('required_power_consumption_kw', 0.0),
+            ('rpnz_w', 500.0),
+            ('pv_power_kw', 3.5),
+            ('surplus_freeze_until', None),
+            ('relay1_surplus_allowed', True),
+            ('relay2_surplus_allowed', True),
+            ('relay1_force_on', False),
+            ('relay2_force_on', False),
+            ('actuator_battery_setpoint_w', 0.0),
+            ('actuator_ev_current_a', 6),
+            ('actuator_ev_enabled', False),
+            ('actuator_relay1', False),
+            ('actuator_relay2', False),
+        )
+        defaults = {}
+        for key, value in default_specs:
+            entity_id = self._optional_entity_id(key)
+            if entity_id:
+                defaults[entity_id] = value
+
+        cfg_entity_keys = (
+            'deadband_w',
+            'ramp_max_w',
+            'strict_limits_max_w',
+            'max_battery_discharge_w',
+            'max_solar_charge_w',
+            'ev_min_current_a',
+            'ev_max_current_a',
+            'ev_charger_phases',
+            'ev_force_current_a',
+            'ev_hard_off_pv_threshold_kw',
+            'ev_hard_off_low_pv_cycles',
+            'ev_hard_off_release_cycles',
+            'haeo_stale_timeout_s',
+            'relay1_power_kw',
+            'relay2_power_kw',
+            'surplus_freeze_s',
+            'relay1_priority',
+            'relay2_priority',
+            'ev_priority',
+        )
         cfg_entities = {
-            'deadband_w': ENT['deadband_w'],
-            'ramp_max_w': ENT['ramp_max_w'],
-            'strict_limits_max_w': ENT['strict_limits_max_w'],
-            'max_battery_discharge_w': ENT['max_battery_discharge_w'],
-            'max_solar_charge_w': ENT['max_solar_charge_w'],
-            'ev_min_current_a': ENT['ev_min_current_a'],
-            'ev_max_current_a': ENT['ev_max_current_a'],
-            'ev_charger_phases': ENT['ev_charger_phases'],
-            'ev_force_current_a': ENT['ev_force_current_a'],
-            'ev_hard_off_pv_threshold_kw': ENT['ev_hard_off_pv_threshold_kw'],
-            'ev_hard_off_low_pv_cycles': ENT['ev_hard_off_low_pv_cycles'],
-            'ev_hard_off_release_cycles': ENT['ev_hard_off_release_cycles'],
-            'haeo_stale_timeout_s': ENT['haeo_stale_timeout_s'],
-            'relay1_power_kw': ENT['relay1_power_kw'],
-            'relay2_power_kw': ENT['relay2_power_kw'],
-            'surplus_freeze_s': ENT['surplus_freeze_s'],
-            'relay1_priority': ENT['relay1_priority'],
-            'relay2_priority': ENT['relay2_priority'],
-            'ev_priority': ENT['ev_priority'],
+            key: entity_id
+            for key in cfg_entity_keys
+            if (entity_id := self._optional_entity_id(key))
         }
         for cfg_key, value in self.cfg_overrides.items():
             entity_id = cfg_entities.get(cfg_key)
@@ -210,16 +286,22 @@ class QuarterScenarioHarness:
             self.store.set_value(k, v)
             self._sync_grouped_config_entities(k, v)
 
-        seed_active_surplus_devices(self, active_device_ids=())
-        self.store.set_value(ENT['previous_device_state'], '')
+        if self.ent:
+            seed_active_surplus_devices(self, active_device_ids=())
+        previous_device_state = self._optional_entity_id('previous_device_state')
+        if previous_device_state:
+            self.store.set_value(previous_device_state, '')
 
         # HAEO defaults / attrs
-        self.store.set_value(ENT['haeo_battery_power_active'], 0)
-        self.store.set_value(ENT['haeo_ev_battery_power_active'], 0)
-        self.store.set_value(ENT['haeo_battery_active_power_fresh_source'], 0)
-        self.store.set_value(ENT['haeo_ev_active_power_fresh_source'], 0)
-        self.store.set_attr(ENT['haeo_battery_power_active'], {'forecast': []})
-        self.store.set_attr(ENT['haeo_ev_battery_power_active'], {'forecast': []})
+        for key in ('haeo_battery_power_active', 'haeo_ev_battery_power_active',
+                    'haeo_battery_active_power_fresh_source', 'haeo_ev_active_power_fresh_source'):
+            entity_id = self._optional_entity_id(key)
+            if entity_id:
+                self.store.set_value(entity_id, 0)
+        for key in ('haeo_battery_power_active', 'haeo_ev_battery_power_active'):
+            entity_id = self._optional_entity_id(key)
+            if entity_id:
+                self.store.set_attr(entity_id, {'forecast': []})
         self.store.set_value('input_number.ems_default_activation_threshold_w', 0)
         self.store.set_value('input_number.ems_ev_adjustable_activation_threshold_w', 0)
         self.store.set_value('input_number.ems_home_battery_ev_primary_min_absorb_w', 0)
@@ -228,48 +310,67 @@ class QuarterScenarioHarness:
         self.store.set_value('input_number.ems_ev_voltage_v', 230)
         self.store.set_value('sensor.ems_device_policies_pyscript', '')
         self._sync_grouped_config_entities('input_number.ems_ev_voltage_v', 230)
-        self._sync_grouped_config_entities(ENT['relay1_power_kw'], self.store.get_value(ENT['relay1_power_kw']))
-        self._sync_grouped_config_entities(ENT['relay2_power_kw'], self.store.get_value(ENT['relay2_power_kw']))
-        self._sync_grouped_config_entities(ENT['ev_min_current_a'], self.store.get_value(ENT['ev_min_current_a']))
-        self._sync_grouped_config_entities(ENT['ev_max_current_a'], self.store.get_value(ENT['ev_max_current_a']))
-        self._sync_grouped_config_entities(ENT['ev_current_step_a'], self.store.get_value(ENT['ev_current_step_a']))
-        self._sync_grouped_config_entities(ENT['ev_charger_phases'], self.store.get_value(ENT['ev_charger_phases']))
+        for key, default in (
+            ('relay1_power_kw', 2.5),
+            ('relay2_power_kw', 5.0),
+            ('ev_min_current_a', 6),
+            ('ev_max_current_a', 28),
+            ('ev_current_step_a', 4),
+            ('ev_charger_phases', 1),
+        ):
+            entity_id = self._optional_entity_id(key)
+            if entity_id:
+                self._sync_grouped_config_entities(entity_id, self.store.get_value(entity_id, default))
 
     def _sync_grouped_config_entities(self, entity_id, value):
         voltage_v = self.store.get_value('input_number.ems_ev_voltage_v', 230) or 230
-        phases = self.store.get_value(ENT['ev_charger_phases'], 1) or 1
+        ev_charger_phases = self._optional_entity_id('ev_charger_phases')
+        ev_min_current_a = self._optional_entity_id('ev_min_current_a')
+        ev_max_current_a = self._optional_entity_id('ev_max_current_a')
+        ev_current_step_a = self._optional_entity_id('ev_current_step_a')
+        relay1_power_kw = self._optional_entity_id('relay1_power_kw')
+        relay2_power_kw = self._optional_entity_id('relay2_power_kw')
+        phases = self.store.get_value(ev_charger_phases, 1) or 1 if ev_charger_phases else 1
 
         if entity_id == 'input_number.ems_ev_voltage_v':
             voltage_v = value or 230
-            self._sync_grouped_config_entities(ENT['ev_min_current_a'], self.store.get_value(ENT['ev_min_current_a'], 6))
-            self._sync_grouped_config_entities(ENT['ev_max_current_a'], self.store.get_value(ENT['ev_max_current_a'], 28))
-            self._sync_grouped_config_entities(ENT['ev_current_step_a'], self.store.get_value(ENT['ev_current_step_a'], 4))
+            for dep_entity_id, dep_default in (
+                (ev_min_current_a, 6),
+                (ev_max_current_a, 28),
+                (ev_current_step_a, 4),
+            ):
+                if dep_entity_id:
+                    self._sync_grouped_config_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
             return
 
-        if entity_id == ENT['ev_charger_phases']:
+        if entity_id == ev_charger_phases:
             phases = value or 1
-            self._sync_grouped_config_entities(ENT['ev_min_current_a'], self.store.get_value(ENT['ev_min_current_a'], 6))
-            self._sync_grouped_config_entities(ENT['ev_max_current_a'], self.store.get_value(ENT['ev_max_current_a'], 28))
-            self._sync_grouped_config_entities(ENT['ev_current_step_a'], self.store.get_value(ENT['ev_current_step_a'], 4))
+            for dep_entity_id, dep_default in (
+                (ev_min_current_a, 6),
+                (ev_max_current_a, 28),
+                (ev_current_step_a, 4),
+            ):
+                if dep_entity_id:
+                    self._sync_grouped_config_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
             return
 
-        if entity_id == ENT['ev_min_current_a']:
+        if entity_id == ev_min_current_a:
             self.store.set_value('input_number.ems_ev_min_power_w', int(round(float(value) * float(phases) * float(voltage_v))))
             return
 
-        if entity_id == ENT['ev_max_current_a']:
+        if entity_id == ev_max_current_a:
             self.store.set_value('input_number.ems_ev_max_power_w', int(round(float(value) * float(phases) * float(voltage_v))))
             return
 
-        if entity_id == ENT['ev_current_step_a']:
+        if entity_id == ev_current_step_a:
             self.store.set_value('input_number.ems_ev_power_step_w', int(round(float(value) * float(phases) * float(voltage_v))))
             return
 
-        if entity_id == ENT['relay1_power_kw']:
+        if entity_id == relay1_power_kw:
             self.store.set_value('input_number.ems_relay1_nominal_absorb_w', int(round(float(value) * 1000.0)))
             return
 
-        if entity_id == ENT['relay2_power_kw']:
+        if entity_id == relay2_power_kw:
             self.store.set_value('input_number.ems_relay2_nominal_absorb_w', int(round(float(value) * 1000.0)))
             return
 
@@ -381,7 +482,7 @@ class QuarterScenarioHarness:
             '__file__': str(file_path),
             'time_trigger': _time_trigger,
             'state_trigger': _state_trigger,
-            'ENT': ENT,
+            'ENT': self.ent,
             'get_bool': get_bool,
             'get_float': get_float,
             'get_int': get_int,

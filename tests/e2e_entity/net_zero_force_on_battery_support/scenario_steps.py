@@ -1,4 +1,5 @@
-from tests.entity_ids import ENT
+from pathlib import Path
+
 from tests.e2e_entity.refactored_runner import run_refactored_steps
 from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
@@ -10,27 +11,28 @@ def build_harness(project_root):
         start_ts=0.0,
         step_s=30,
         cfg_overrides={'surplus_freeze_s': 15},
-        grouped_config_path=project_root / 'EMS_config.yaml',
+        scenario_dir=Path(__file__).parent,
     )
+    E = h.ent
 
     h.set_entities({
-        ENT['ramp_max_w']: 1000,
-        ENT['adjustable_surplus_load']: 'EV_CHARGER',
-        ENT['adjustable_primary_load']: 'HOME_BATTERY',
-        ENT['goal_profile']: 'NET_ZERO',
-        ENT['forecast_profile']: 'NONE',
-        ENT['surplus_freeze_s']: 15,
-        ENT['relay2_priority']: 3,
-        ENT['relay1_priority']: 2,
-        ENT['ev_priority']: 1,
-        ENT['relay2_force_on']: False,
-        ENT['actuator_relay1']: False,
-        ENT['actuator_relay2']: False,
-        ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 6,
-        ENT['grid_power_w']: 0.0,
-        ENT['current_battery_sp']: 0.0,
-        ENT['haeo_stale_timeout_s']: 300,
+        E['ramp_max_w']: 1000,
+        E['adjustable_surplus_load']: 'EV_CHARGER',
+        E['adjustable_primary_load']: 'HOME_BATTERY',
+        E['goal_profile']: 'NET_ZERO',
+        E['forecast_profile']: 'NONE',
+        E['surplus_freeze_s']: 15,
+        E['relay2_priority']: 3,
+        E['relay1_priority']: 2,
+        E['ev_priority']: 1,
+        E['relay2_force_on']: False,
+        E['actuator_relay1']: False,
+        E['actuator_relay2']: False,
+        E['actuator_ev_enabled']: False,
+        E['actuator_ev_current_a']: 6,
+        E['grid_power_w']: 0.0,
+        E['current_battery_sp']: 0.0,
+        E['haeo_stale_timeout_s']: 300,
     })
     seed_active_surplus_devices(h, active_device_ids=())
 

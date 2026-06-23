@@ -1,6 +1,5 @@
 import pytest
 
-from tests.entity_ids import ENT
 from tests.e2e_entity.hard_off_on_low_pv.scenario_steps import build_harness
 from tests.e2e_entity.hard_off_on_low_pv.scenario_steps import run_steps
 from tests.e2e_entity.refactored_runner import seed_previous_device_state
@@ -9,8 +8,9 @@ from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
 @pytest.mark.scenario
 def test_04_hard_off_persistence_and_relay_release(project_root):
     """Phase 4: hard-off persists and RELAY1 release path is applied."""
-    pv_ent = ENT['pv_power_kw']
     h = build_harness(project_root)
+    E = h.ent
+    pv_ent = E['pv_power_kw']
 
     # Seed end-of-phase-3 state so phase 4 is independent from warmup chains.
     seed_active_surplus_devices(
@@ -21,9 +21,9 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
         actuator_ev_current_a=6,
     )
     h.set_entities({
-        ENT['pv_power_kw']: 1.3,
-        ENT['ev_hard_off_pv_threshold_kw']: 1.6,
-        ENT['ev_hard_off_low_pv_cycles']: 2,
+        E['pv_power_kw']: 1.3,
+        E['ev_hard_off_pv_threshold_kw']: 1.6,
+        E['ev_hard_off_low_pv_cycles']: 2,
     })
     seed_previous_device_state(h, mode='hard_off', low_pv_cycles=2)
 
@@ -32,8 +32,8 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
             'at_s': 180,
             'note': 't180 low PV persists -> EV remains off',
             'set': {
-                ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.0,
+                E['required_power_consumption_kw']: 0.0,
+                E['rpnz_w']: 0.0,
                 pv_ent: 1.1,
             },
             'expect_policy': {
@@ -47,23 +47,23 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
-                'relay1': {
+                'RELAY1': {
                     'reason': 'already_matching',
                     'written': False,
                 }
             },
             'expect_values': {
-                ENT['relay1']: True,
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
+                E['relay1']: True,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
             },
         },
         {
             'at_s': 210,
             'note': 't210 PV recovers above threshold, but EV and relays remain off without a new surplus trigger',
             'set': {
-                ENT['required_power_consumption_kw']: 0.0,
-                ENT['rpnz_w']: 0.0,
+                E['required_power_consumption_kw']: 0.0,
+                E['rpnz_w']: 0.0,
                 pv_ent: 1.9,
             },
             'expect_policy': {
@@ -77,15 +77,15 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_writer_trace': {
-                'relay1': {
+                'RELAY1': {
                     'reason': 'state_changed',
                     'written': True,
                 }
             },
             'expect_values': {
-                ENT['relay1']: False,
-                ENT['actuator_ev_enabled']: False,
-                ENT['actuator_ev_current_a']: 6,
+                E['relay1']: False,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
             },
         },
     ]

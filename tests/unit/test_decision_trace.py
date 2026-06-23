@@ -9,9 +9,6 @@ def test_decision_trace_exposes_core_fields_and_battery_authority():
     out = NetZeroOutputs(
         battery_target_w=100,
         battery_write_enabled=False,
-        ev_current_a=12,
-        relay1_command=1,
-        relay2_command=0,
         surplus_policy_active=True,
         surplus_next_target='EV',
         surplus_next_threshold_kw=2.5,
@@ -38,9 +35,10 @@ def test_decision_trace_exposes_core_fields_and_battery_authority():
     attrs = net_zero_attrs(out, make_profiles())
     assert attrs['battery_write_enabled'] is False
     assert attrs['battery_target_w'] == 100
-    assert attrs['ev_current_a'] == 12
     assert attrs['configured_forecast'] == 'NONE'
     assert attrs['device_policy_parity_ok'] is True
     assert attrs['device_policies'][0]['device_id'] == 'HOME_BATTERY'
-    assert attrs['policy_trace_scalar_role'] == 'diagnostic_scalar'
     assert attrs['policy_trace_canonical_contract'] == 'device_policies'
+    assert 'ev_current_a' not in attrs
+    assert 'relay1_command' not in attrs
+    assert 'relay2_command' not in attrs

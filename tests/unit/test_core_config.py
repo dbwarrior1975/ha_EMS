@@ -104,14 +104,64 @@ def test_build_core_config_from_grouped_config_maps_devices_with_kind_specific_f
     assert core.home_battery.guard.protect_min_absorb_w == 0
     assert core.home_battery.adapter.target_w == 100
 
-    assert core.ev_charger.kind == 'EV_CHARGER'
-    assert core.ev_charger.policy.low_pv_threshold_w == 1.6
-    assert core.ev_charger.adapter.current_step_a == 4
-    assert core.ev_charger.adapter.force_current_a == 0
+    ev_device = core.device_by_id('EV_CHARGER')
+    relay1 = core.device_by_id('RELAY1')
+    relay2 = core.device_by_id('RELAY2')
 
-    assert core.relay1.kind == 'RELAY'
-    assert core.relay1.policy.force_on is False
-    assert core.relay2.adapter.enabled is False
+    assert ev_device is not None
+    assert ev_device.kind == 'EV_CHARGER'
+    assert ev_device.policy.low_pv_threshold_w == 1.6
+    assert ev_device.adapter.current_step_a == 4
+    assert ev_device.adapter.force_current_a == 0
+
+    assert relay1 is not None
+    assert relay1.kind == 'RELAY'
+    assert relay1.policy.force_on is False
+    assert relay2 is not None
+    assert relay2.adapter.enabled is False
+    assert set(core.devices) == {'HOME_BATTERY', 'EV_CHARGER', 'RELAY1', 'RELAY2'}
+    assert len(core.devices_by_kind('RELAY')) == 2
+    assert {device.device_id for device in core.surplus_capable_devices()} == {'EV_CHARGER', 'RELAY1', 'RELAY2'}
+
+
+@pytest.mark.unit
+def test_build_core_config_from_grouped_config_keeps_extra_devices_in_registry(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['RELAY3'] = {
+        'kind': 'RELAY',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 'input_number.ems_relay3_power_kw',
+            'max_absorb_w': 'input_number.ems_relay3_power_kw',
+            'step_w': 'input_number.ems_relay3_power_kw',
+        },
+        'policy': {
+            'priority': 'input_number.ems_surplus_relay3_priority',
+            'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
+            'force_on': 'input_boolean.ems_relay3_force_on',
+        },
+        'adapter': {
+            'enabled': 'switch.relay_3_2',
+        },
+    }
+    values = _core_entity_values()
+    values.update(
+        {
+            'input_number.ems_relay3_power_kw': 7.5,
+            'input_number.ems_surplus_relay3_priority': 4,
+            'input_boolean.ems_relay3_enabled_import_zero': True,
+            'input_boolean.ems_relay3_force_on': False,
+            'switch.relay_3_2': False,
+        }
+    )
+
+    core = build_core_config_from_grouped_config(config, values)
+
+    assert 'RELAY3' in core.devices
+    assert core.devices['RELAY3'].kind == 'RELAY'
+    assert core.devices['RELAY3'].capabilities.max_absorb_w == 7.5
+    assert len(core.devices_by_kind('RELAY')) == 3
 
 
 @pytest.mark.unit

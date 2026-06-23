@@ -85,19 +85,19 @@ def test_validate_requires_top_level_ems_mapping():
 
 
 @pytest.mark.unit
-def test_validate_requires_all_supported_devices(project_root):
+def test_validate_requires_home_battery_device(project_root):
     config = _load_example(project_root)
-    del config['ems']['devices']['EV_CHARGER']
+    del config['ems']['devices']['HOME_BATTERY']
 
     result = validate_grouped_ems_config(config)
     assert result.ok is False
-    assert 'ems.devices.EV_CHARGER' in _error_paths(result)
+    assert 'ems.devices.HOME_BATTERY' in _error_paths(result)
 
 
 @pytest.mark.unit
 def test_validate_rejects_wrong_device_kind(project_root):
     config = _load_example(project_root)
-    config['ems']['devices']['RELAY1']['kind'] = 'BATTERY'
+    config['ems']['devices']['RELAY1']['kind'] = 'UNSUPPORTED'
 
     result = validate_grouped_ems_config(config)
     assert result.ok is False
@@ -199,6 +199,21 @@ def test_runtime_alias_index_contains_expected_core_aliases(project_root):
     assert aliases['ramp_max_w'].config_path == 'ems.global_config.ramp_w'
     assert aliases['battery_protect_charge_floor_w'].config_path == 'ems.devices.HOME_BATTERY.guard.protect_min_absorb_w'
     assert aliases['actuator_ev_current_a'].config_path == 'ems.devices.EV_CHARGER.adapter.current_a'
+
+
+@pytest.mark.unit
+def test_runtime_alias_index_uses_kind_based_fallback_for_custom_device_ids(project_root):
+    config = _load_example(project_root)
+    devices = config['ems']['devices']
+    devices['GARAGE_EV'] = devices.pop('EV_CHARGER')
+    devices['POOL_PUMP'] = devices.pop('RELAY1')
+    devices['BOILER'] = devices.pop('RELAY2')
+
+    aliases = runtime_alias_index(config)
+
+    assert aliases['actuator_ev_current_a'].config_path == 'ems.devices.GARAGE_EV.adapter.current_a'
+    assert aliases['relay1'].config_path == 'ems.devices.POOL_PUMP.adapter.enabled'
+    assert aliases['relay2'].config_path == 'ems.devices.BOILER.adapter.enabled'
 
 
 @pytest.mark.unit

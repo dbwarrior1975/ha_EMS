@@ -51,15 +51,9 @@ SUPPORTED_DEVICE_KINDS = {
 }
 REQUIRED_DEVICE_IDS = (
     'HOME_BATTERY',
-    'EV_CHARGER',
-    'RELAY1',
-    'RELAY2',
 )
 EXPECTED_DEVICE_KINDS = {
     'HOME_BATTERY': 'BATTERY',
-    'EV_CHARGER': 'EV_CHARGER',
-    'RELAY1': 'RELAY',
-    'RELAY2': 'RELAY',
 }
 ALLOWED_ROLE_KEYS = {
     'default',
@@ -300,54 +294,57 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
         ]
     )
 
-    ev = devices.get('EV_CHARGER', {})
+    ev = _first_device_of_kind(devices, 'EV_CHARGER')
     ev_policy = ev.get('policy', {}) if isinstance(ev, dict) else {}
     ev_adapter = ev.get('adapter', {}) if isinstance(ev, dict) else {}
+    ev_id = _device_id_of(ev, 'EV_CHARGER')
     aliases.extend(
         [
-            _alias('ev_hard_off_pv_threshold_kw', 'ems.devices.EV_CHARGER.policy.low_pv_threshold_w', ev_policy.get('low_pv_threshold_w'), unit_transform='W_TO_KW'),
-            _alias('ev_hard_off_low_pv_cycles', 'ems.devices.EV_CHARGER.policy.hard_off_low_pv_cycles', ev_policy.get('hard_off_low_pv_cycles')),
-            _alias('ev_hard_off_release_cycles', 'ems.devices.EV_CHARGER.policy.hard_off_release_cycles', ev_policy.get('hard_off_release_cycles')),
-            _alias('ev_priority', 'ems.devices.EV_CHARGER.policy.priority', ev_policy.get('priority')),
-            _alias('charger_control', 'ems.devices.EV_CHARGER.adapter.enabled', ev_adapter.get('enabled')),
-            _alias('actuator_ev_enabled', 'ems.devices.EV_CHARGER.adapter.enabled', ev_adapter.get('enabled')),
-            _alias('charger_current', 'ems.devices.EV_CHARGER.adapter.current_a', ev_adapter.get('current_a')),
-            _alias('actuator_ev_current_a', 'ems.devices.EV_CHARGER.adapter.current_a', ev_adapter.get('current_a')),
-            _alias('ev_min_current_a', 'ems.devices.EV_CHARGER.adapter.current_min_a', ev_adapter.get('current_min_a')),
-            _alias('ev_max_current_a', 'ems.devices.EV_CHARGER.adapter.current_max_a', ev_adapter.get('current_max_a')),
-            _alias('ev_current_step_a', 'ems.devices.EV_CHARGER.adapter.current_step_a', ev_adapter.get('current_step_a')),
-            _alias('ev_charger_phases', 'ems.devices.EV_CHARGER.adapter.phases', ev_adapter.get('phases')),
-            _alias('ev_force_current_a', 'ems.devices.EV_CHARGER.adapter.force_current_a', ev_adapter.get('force_current_a')),
+            _alias('ev_hard_off_pv_threshold_kw', f'ems.devices.{ev_id}.policy.low_pv_threshold_w', ev_policy.get('low_pv_threshold_w'), unit_transform='W_TO_KW'),
+            _alias('ev_hard_off_low_pv_cycles', f'ems.devices.{ev_id}.policy.hard_off_low_pv_cycles', ev_policy.get('hard_off_low_pv_cycles')),
+            _alias('ev_hard_off_release_cycles', f'ems.devices.{ev_id}.policy.hard_off_release_cycles', ev_policy.get('hard_off_release_cycles')),
+            _alias('ev_priority', f'ems.devices.{ev_id}.policy.priority', ev_policy.get('priority')),
+            _alias('charger_control', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
+            _alias('actuator_ev_enabled', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
+            _alias('charger_current', f'ems.devices.{ev_id}.adapter.current_a', ev_adapter.get('current_a')),
+            _alias('actuator_ev_current_a', f'ems.devices.{ev_id}.adapter.current_a', ev_adapter.get('current_a')),
+            _alias('ev_min_current_a', f'ems.devices.{ev_id}.adapter.current_min_a', ev_adapter.get('current_min_a')),
+            _alias('ev_max_current_a', f'ems.devices.{ev_id}.adapter.current_max_a', ev_adapter.get('current_max_a')),
+            _alias('ev_current_step_a', f'ems.devices.{ev_id}.adapter.current_step_a', ev_adapter.get('current_step_a')),
+            _alias('ev_charger_phases', f'ems.devices.{ev_id}.adapter.phases', ev_adapter.get('phases')),
+            _alias('ev_force_current_a', f'ems.devices.{ev_id}.adapter.force_current_a', ev_adapter.get('force_current_a')),
         ]
     )
 
-    relay1 = devices.get('RELAY1', {})
+    relay1 = _relay_device_by_index(devices, 0)
     relay1_capabilities = relay1.get('capabilities', {}) if isinstance(relay1, dict) else {}
     relay1_policy = relay1.get('policy', {}) if isinstance(relay1, dict) else {}
     relay1_adapter = relay1.get('adapter', {}) if isinstance(relay1, dict) else {}
+    relay1_id = _device_id_of(relay1, 'RELAY1')
     aliases.extend(
         [
-            _alias('relay1_power_kw', 'ems.devices.RELAY1.capabilities.max_absorb_w', relay1_capabilities.get('max_absorb_w')),
-            _alias('relay1_priority', 'ems.devices.RELAY1.policy.priority', relay1_policy.get('priority')),
-            _alias('relay1_surplus_allowed', 'ems.devices.RELAY1.policy.surplus_allowed', relay1_policy.get('surplus_allowed')),
-            _alias('relay1_force_on', 'ems.devices.RELAY1.policy.force_on', relay1_policy.get('force_on')),
-            _alias('relay1', 'ems.devices.RELAY1.adapter.enabled', relay1_adapter.get('enabled')),
-            _alias('actuator_relay1', 'ems.devices.RELAY1.adapter.enabled', relay1_adapter.get('enabled')),
+            _alias('relay1_power_kw', f'ems.devices.{relay1_id}.capabilities.max_absorb_w', relay1_capabilities.get('max_absorb_w')),
+            _alias('relay1_priority', f'ems.devices.{relay1_id}.policy.priority', relay1_policy.get('priority')),
+            _alias('relay1_surplus_allowed', f'ems.devices.{relay1_id}.policy.surplus_allowed', relay1_policy.get('surplus_allowed')),
+            _alias('relay1_force_on', f'ems.devices.{relay1_id}.policy.force_on', relay1_policy.get('force_on')),
+            _alias('relay1', f'ems.devices.{relay1_id}.adapter.enabled', relay1_adapter.get('enabled')),
+            _alias('actuator_relay1', f'ems.devices.{relay1_id}.adapter.enabled', relay1_adapter.get('enabled')),
         ]
     )
 
-    relay2 = devices.get('RELAY2', {})
+    relay2 = _relay_device_by_index(devices, 1)
     relay2_capabilities = relay2.get('capabilities', {}) if isinstance(relay2, dict) else {}
     relay2_policy = relay2.get('policy', {}) if isinstance(relay2, dict) else {}
     relay2_adapter = relay2.get('adapter', {}) if isinstance(relay2, dict) else {}
+    relay2_id = _device_id_of(relay2, 'RELAY2')
     aliases.extend(
         [
-            _alias('relay2_power_kw', 'ems.devices.RELAY2.capabilities.max_absorb_w', relay2_capabilities.get('max_absorb_w')),
-            _alias('relay2_priority', 'ems.devices.RELAY2.policy.priority', relay2_policy.get('priority')),
-            _alias('relay2_surplus_allowed', 'ems.devices.RELAY2.policy.surplus_allowed', relay2_policy.get('surplus_allowed')),
-            _alias('relay2_force_on', 'ems.devices.RELAY2.policy.force_on', relay2_policy.get('force_on')),
-            _alias('relay2', 'ems.devices.RELAY2.adapter.enabled', relay2_adapter.get('enabled')),
-            _alias('actuator_relay2', 'ems.devices.RELAY2.adapter.enabled', relay2_adapter.get('enabled')),
+            _alias('relay2_power_kw', f'ems.devices.{relay2_id}.capabilities.max_absorb_w', relay2_capabilities.get('max_absorb_w')),
+            _alias('relay2_priority', f'ems.devices.{relay2_id}.policy.priority', relay2_policy.get('priority')),
+            _alias('relay2_surplus_allowed', f'ems.devices.{relay2_id}.policy.surplus_allowed', relay2_policy.get('surplus_allowed')),
+            _alias('relay2_force_on', f'ems.devices.{relay2_id}.policy.force_on', relay2_policy.get('force_on')),
+            _alias('relay2', f'ems.devices.{relay2_id}.adapter.enabled', relay2_adapter.get('enabled')),
+            _alias('actuator_relay2', f'ems.devices.{relay2_id}.adapter.enabled', relay2_adapter.get('enabled')),
         ]
     )
 
@@ -363,6 +360,46 @@ def runtime_alias_index(config: dict) -> dict[str, RuntimeAlias]:
     for alias in build_runtime_aliases(config):
         index[alias.runtime_key] = alias
     return index
+
+
+def _first_device_of_kind(devices: dict, kind: str) -> dict:
+    if not isinstance(devices, dict):
+        return {}
+    for device_id, device in devices.items():
+        if isinstance(device, dict) and str(device.get('kind')) == str(kind):
+            mapped = dict(device)
+            mapped['_device_id'] = str(device_id)
+            return mapped
+    return {}
+
+
+def _relay_device_by_index(devices: dict, index: int) -> dict:
+    if not isinstance(devices, dict):
+        return {}
+    preferred_id = f'RELAY{index + 1}'
+    preferred = devices.get(preferred_id)
+    if isinstance(preferred, dict) and str(preferred.get('kind')) == 'RELAY':
+        mapped = dict(preferred)
+        mapped['_device_id'] = preferred_id
+        return mapped
+    relays = []
+    for device_id, device in devices.items():
+        if isinstance(device, dict) and str(device.get('kind')) == 'RELAY':
+            mapped = dict(device)
+            mapped['_device_id'] = str(device_id)
+            relays.append(mapped)
+    if index < len(relays):
+        return relays[index]
+    return {}
+
+
+def _device_id_of(device: dict, default: str) -> str:
+    if not isinstance(device, dict):
+        return default
+    resolved = device.get('device_id') or device.get('_device_id')
+    if resolved not in (None, ''):
+        return str(resolved)
+    return default
 
 
 def _entity_values_reader(entity_values: dict[str, object]):
@@ -383,6 +420,29 @@ def build_core_config_from_grouped_config(config: dict, entity_values: Optional[
     return build_core_config_from_grouped_reader(config, _entity_values_reader(entity_values or {}))
 
 
+def _build_core_devices_map(
+    devices: object,
+    read_entity: Callable[[str, object], object],
+) -> dict[str, object]:
+    if not isinstance(devices, dict):
+        return {}
+
+    mapped = {}
+    for device_id, device in devices.items():
+        if not isinstance(device, dict):
+            continue
+        device = dict(device)
+        device['_device_id'] = str(device_id)
+        kind = str(_resolve_core_config_value(device.get('kind'), read_entity, ''))
+        if kind == 'BATTERY':
+            mapped[str(device_id)] = _build_core_battery_device(str(device_id), device, read_entity)
+        elif kind == 'EV_CHARGER':
+            mapped[str(device_id)] = _build_core_ev_device(str(device_id), device, read_entity)
+        elif kind == 'RELAY':
+            mapped[str(device_id)] = _build_core_relay_device(str(device_id), device, read_entity)
+    return mapped
+
+
 def build_core_config_from_grouped_reader(
     config: dict,
     read_entity: Callable[[str, object], object],
@@ -390,8 +450,14 @@ def build_core_config_from_grouped_reader(
     ems = config.get('ems', {})
     devices = ems.get('devices', {})
     role_constraints = ems.get('role_constraints', {})
-    ev_device = _build_core_ev_device('EV_CHARGER', devices.get('EV_CHARGER'), read_entity)
-
+    core_devices = _build_core_devices_map(devices, read_entity)
+    home_battery = _build_core_battery_device(
+        'HOME_BATTERY',
+        devices.get('HOME_BATTERY'),
+        read_entity,
+        default_priority=_first_ev_priority(core_devices),
+    )
+    core_devices['HOME_BATTERY'] = home_battery
     core_config = CoreConfig(
         profiles=CoreProfilesConfig(
             control=_resolve_core_config_value(_require_mapping_value(ems.get('profiles'), 'control'), read_entity, ''),
@@ -413,15 +479,7 @@ def build_core_config_from_grouped_reader(
             adjustable_primary_load=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), read_entity, ''),
             adjustable_surplus_activation_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_activation_w'), read_entity, 0.0),
         ),
-        home_battery=_build_core_battery_device(
-            'HOME_BATTERY',
-            devices.get('HOME_BATTERY'),
-            read_entity,
-            default_priority=ev_device.policy.priority,
-        ),
-        ev_charger=ev_device,
-        relay1=_build_core_relay_device('RELAY1', devices.get('RELAY1'), read_entity),
-        relay2=_build_core_relay_device('RELAY2', devices.get('RELAY2'), read_entity),
+        home_battery=home_battery,
         runtime=CoreRuntimeConfig(
             grid_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), read_entity, 0),
             hourly_energy_balance_kwh=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'hourly_energy_balance_kwh'), read_entity, 0),
@@ -441,6 +499,7 @@ def build_core_config_from_grouped_reader(
         ),
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),
+        devices=core_devices,
     )
     return _populate_core_config_derived_fields(core_config)
 
@@ -472,21 +531,21 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.battery_protect_min_cell_voltage_v = core_config.home_battery.guard.protect_min_cell_voltage_v
     if core_config.battery_protect_charge_floor_w is None:
         core_config.battery_protect_charge_floor_w = core_config.home_battery.guard.protect_min_absorb_w
-    if core_config.ev_min_current_a is None:
+    if core_config.ev_min_current_a is None and core_config.ev_charger is not None:
         core_config.ev_min_current_a = core_config.ev_charger.adapter.current_min_a
-    if core_config.ev_max_current_a is None:
+    if core_config.ev_max_current_a is None and core_config.ev_charger is not None:
         core_config.ev_max_current_a = core_config.ev_charger.adapter.current_max_a
-    if core_config.ev_charger_phases is None:
+    if core_config.ev_charger_phases is None and core_config.ev_charger is not None:
         core_config.ev_charger_phases = core_config.ev_charger.adapter.phases
-    if core_config.ev_force_current_a is None:
+    if core_config.ev_force_current_a is None and core_config.ev_charger is not None:
         core_config.ev_force_current_a = core_config.ev_charger.adapter.force_current_a
-    if core_config.ev_hard_off_pv_threshold_kw is None:
+    if core_config.ev_hard_off_pv_threshold_kw is None and core_config.ev_charger is not None:
         core_config.ev_hard_off_pv_threshold_kw = core_config.ev_charger.policy.low_pv_threshold_w
-    if core_config.ev_hard_off_low_pv_cycles is None:
+    if core_config.ev_hard_off_low_pv_cycles is None and core_config.ev_charger is not None:
         core_config.ev_hard_off_low_pv_cycles = core_config.ev_charger.policy.hard_off_low_pv_cycles
-    if core_config.ev_hard_off_release_cycles is None:
+    if core_config.ev_hard_off_release_cycles is None and core_config.ev_charger is not None:
         core_config.ev_hard_off_release_cycles = core_config.ev_charger.policy.hard_off_release_cycles
-    if core_config.ev_current_step_a is None:
+    if core_config.ev_current_step_a is None and core_config.ev_charger is not None:
         core_config.ev_current_step_a = core_config.ev_charger.adapter.current_step_a
     if core_config.nz_battery_floor_default_w is None:
         core_config.nz_battery_floor_default_w = core_config.global_config.nz_battery_floor_default_w
@@ -502,17 +561,24 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
     if core_config.adjustable_surplus_load_priority is None:
         core_config.adjustable_surplus_load_priority = core_config.home_battery.policy.priority
-    if core_config.relay1_power_kw is None:
+    if core_config.relay1_power_kw is None and core_config.relay1 is not None:
         core_config.relay1_power_kw = core_config.relay1.capabilities.max_absorb_w
-    if core_config.relay2_power_kw is None:
+    if core_config.relay2_power_kw is None and core_config.relay2 is not None:
         core_config.relay2_power_kw = core_config.relay2.capabilities.max_absorb_w
-    if core_config.relay1_priority is None:
+    if core_config.relay1_priority is None and core_config.relay1 is not None:
         core_config.relay1_priority = core_config.relay1.policy.priority
-    if core_config.relay2_priority is None:
+    if core_config.relay2_priority is None and core_config.relay2 is not None:
         core_config.relay2_priority = core_config.relay2.policy.priority
-    if core_config.ev_priority is None:
+    if core_config.ev_priority is None and core_config.ev_charger is not None:
         core_config.ev_priority = core_config.ev_charger.policy.priority
     return core_config
+
+
+def _first_ev_priority(core_devices: dict[str, object]) -> object:
+    for device in core_devices.values():
+        if str(getattr(device, 'kind', '')) == 'EV_CHARGER':
+            return getattr(getattr(device, 'policy', None), 'priority', 3)
+    return 3
 
 
 def build_ems_config_from_grouped_reader(
@@ -568,6 +634,99 @@ def build_ems_config_from_grouped_reader(
 
 
 def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
+    home_battery = CoreBatteryDeviceConfig(
+        device_id='HOME_BATTERY',
+        kind='BATTERY',
+        capabilities=CoreDeviceCapabilitiesConfig(
+            can_absorb_w=True,
+            can_produce_w=True,
+            min_absorb_w=0,
+            max_absorb_w=cfg.max_solar_charge_w,
+            step_w=cfg.deadband_w,
+            max_produce_w=cfg.max_battery_discharge_w,
+        ),
+        policy=CoreBatteryPolicyConfig(
+            priority=cfg.adjustable_surplus_load_priority,
+            default_min_absorb_w=None,
+        ),
+        guard=CoreBatteryGuardConfig(
+            soc='',
+            min_cell_voltage_v='',
+            heartbeat='',
+            protect_soc=cfg.battery_protect_soc,
+            protect_soc_recovery_margin=cfg.battery_protect_soc_recovery_margin,
+            protect_min_cell_voltage_v=cfg.battery_protect_min_cell_voltage_v,
+            protect_min_absorb_w=cfg.battery_protect_charge_floor_w,
+        ),
+        adapter=CoreBatteryAdapterConfig(
+            target_w='',
+            measured_power_w='',
+        ),
+    )
+    ev_charger = CoreEvChargerDeviceConfig(
+        device_id='EV_CHARGER',
+        kind='EV_CHARGER',
+        capabilities=CoreDeviceCapabilitiesConfig(
+            can_absorb_w=True,
+            can_produce_w=False,
+            min_absorb_w=ev_min_power_w(cfg),
+            max_absorb_w=ev_max_power_w(cfg),
+            step_w=ev_power_step_w(cfg),
+            max_produce_w=None,
+        ),
+        policy=CoreEvPolicyConfig(
+            priority=cfg.ev_priority,
+            low_pv_threshold_w=cfg.ev_hard_off_pv_threshold_kw,
+            hard_off_low_pv_cycles=cfg.ev_hard_off_low_pv_cycles,
+            hard_off_release_cycles=cfg.ev_hard_off_release_cycles,
+        ),
+        adapter=CoreEvAdapterConfig(
+            enabled='',
+            current_a='',
+            current_min_a=cfg.ev_min_current_a,
+            current_max_a=cfg.ev_max_current_a,
+            current_step_a=cfg.ev_current_step_a,
+            phases=cfg.ev_charger_phases,
+            voltage_v=230,
+            force_current_a=cfg.ev_force_current_a,
+        ),
+    )
+    relay1 = CoreRelayDeviceConfig(
+        device_id='RELAY1',
+        kind='RELAY',
+        capabilities=CoreDeviceCapabilitiesConfig(
+            can_absorb_w=True,
+            can_produce_w=False,
+            min_absorb_w=cfg.relay1_power_kw,
+            max_absorb_w=cfg.relay1_power_kw,
+            step_w=cfg.relay1_power_kw,
+            max_produce_w=None,
+        ),
+        policy=CoreRelayPolicyConfig(
+            priority=cfg.relay1_priority,
+            surplus_allowed='',
+            force_on='',
+        ),
+        adapter=CoreRelayAdapterConfig(enabled=''),
+    )
+    relay2 = CoreRelayDeviceConfig(
+        device_id='RELAY2',
+        kind='RELAY',
+        capabilities=CoreDeviceCapabilitiesConfig(
+            can_absorb_w=True,
+            can_produce_w=False,
+            min_absorb_w=cfg.relay2_power_kw,
+            max_absorb_w=cfg.relay2_power_kw,
+            step_w=cfg.relay2_power_kw,
+            max_produce_w=None,
+        ),
+        policy=CoreRelayPolicyConfig(
+            priority=cfg.relay2_priority,
+            surplus_allowed='',
+            force_on='',
+        ),
+        adapter=CoreRelayAdapterConfig(enabled=''),
+    )
     core_config = CoreConfig(
         profiles=CoreProfilesConfig(
             control='AUTOMATIC',
@@ -589,99 +748,10 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
             adjustable_primary_load=cfg.adjustable_primary_load,
             adjustable_surplus_activation_w=cfg.adjustable_surplus_activation,
         ),
-        home_battery=CoreBatteryDeviceConfig(
-            device_id='HOME_BATTERY',
-            kind='BATTERY',
-            capabilities=CoreDeviceCapabilitiesConfig(
-                can_absorb_w=True,
-                can_produce_w=True,
-                min_absorb_w=0,
-                max_absorb_w=cfg.max_solar_charge_w,
-                step_w=cfg.deadband_w,
-                max_produce_w=cfg.max_battery_discharge_w,
-            ),
-            policy=CoreBatteryPolicyConfig(
-                priority=cfg.adjustable_surplus_load_priority,
-                default_min_absorb_w=None,
-            ),
-            guard=CoreBatteryGuardConfig(
-                soc='',
-                min_cell_voltage_v='',
-                heartbeat='',
-                protect_soc=cfg.battery_protect_soc,
-                protect_soc_recovery_margin=cfg.battery_protect_soc_recovery_margin,
-                protect_min_cell_voltage_v=cfg.battery_protect_min_cell_voltage_v,
-                protect_min_absorb_w=cfg.battery_protect_charge_floor_w,
-            ),
-            adapter=CoreBatteryAdapterConfig(
-                target_w='',
-                measured_power_w='',
-            ),
-        ),
-        ev_charger=CoreEvChargerDeviceConfig(
-            device_id='EV_CHARGER',
-            kind='EV_CHARGER',
-            capabilities=CoreDeviceCapabilitiesConfig(
-                can_absorb_w=True,
-                can_produce_w=False,
-                min_absorb_w=ev_min_power_w(cfg),
-                max_absorb_w=ev_max_power_w(cfg),
-                step_w=ev_power_step_w(cfg),
-                max_produce_w=None,
-            ),
-            policy=CoreEvPolicyConfig(
-                priority=cfg.ev_priority,
-                low_pv_threshold_w=cfg.ev_hard_off_pv_threshold_kw,
-                hard_off_low_pv_cycles=cfg.ev_hard_off_low_pv_cycles,
-                hard_off_release_cycles=cfg.ev_hard_off_release_cycles,
-            ),
-            adapter=CoreEvAdapterConfig(
-                enabled='',
-                current_a='',
-                current_min_a=cfg.ev_min_current_a,
-                current_max_a=cfg.ev_max_current_a,
-                current_step_a=cfg.ev_current_step_a,
-                phases=cfg.ev_charger_phases,
-                voltage_v=230,
-                force_current_a=cfg.ev_force_current_a,
-            ),
-        ),
-        relay1=CoreRelayDeviceConfig(
-            device_id='RELAY1',
-            kind='RELAY',
-            capabilities=CoreDeviceCapabilitiesConfig(
-                can_absorb_w=True,
-                can_produce_w=False,
-                min_absorb_w=cfg.relay1_power_kw,
-                max_absorb_w=cfg.relay1_power_kw,
-                step_w=cfg.relay1_power_kw,
-                max_produce_w=None,
-            ),
-            policy=CoreRelayPolicyConfig(
-                priority=cfg.relay1_priority,
-                surplus_allowed='',
-                force_on='',
-            ),
-            adapter=CoreRelayAdapterConfig(enabled=''),
-        ),
-        relay2=CoreRelayDeviceConfig(
-            device_id='RELAY2',
-            kind='RELAY',
-            capabilities=CoreDeviceCapabilitiesConfig(
-                can_absorb_w=True,
-                can_produce_w=False,
-                min_absorb_w=cfg.relay2_power_kw,
-                max_absorb_w=cfg.relay2_power_kw,
-                step_w=cfg.relay2_power_kw,
-                max_produce_w=None,
-            ),
-            policy=CoreRelayPolicyConfig(
-                priority=cfg.relay2_priority,
-                surplus_allowed='',
-                force_on='',
-            ),
-            adapter=CoreRelayAdapterConfig(enabled=''),
-        ),
+        home_battery=home_battery,
+        ev_charger=ev_charger,
+        relay1=relay1,
+        relay2=relay2,
         runtime=CoreRuntimeConfig(
             grid_power_w='',
             hourly_energy_balance_kwh='',
@@ -700,6 +770,12 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
             surplus_dispatch_decision='',
         ),
         haeo=None,
+        devices={
+            'HOME_BATTERY': home_battery,
+            'EV_CHARGER': ev_charger,
+            'RELAY1': relay1,
+            'RELAY2': relay2,
+        },
     )
     return _populate_core_config_derived_fields(core_config)
 
@@ -741,26 +817,30 @@ def build_ems_config_from_core_config(core_config: CoreConfig) -> EmsConfig:
 
 
 def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> None:
-    actual_ids = set(devices)
     for device_id in REQUIRED_DEVICE_IDS:
         if device_id not in devices:
             issues.append(_issue(f'ems.devices.{device_id}', SEVERITY_ERROR, 'missing required device'))
-    for device_id in actual_ids - set(REQUIRED_DEVICE_IDS):
-        issues.append(_issue(f'ems.devices.{device_id}', SEVERITY_ERROR, 'unsupported device id in strict phase-6B loader'))
-
-    for device_id, expected_kind in EXPECTED_DEVICE_KINDS.items():
-        device = devices.get(device_id)
+    battery_ids = []
+    for device_id, device in devices.items():
         if not isinstance(device, dict):
+            issues.append(_issue(f'ems.devices.{device_id}', SEVERITY_ERROR, 'must be a mapping'))
             continue
+        kind = device.get('kind')
+        if kind == 'BATTERY':
+            battery_ids.append(str(device_id))
+        expected_kind = EXPECTED_DEVICE_KINDS.get(device_id)
         _validate_device(device_id, device, expected_kind, issues)
 
+    if len(battery_ids) != 1 or battery_ids[0] != 'HOME_BATTERY':
+        issues.append(_issue('ems.devices', SEVERITY_ERROR, 'phase-1 flexible loader supports exactly one battery device id: HOME_BATTERY'))
 
-def _validate_device(device_id: str, device: dict, expected_kind: str, issues: list[ConfigValidationIssue]) -> None:
+
+def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue]) -> None:
     device_path = f'ems.devices.{device_id}'
     kind = device.get('kind')
     if kind not in SUPPORTED_DEVICE_KINDS:
         issues.append(_issue(f'{device_path}.kind', SEVERITY_ERROR, f'unsupported kind {kind!r}'))
-    elif kind != expected_kind:
+    elif expected_kind is not None and kind != expected_kind:
         issues.append(_issue(f'{device_path}.kind', SEVERITY_ERROR, f'expected {expected_kind}'))
 
     capabilities = device.get('capabilities')
@@ -794,15 +874,15 @@ def _validate_device(device_id: str, device: dict, expected_kind: str, issues: l
             issues,
         )
 
-    if device_id == 'EV_CHARGER' and isinstance(device.get('policy'), dict):
+    if kind == 'EV_CHARGER' and isinstance(device.get('policy'), dict):
         _validate_required_entities(
             device['policy'],
             f'{device_path}.policy',
-            ('priority', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
+            ('priority', 'surplus_allowed', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
             issues,
         )
 
-    if device_id == 'EV_CHARGER' and isinstance(device.get('adapter'), dict):
+    if kind == 'EV_CHARGER' and isinstance(device.get('adapter'), dict):
         _validate_required_entities(
             device['adapter'],
             f'{device_path}.adapter',
@@ -813,7 +893,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: str, issues: l
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.phases', 'phases', issues, allowed_numbers=(1, 3))
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.voltage_v', 'voltage_v', issues, min_value=1)
 
-    if device_id in ('RELAY1', 'RELAY2'):
+    if kind == 'RELAY':
         if isinstance(device.get('policy'), dict):
             _validate_required_entities(
                 device['policy'],

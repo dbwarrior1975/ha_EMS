@@ -64,10 +64,46 @@ def _parse_active_device_ids(raw_value):
 
 def _canonical_active_device_ids(active_ids):
     ordered = []
-    for device_id in ('RELAY1', 'EV_CHARGER', 'HOME_BATTERY', 'RELAY2'):
-        if device_id in active_ids:
-            ordered.append(device_id)
+    seen = set()
+    for raw_device_id in active_ids or ():
+        device_id = str(raw_device_id or '')
+        if not device_id or device_id in seen:
+            continue
+        seen.add(device_id)
+        ordered.append(device_id)
     return tuple(ordered)
+
+
+def _read_surplus_device_targets(entities=None):
+    trace_entity = _entity_id('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities)
+    targets = get_attr(trace_entity, 'surplus_device_targets', []) or []
+    if isinstance(targets, (list, tuple)):
+        parsed = []
+        for target in targets:
+            if isinstance(target, dict):
+                parsed.append(target)
+        return tuple(parsed)
+    return ()
+
+
+def _target_device_id_for_decision_name(decision_name, targets):
+    target_name = str(decision_name or '')
+    if not target_name:
+        return ''
+    for target in targets or ():
+        if str(target.get('decision_name') or '') == target_name:
+            return str(target.get('device_id') or '')
+    return ''
+
+
+def _target_decision_name_for_device_id(device_id, targets):
+    resolved_device_id = str(device_id or '')
+    if not resolved_device_id:
+        return ''
+    for target in targets or ():
+        if str(target.get('device_id') or '') == resolved_device_id:
+            return str(target.get('decision_name') or '')
+    return ''
 
 
 def _read_active_surplus_device_ids(entities=None):
@@ -83,7 +119,7 @@ def _read_active_surplus_device_ids(entities=None):
 
 
 def _publish_active_surplus_device_ids(active_device_ids, entities=None):
-    normalized = _canonical_active_device_ids(set(active_device_ids or ()))
+    normalized = _canonical_active_device_ids(active_device_ids)
     publish_sensor(_entity_id('active_surplus_devices', 'sensor.ems_active_surplus_devices', entities), ','.join(normalized), {
         'device_ids': normalized,
     })
@@ -94,13 +130,15 @@ def _valid_dispatch_action(action):
     return action in ('ACTIVATE', 'RELEASE', 'CLEAR_ALL', 'NOOP')
 
 
-def _decision_text_from_device_command(action, target):
+def _decision_text_from_device_command(action, device_id, target=''):
     if action == 'CLEAR_ALL':
         return 'CLEAR_ALL'
     if action == 'NOOP':
         return 'NOOP'
-    if action in ('ACTIVATE', 'RELEASE') and target in ('ADJUSTABLE', 'RELAY1', 'RELAY2'):
-        return action + '_' + target
+    if action in ('ACTIVATE', 'RELEASE') and device_id:
+        return action + '_' + str(device_id)
+    if action in ('ACTIVATE', 'RELEASE') and target:
+        return action + '_' + str(target)
     return 'NOOP'
 
 
@@ -110,14 +148,18 @@ def _read_dispatch_command():
     action = get_attr(trace_entity, 'surplus_device_dispatch_action', '')
     target = get_attr(trace_entity, 'surplus_device_dispatch_target', '')
     device_id = get_attr(trace_entity, 'surplus_device_dispatch_device_id', '')
+    targets = _read_surplus_device_targets(entities)
+    resolved_device_id = str(device_id or _target_device_id_for_decision_name(target, targets) or '')
+    decision_name = _target_decision_name_for_device_id(resolved_device_id, targets) or str(target or '')
 
     if _valid_dispatch_action(action):
         return {
             'source': 'device_trace',
             'action': action,
             'target': target,
-            'device_id': device_id,
-            'decision': _decision_text_from_device_command(action, target),
+            'device_id': resolved_device_id,
+            'decision_name': decision_name,
+            'decision': _decision_text_from_device_command(action, resolved_device_id, target),
         }
 
     return {
@@ -125,75 +167,42 @@ def _read_dispatch_command():
         'action': 'NOOP',
         'target': '',
         'device_id': '',
+        'decision_name': '',
         'decision': 'NOOP',
     }
 
 
 def _apply_device_dispatch(action, target, device_id, entities=None):
     written = []
-    active_ids = set(_read_active_surplus_device_ids(entities))
+    active_ids = list(_read_active_surplus_device_ids(entities))
+    targets = _read_surplus_device_targets(entities)
+    resolved_device_id = str(device_id or _target_device_id_for_decision_name(target, targets) or '')
 
     if action == 'ACTIVATE':
-        if device_id == 'RELAY1' or target == 'RELAY1':
-            if 'RELAY1' not in active_ids:
-                written.append('relay1_on')
-            active_ids.add('RELAY1')
-        elif device_id == 'RELAY2' or target == 'RELAY2':
-            if 'RELAY2' not in active_ids:
-                written.append('relay2_on')
-            active_ids.add('RELAY2')
-        elif target == 'ADJUSTABLE':
-            adjustable_device_id = _adjustable_device_id_from_active_ids(active_ids, {'target': target, 'device_id': device_id}, entities)
-            if adjustable_device_id not in active_ids:
-                written.append('adjustable_on')
-            active_ids.add(adjustable_device_id)
+        if resolved_device_id and resolved_device_id not in active_ids:
+            written.append(_write_label('on', resolved_device_id))
+            active_ids.append(resolved_device_id)
 
     elif action == 'RELEASE':
-        if device_id == 'RELAY1' or target == 'RELAY1':
-            if 'RELAY1' in active_ids:
-                written.append('relay1_off')
-            active_ids.discard('RELAY1')
-        elif device_id == 'RELAY2' or target == 'RELAY2':
-            if 'RELAY2' in active_ids:
-                written.append('relay2_off')
-            active_ids.discard('RELAY2')
-        elif target == 'ADJUSTABLE':
-            adjustable_device_id = _adjustable_device_id_from_active_ids(active_ids, {'target': target, 'device_id': device_id}, entities)
-            if adjustable_device_id in active_ids:
-                written.append('adjustable_off')
-            active_ids.discard(adjustable_device_id)
+        if resolved_device_id in active_ids:
+            written.append(_write_label('off', resolved_device_id))
+            filtered_active_ids = []
+            for active_id in active_ids:
+                if active_id != resolved_device_id:
+                    filtered_active_ids.append(active_id)
+            active_ids = filtered_active_ids
 
     elif action == 'CLEAR_ALL':
-        if 'RELAY1' in active_ids:
-            written.append('relay1_off')
-        if 'EV_CHARGER' in active_ids or 'HOME_BATTERY' in active_ids:
-            written.append('adjustable_off')
-        if 'RELAY2' in active_ids:
-            written.append('relay2_off')
-        active_ids.clear()
+        for active_device_id in active_ids:
+            written.append(_write_label('off', active_device_id))
+        active_ids = []
 
     normalized_active_ids = _publish_active_surplus_device_ids(active_ids, entities)
     return written
 
 
-def _adjustable_device_id_from_trace(command, entities=None):
-    if command.get('target') == 'ADJUSTABLE' and command.get('device_id'):
-        return command['device_id']
-
-    targets = get_attr(_entity_id('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities), 'surplus_device_targets', []) or []
-    for target in targets:
-        if isinstance(target, dict) and target.get('decision_name') == 'ADJUSTABLE':
-            return target.get('device_id') or 'ADJUSTABLE'
-    return 'ADJUSTABLE'
-
-
-def _adjustable_device_id_from_active_ids(active_ids, command, entities=None):
-    if command.get('device_id') in ('EV_CHARGER', 'HOME_BATTERY'):
-        return command['device_id']
-    for device_id in ('EV_CHARGER', 'HOME_BATTERY'):
-        if device_id in active_ids:
-            return device_id
-    return _adjustable_device_id_from_trace(command, entities)
+def _write_label(prefix, device_id):
+    return prefix + ':' + str(device_id)
 
 
 def _active_surplus_device_ids(command, entities=None):
@@ -222,6 +231,7 @@ def ems_dispatch_state_applier_loop():
         'device_dispatch_action': command['action'],
         'device_dispatch_target': command['target'],
         'device_dispatch_device_id': command['device_id'],
+        'device_dispatch_decision_name': command['decision_name'],
         'dispatch_state_contract': 'device_id_primary',
         'active_surplus_device_ids': active_device_ids,
         'writes': writes,

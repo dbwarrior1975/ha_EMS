@@ -1,19 +1,21 @@
-from tests.entity_ids import ENT
+from pathlib import Path
+
 from tests.e2e_entity.refactored_runner import run_refactored_steps
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
 def build_harness(project_root):
-    h = QuarterScenarioHarness(project_root=project_root, start_ts=1000.0, step_s=30, grouped_config_path=project_root / 'EMS_config.yaml')
+    h = QuarterScenarioHarness(project_root=project_root, start_ts=1000.0, step_s=30, scenario_dir=Path(__file__).parent)
+    E = h.ent
     h.set_entities({
-        ENT['goal_profile']: 'NET_ZERO',
-        ENT['forecast_profile']: 'NONE',
-        ENT['soc']: 50.0,
-        ENT['battery_heartbeat']: 0.0,
-        ENT['adjustable_surplus_load']: 'EV_CHARGER',
-        ENT['adjustable_primary_load']: 'HOME_BATTERY',
+        E['goal_profile']: 'NET_ZERO',
+        E['forecast_profile']: 'NONE',
+        E['soc']: 50.0,
+        E['battery_heartbeat']: 0.0,
+        E['adjustable_surplus_load']: 'EV_CHARGER',
+        E['adjustable_primary_load']: 'HOME_BATTERY',
     })
-    h.set_stale(ENT['battery_heartbeat'], 1000.0)
+    h.set_stale(E['battery_heartbeat'], 1000.0)
     return h
 
 

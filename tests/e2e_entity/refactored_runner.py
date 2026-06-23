@@ -1,6 +1,3 @@
-from tests.entity_ids import ENT
-
-
 DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 _LEGACY_STEP_KEYS = (
@@ -31,6 +28,11 @@ _LEGACY_VALUE_ENTITY_IDS = (
 _LEGACY_WRITER_FIELDS = (
     'policy_source',
 )
+_LEGACY_WRITER_BRANCHES = (
+    'ev',
+    'relay1',
+    'relay2',
+)
 
 
 def _device_policy_by_id(policy_trace, device_id):
@@ -39,6 +41,53 @@ def _device_policy_by_id(policy_trace, device_id):
         if isinstance(policy, dict) and policy.get('device_id') == device_id:
             return policy
     return None
+
+
+def _registry(h):
+    if h is None or not hasattr(h, 'ent'):
+        raise TypeError('e2e helpers require a QuarterScenarioHarness with scenario registry')
+    return h.ent
+
+
+def _entity(h, key):
+    ent = _registry(h)
+    entity_id = ent.get(key)
+    if not entity_id:
+        raise KeyError(f"missing runtime entity key={key} config={getattr(h, 'grouped_config_path', None)}")
+    return entity_id
+
+
+def _optional_entity(h, key):
+    return _registry(h).get(key)
+
+
+def _configured_device_order(active_ids, h=None):
+    if h is not None:
+        ordered = list(active_ids or ())
+        index = {device_id: pos for pos, device_id in enumerate(ordered)}
+        devices = (_registry(h).get('devices') or {})
+        adjustable_surplus_load = h.get(_entity(h, 'adjustable_surplus_load'), '')
+        adjustable_priority = h.get(_entity(h, 'adjustable_surplus_load_priority'), 0)
+
+        def _priority(device_id):
+            device = devices.get(device_id) or {}
+            entity_id = device.get('priority')
+            if entity_id:
+                return h.get(entity_id, 0)
+            if device_id == adjustable_surplus_load:
+                return adjustable_priority
+            return None
+
+        return sorted(
+            ordered,
+            key=lambda device_id: (
+                _priority(device_id) is None,
+                -float(_priority(device_id) or 0),
+                index[device_id],
+            ),
+        )
+
+    raise TypeError('e2e helpers require a QuarterScenarioHarness with scenario registry')
 
 
 def _assert_no_legacy_e2e_fields(idx, step):
@@ -68,11 +117,22 @@ def _assert_no_legacy_e2e_fields(idx, step):
         )
 
     for branch, expected_fields in step.get('expect_writer_trace', {}).items():
+        assert branch not in _LEGACY_WRITER_BRANCHES, (
+            f"step={idx} note={note} forbidden_writer_branch={branch} "
+            f"use device ids under writer_trace.devices instead"
+        )
         for field in expected_fields:
             assert field not in _LEGACY_WRITER_FIELDS, (
                 f"step={idx} note={note} forbidden_writer_field={branch}.{field} "
                 f"writer policy_source is not allowed in e2e asserts"
             )
+
+
+def _writer_trace_branch(writer_trace, branch):
+    if branch == 'victron':
+        return writer_trace.get('victron')
+    devices = writer_trace.get('devices') or {}
+    return devices.get(branch)
 
 
 def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
@@ -134,8 +194,9 @@ def seed_previous_device_state(
     if hard_off_active is None:
         hard_off_active = mode == 'hard_off'
 
-    h.set_entities({ENT['previous_device_state']: device_id})
-    h.set_attrs(ENT['previous_device_state'], {
+    previous_device_state = _entity(h, 'previous_device_state')
+    h.set_entities({previous_device_state: device_id})
+    h.set_attrs(previous_device_state, {
         'device_id': device_id,
         'mode': mode,
         'low_pv_cycles': low_pv_cycles,
@@ -145,7 +206,7 @@ def seed_previous_device_state(
 
 
 def seed_previous_policy_trace(h, **attrs):
-    h.set_attrs(ENT['policy_decision_trace'], attrs)
+    h.set_attrs(_entity(h, 'policy_decision_trace'), attrs)
 
 
 def seed_active_surplus_devices(
@@ -158,23 +219,35 @@ def seed_active_surplus_devices(
     actuator_ev_current_a=6,
     actuator_battery_setpoint_w=0,
     goal_profile=None,
+    relay_states=None,
+    ev_states=None,
 ):
-    active_ids = set(active_device_ids or ())
-    active_device_id_list = []
-    for device_id in ('RELAY1', 'EV_CHARGER', 'HOME_BATTERY', 'RELAY2'):
-        if device_id in active_ids:
-            active_device_id_list.append(device_id)
+    active_ids = tuple(active_device_ids or ())
+    active_device_id_list = _configured_device_order(active_ids, h)
 
-    seed = {
-        ENT['active_surplus_devices']: ','.join(active_device_id_list),
-        ENT['actuator_relay1']: actuator_relay1,
-        ENT['actuator_relay2']: actuator_relay2,
-        ENT['actuator_ev_enabled']: actuator_ev_enabled,
-        ENT['actuator_ev_current_a']: actuator_ev_current_a,
-        ENT['actuator_battery_setpoint_w']: actuator_battery_setpoint_w,
-    }
+    seed = {}
+    for key, value in (
+        ('active_surplus_devices', ','.join(active_device_id_list)),
+        ('actuator_relay1', actuator_relay1),
+        ('actuator_relay2', actuator_relay2),
+        ('actuator_ev_enabled', actuator_ev_enabled),
+        ('actuator_ev_current_a', actuator_ev_current_a),
+        ('actuator_battery_setpoint_w', actuator_battery_setpoint_w),
+    ):
+        entity_id = _optional_entity(h, key)
+        if entity_id:
+            seed[entity_id] = value
     if goal_profile is not None:
-        seed[ENT['goal_profile']] = goal_profile
+        seed[_entity(h, 'goal_profile')] = goal_profile
+    for device_id, enabled in (relay_states or {}).items():
+        seed[h.dev(device_id, 'enabled')] = enabled
+    for device_id, state in (ev_states or {}).items():
+        if not isinstance(state, dict):
+            state = {'enabled': state}
+        if 'enabled' in state:
+            seed[h.dev(device_id, 'enabled')] = state['enabled']
+        if 'current_a' in state:
+            seed[h.dev(device_id, 'current_a')] = state['current_a']
     h.set_entities(seed)
 
 
@@ -187,10 +260,10 @@ def seed_battery_protect_runtime_state(
     actuator_battery_setpoint_w,
 ):
     h.set_entities({
-        ENT['guard_profile']: guard_profile,
-        ENT['soc']: soc,
-        ENT['min_cell_voltage_v']: min_cell_voltage_v,
-        ENT['actuator_battery_setpoint_w']: actuator_battery_setpoint_w,
+        _entity(h, 'guard_profile'): guard_profile,
+        _entity(h, 'soc'): soc,
+        _entity(h, 'min_cell_voltage_v'): min_cell_voltage_v,
+        _entity(h, 'actuator_battery_setpoint_w'): actuator_battery_setpoint_w,
     })
 
 
@@ -202,7 +275,7 @@ def run_refactored_steps(h, steps, *, validate=True):
         if not validate:
             continue
 
-        policy_trace = h.getattrs(ENT['policy_decision_trace'])
+        policy_trace = h.getattrs(_entity(h, 'policy_decision_trace'))
         dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)
         _assert_canonical_contracts(idx, step['note'], policy_trace, dispatch_state_trace)
 
@@ -242,7 +315,10 @@ def run_refactored_steps(h, steps, *, validate=True):
                     f"actual={writer_contract} expected=device_policy_primary"
                 )
             for branch, expected_fields in step['expect_writer_trace'].items():
-                actual_branch = writer_trace[branch]
+                actual_branch = _writer_trace_branch(writer_trace, branch)
+                assert actual_branch is not None, (
+                    f"step={idx} note={step['note']} missing writer branch={branch}"
+                )
                 for field, expected in expected_fields.items():
                     actual = actual_branch.get(field)
                     assert actual == expected, (

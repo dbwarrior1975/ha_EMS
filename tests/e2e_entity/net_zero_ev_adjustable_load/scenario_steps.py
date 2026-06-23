@@ -1,32 +1,34 @@
-from tests.entity_ids import ENT
+from pathlib import Path
+
 from tests.e2e_entity.refactored_runner import run_refactored_steps
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
 def build_harness(project_root):
-    h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30, grouped_config_path=project_root / 'EMS_config.yaml')
+    h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30, scenario_dir=Path(__file__).parent)
+    E = h.ent
 
     h.set_entities({
-        ENT['surplus_freeze_s']: 15,
-        ENT['ramp_max_w']: 1000,
-        ENT['adjustable_surplus_load']: 'HOME_BATTERY',
-        ENT['adjustable_primary_load']: 'EV_CHARGER',
-        ENT['adjustable_surplus_activation']: 2500,
-        ENT['adjustable_surplus_load_priority']: 4,
-        ENT['ev_priority']: 3,
-        ENT['relay1_priority']: 2,
-        ENT['relay2_priority']: 1,
-        ENT['relay1_surplus_allowed']: True,
-        ENT['relay2_surplus_allowed']: True,
-        ENT['actuator_ev_enabled']: False,
-        ENT['actuator_ev_current_a']: 6,
-        ENT['ev_current_step_a']: 1,
-        ENT['ev_charger_phases']: 1,
-        ENT['ev_max_current_a']: 28,
-        ENT['max_solar_charge_w']: 2500,
-        ENT['current_battery_sp']: 0.0,
-        ENT['relay1_power_kw']: 2.3,
-        ENT['pv_power_kw']: 1.3,
+        E['surplus_freeze_s']: 15,
+        E['ramp_max_w']: 1000,
+        E['adjustable_surplus_load']: 'HOME_BATTERY',
+        E['adjustable_primary_load']: 'EV_CHARGER',
+        E['adjustable_surplus_activation']: 2500,
+        E['adjustable_surplus_load_priority']: 4,
+        E['ev_priority']: 3,
+        E['relay1_priority']: 2,
+        E['relay2_priority']: 1,
+        E['relay1_surplus_allowed']: True,
+        E['relay2_surplus_allowed']: True,
+        E['actuator_ev_enabled']: False,
+        E['actuator_ev_current_a']: 6,
+        E['ev_current_step_a']: 1,
+        E['ev_charger_phases']: 1,
+        E['ev_max_current_a']: 28,
+        E['max_solar_charge_w']: 2500,
+        E['current_battery_sp']: 0.0,
+        E['relay1_power_kw']: 2.3,
+        E['pv_power_kw']: 1.3,
     })
 
     return h

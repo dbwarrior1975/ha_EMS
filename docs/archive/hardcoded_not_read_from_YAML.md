@@ -10,7 +10,7 @@ Tarkoitus ei ole kuvata kaikkea "legacyksi", vaan erottaa:
 
 1. mita YAML ohjaa jo suoraan
 2. mita runtime johtaa edelleen tunnetun laitejoukon perusteella
-3. mita legacy-compatibility-polku yha kantaa mukanaan
+3. mita deprecated adapter -polku yha kantaa mukanaan
 
 ## Nykyinen status
 
@@ -21,11 +21,12 @@ device-generic:
 - `config_loader.py` lukee ja validoi YAML-rakennetta
 - `device_read_model.py` lukee nyt `CoreConfig`-polulla device-capabilities- ja
   policy-kenttia suoraan rakenteisesta konfiguraatiosta
-- legacy `EmsConfig` -polku on edelleen olemassa compatibilitya varten
-- runtime tekee edelleen osan oletuksista tunnetun laitejoukon perusteella
+- legacy `EmsConfig` -polku on olemassa vain deprecated scalar adapterina
+- production runtime nojaa `CoreConfig.devices`-registryyn, ei legacy scalar
+  parityyn
 
-Tama tarkoittaa, etta vaiheen 2 tavoite on toteutunut read-modelin scope:ssa,
-mutta koko tuotantopolku ei ole viela geneerinen.
+Tama tarkoittaa, etta read-model on jo kanoninen, ja legacy-scalar-view on
+rajattu adapteripintaan.
 
 ## Mita YAML ohjaa jo suoraan
 
@@ -64,20 +65,22 @@ device capabilityn `max_absorb_w` -arvoa.
 
 ## Mika on edelleen aidosti kovakoodattua
 
-### 1. Runtime rakentaa laitteet yha kiinteilla device-id:illa
+### 1. Runtime nojaa edelleen tunnettuun device-kategoriaan, mutta ei legacy scalar -view'hun
 
 Tiedosto:
 
 - [modules/ems_adapter/device_read_model.py](/home/virtamik/code/ha_EMS/modules/ems_adapter/device_read_model.py)
 
-Runtime rakentaa edelleen nelja tunnettua devicea eksplisiittisilla id:illa:
+CoreConfig-polulla runtime rakentaa laitteet registryssa olevista deviceista.
+Nykyiset esimerkit kayttavat viela tuttua nimisarjaa:
 
 - `HOME_BATTERY`
 - `EV_CHARGER`
 - `RELAY1`
 - `RELAY2`
 
-Nama device-id:t eivat tule dynaamisesti YAML:n device-listasta.
+Nama id:t ovat edelleen esimerkkikonfiguraatiossa, mutta tuotantopolku ei enaa
+riipu legacy EmsConfig -paritysta.
 
 ### 2. `response_kind` johdetaan edelleen runtime-logiikalla
 
@@ -90,10 +93,10 @@ Taman hetken read-model paattelee edelleen:
 Tama ei tule geneerisena kenttana YAML:sta, vaan tunnetun laitejoukon
 semantiikasta.
 
-## Mika on edelleen legacy-compatibility-polun kuormaa
+## Mika on edelleen deprecated adapter -polun kuormaa
 
-Kun kaytossa on vanha `EmsConfig`-nakyma, runtime johtaa edelleen capabilityja
-vanhasta mallista eika `CoreConfig`-device-rakenteesta.
+Kun kaytossa on vanha `EmsConfig`-adapteriview, capabilityt johdetaan edelleen
+legacy scalar -kentista eika canonical `CoreConfig.devices`-rakenteesta.
 
 ### HOME_BATTERY legacy-polulla
 
@@ -145,13 +148,13 @@ Relayjen tehot johdetaan edelleen legacy-configista:
 Vaikka capability-luenta toimii nyt `CoreConfig`-polulla, seuraavat kohdat
 eivat viela ole koko runtime-polun kanonista device-generic-toteutusta:
 
-1. device-listan koko ja rakenne eivat ole dynaamisia
+1. device-listan koko ja rakenne ovat yha example-konfiguraation ja domain-
+   semantiikan ohjaamia
 2. `response_kind` ei ole YAML:n eksplisiittinen kanoninen kentta
-3. legacy `EmsConfig` -polku johtaa capabilityja vanhasta mallista
-4. muut runtime-moduulit eivat viela kayta puhdasta device-registry/context
-   -mallia loppuun asti; top-level runtime kayttaa jo `runtime_context`-kerrosta,
-   mutta siella on edelleen compatibility-fallbackeja ja kovakoodattuja
-   oletusnimiä
+3. legacy `EmsConfig` -polku on edelleen adapterissa, ei production runtime -
+   polussa
+4. muut runtime-moduulit eivat viela ole taysin vapaita nimellisyhteensopivuuden
+   helper-aliasista, vaikka canonical data tulee registrysta
 
 ## Device state -tasolla jaljella olevat runtime-oletukset
 
@@ -171,11 +174,12 @@ kaikki device-state ei kuulu configiin.
 Jos halutaan vieda EMS aidosti siihen pisteeseen, etta laitteet ovat vain
 konfiguraatiota, taman dokumentin ydin on nyt tassa:
 
-1. device-id:t ovat viela runtimeen kiinnitetyt
+1. canonical device-registry on tuotannon totuus, mutta nimialiasit elavat viela
+   adaptereissa
 2. `response_kind` on viela johdettu tunnetusta laitejoukosta
-3. legacy `EmsConfig` -polku johtaa capabilityja vanhasta mallista
-4. muut tuotantopolun moduulit eivat viela kayta puhdasta device-generic
-   registry/context -mallia
+3. legacy `EmsConfig` -polku on rajoitettu deprecated adapteriin
+4. muut tuotantopolun moduulit kayttavat jo registry/context -mallia, mutta osa
+   nimialiasista on viela yhteensopivuussyista mukana
 5. state-malli kantaa edelleen perusteltuja runtime-oletuksia, jotka eivat ole
    YAML:n device-dataa
 
