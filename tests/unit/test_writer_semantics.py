@@ -309,10 +309,9 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
     state[ENT['policy_ev_current_a']] = -1
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
-    state['input_number.ems_ev_min_current_a'] = 4
-    state['input_number.ems_ev_max_current_a'] = 32
     state['input_number.ems_ev_current_step_a'] = 1
     state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
 
     result = mod['_write_ev_actuator']()
 
@@ -342,17 +341,16 @@ def test_writer_ev_hard_offs_when_absorb_is_disallowed(project_root):
 
     state[ENT['actuator_ev_enabled']] = True
     state[ENT['actuator_ev_current_a']] = 16
-    state['input_number.ems_ev_min_current_a'] = 4
-    state['input_number.ems_ev_max_current_a'] = 32
     state['input_number.ems_ev_current_step_a'] = 1
     state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
 
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
     assert result['reason'] == 'capability_blocked_absorb'
     assert state[ENT['actuator_ev_enabled']] is False
-    assert state[ENT['actuator_ev_current_a']] == 4
+    assert state[ENT['actuator_ev_current_a']] == 6
 
 
 @pytest.mark.unit
@@ -374,17 +372,47 @@ def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(p
     state[ENT['policy_ev_current_a']] = -1
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
-    state['input_number.ems_ev_min_current_a'] = 6
-    state['input_number.ems_ev_max_current_a'] = 28
     state['input_number.ems_ev_current_step_a'] = 4
     state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
 
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
     assert result['policy_source'] == 'device_policy'
-    assert result['target_current_a'] == 22
-    assert state[ENT['actuator_ev_current_a']] == 22
+    assert result['target_current_a'] == 24
+    assert state[ENT['actuator_ev_current_a']] == 24
+
+
+@pytest.mark.unit
+def test_writer_ev_exact_max_target_w_maps_to_supported_max_current(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 6440,
+                'enabled': True,
+                'mode': 'burn',
+            }
+        ],
+    )
+
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is True
+    assert result['policy_target_w'] == 6440
+    assert result['target_current_a'] == 28
+    assert state[ENT['actuator_ev_enabled']] is True
+    assert state[ENT['actuator_ev_current_a']] == 28
 
 
 @pytest.mark.unit
@@ -659,19 +687,21 @@ def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(projec
             'kind': 'EV_CHARGER',
             'enabled': ENT['actuator_ev_enabled'],
             'current_a': ENT['actuator_ev_current_a'],
-            'current_min_a': 'input_number.ems_ev_min_current_a',
-            'current_max_a': 'input_number.ems_ev_max_current_a',
             'current_step_a': 'input_number.ems_ev_current_step_a',
             'phases': 'input_number.ems_ev_charger_phases',
+            'voltage_v': 'input_number.ems_ev_voltage_v',
+            'min_absorb_w': 1380,
+            'max_absorb_w': 6440,
         },
         'GARAGE_EV': {
             'kind': 'EV_CHARGER',
             'enabled': 'switch.garage_ev_enabled',
             'current_a': 'number.garage_ev_current_a',
-            'current_min_a': 'input_number.garage_ev_min_current_a',
-            'current_max_a': 'input_number.garage_ev_max_current_a',
             'current_step_a': 'input_number.garage_ev_current_step_a',
             'phases': 'input_number.garage_ev_phases',
+            'voltage_v': 'input_number.garage_ev_voltage_v',
+            'min_absorb_w': 1380,
+            'max_absorb_w': 3680,
         },
     }
     _install_device_policies(
@@ -719,10 +749,12 @@ def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(projec
     state[ENT['actuator_ev_current_a']] = 6
     state['switch.garage_ev_enabled'] = False
     state['number.garage_ev_current_a'] = 6
-    state['input_number.garage_ev_min_current_a'] = 6
-    state['input_number.garage_ev_max_current_a'] = 16
     state['input_number.garage_ev_current_step_a'] = 2
     state['input_number.garage_ev_phases'] = 1
+    state['input_number.ems_ev_current_step_a'] = 2
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
+    state['input_number.garage_ev_voltage_v'] = 230
     state[ENT['actuator_relay1']] = False
     state[ENT['actuator_relay2']] = False
 
@@ -742,7 +774,7 @@ def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(projec
 
     
 @pytest.mark.unit
-def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(project_root):
+def test_writer_loop_disables_ev_and_restores_min_current_when_target_w_is_zero(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies(
@@ -792,26 +824,29 @@ def test_writer_loop_restores_ev_to_min_current_when_policy_current_is_zero(proj
     state[ENT['actuator_ev_enabled']] = True
     state[ENT['actuator_ev_current_a']] = 16
 
-    # Policy kertoo, että aktiivinen EV-burn on päättynyt -> strategy 0
+    # Policy kertoo, että aktiivinen EV-burn on päättynyt -> target_w 0
     state[ENT['policy_ev_current_a']] = 0
-    state['input_number.ems_ev_min_current_a'] = 4
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
 
     # Ajetaan koko writer-loop, ei vain _write_ev_actuator()
     mod['ems_actuator_writers_loop']()
 
-    # EV-current pitää palautua minimiin
-    assert state[ENT['actuator_ev_current_a']] == 4
+    # EV-current pitää palautua minimiin ja laturi sammuttaa
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 6
 
     # Writer trace pitää kertoa mitä tapahtui
     trace = state['sensor.ems_actuator_writer_trace']
     assert trace['value'] == 'ACTIVE'
     assert trace['attrs']['devices']['EV_CHARGER']['written'] is True
-    assert trace['attrs']['devices']['EV_CHARGER']['reason'] == 'restore_min_current'
-    assert trace['attrs']['devices']['EV_CHARGER']['target_current_a'] == 4
+    assert trace['attrs']['devices']['EV_CHARGER']['reason'] == 'target_zero_disable'
+    assert trace['attrs']['devices']['EV_CHARGER']['target_current_a'] == 6
 
 
 @pytest.mark.unit
-def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
+def test_writer_hard_off_disables_ev_and_sets_current_to_derived_min(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies(
@@ -829,10 +864,12 @@ def test_writer_hard_off_disables_ev_and_sets_current_zero(project_root):
     state[ENT['actuator_ev_enabled']] = True
     state[ENT['actuator_ev_current_a']] = 16
     state[ENT['policy_ev_current_a']] = 0
-    state['input_number.ems_ev_min_current_a'] = 4
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
 
     result = mod['_write_ev_actuator']()
     assert result['written'] is True
     assert result['reason'] == 'hard_off'
     assert state[ENT['actuator_ev_enabled']] is False
-    assert state[ENT['actuator_ev_current_a']] == 4
+    assert state[ENT['actuator_ev_current_a']] == 6

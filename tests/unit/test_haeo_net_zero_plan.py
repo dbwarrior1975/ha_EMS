@@ -45,6 +45,7 @@ def _core_cfg_with_selected_custom_ev(
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
             'hard_off_release_cycles': 'input_number.ems_ev_garage_release_cycles',
@@ -109,6 +110,7 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_ev_garage_current_step_a': 10,
         'input_number.ems_ev_garage_phases': 1,
         'input_number.ems_ev_garage_voltage_v': 230,
+        'input_boolean.ems_ev_garage_force_on': False,
         'input_number.ems_ev_garage_force_current_a': 0,
     }
     return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
@@ -149,7 +151,6 @@ def test_battery_larger_forecast_selects_home_battery_primary():
     assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
     assert plan.battery_limit_w == 3000
     assert plan.ev_limit_w == 1500
-    assert plan.ev_limit_a == 8
 
 
 @pytest.mark.unit
@@ -246,7 +247,6 @@ def test_limits_are_clamped_to_device_bounds():
     assert plan.battery_limit_w == 2500
     assert plan.ev_limit_w == 2300
     assert plan.device_limits_w == {'HOME_BATTERY': 2500, 'EV_CHARGER': 2300}
-    assert plan.ev_limit_a == 10
 
 
 @pytest.mark.unit
@@ -268,7 +268,7 @@ def test_custom_selected_ev_device_id_is_used_in_haeo_plan(project_root):
 
 
 @pytest.mark.unit
-def test_custom_selected_ev_device_limits_and_current_quantization_are_used(project_root):
+def test_custom_selected_ev_device_limit_cap_is_used(project_root):
     cfg = _core_cfg_with_selected_custom_ev(project_root)
 
     plan = compute_haeo_net_zero_plan(
@@ -281,7 +281,6 @@ def test_custom_selected_ev_device_limits_and_current_quantization_are_used(proj
     assert plan.primary_device_id == 'EV_GARAGE'
     assert plan.device_limits_w == {'HOME_BATTERY': 1000, 'EV_GARAGE': 6900}
     assert plan.ev_limit_w == 6900
-    assert plan.ev_limit_a == 30
 
 
 @pytest.mark.unit

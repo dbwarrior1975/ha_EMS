@@ -55,17 +55,15 @@ def _core_entity_values():
         'input_number.ems_ev_max_power_w': 11040,
         'input_number.ems_ev_power_step_w': 2760,
         'input_number.ems_surplus_ev_priority': 3,
+        'input_boolean.ems_ev_force_on': False,
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 2,
         'switch.charger_control': False,
         'number.charger_current_level': 4,
-        'input_number.ems_ev_min_current_a': 6,
-        'input_number.ems_ev_max_current_a': 28,
         'input_number.ems_ev_current_step_a': 4,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
-        'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_surplus_relay2_priority': 1,
         'input_boolean.ems_relay1_enabled_import_zero': True,
@@ -110,9 +108,13 @@ def test_build_core_config_from_grouped_config_maps_devices_with_kind_specific_f
 
     assert ev_device is not None
     assert ev_device.kind == 'EV_CHARGER'
+    assert ev_device.policy.force_on is False
     assert ev_device.policy.low_pv_threshold_w == 1.6
+    assert ev_device.adapter.voltage_v == 230
     assert ev_device.adapter.current_step_a == 4
-    assert ev_device.adapter.force_current_a == 0
+    assert ev_device.adapter.force_current_a is None
+    assert core.ev_min_current_a == 20
+    assert core.ev_max_current_a == 48
 
     assert relay1 is not None
     assert relay1.kind == 'RELAY'

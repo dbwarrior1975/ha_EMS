@@ -41,6 +41,7 @@ def _write_grouped_config_with_second_ev(project_root, tmp_path):
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
             'hard_off_release_cycles': 'input_number.ems_ev_garage_release_cycles',
@@ -48,12 +49,9 @@ def _write_grouped_config_with_second_ev(project_root, tmp_path):
         'adapter': {
             'enabled': 'switch.ev_garage_enabled',
             'current_a': 'number.ev_garage_current_a',
-            'current_min_a': 'input_number.ems_ev_garage_min_current_a',
-            'current_max_a': 'input_number.ems_ev_garage_max_current_a',
             'current_step_a': 'input_number.ems_ev_garage_current_step_a',
             'phases': 'input_number.ems_ev_garage_phases',
             'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-            'force_current_a': 'input_number.ems_ev_garage_force_current_a',
         },
     }
     path = tmp_path / 'grouped_two_ev.yaml'
@@ -111,7 +109,7 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
             ENT['ev_min_current_a']: 6,
             ENT['ev_max_current_a']: 20,
             ENT['ev_charger_phases']: 3,
-            ENT['ev_force_current_a']: 0,
+            ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.4,
             ENT['ev_hard_off_low_pv_cycles']: 3,
             ENT['ev_hard_off_release_cycles']: 4,
@@ -163,7 +161,7 @@ def test_grouped_config_runtime_reader_matches_dict_scalar_view(project_root):
             ENT['ev_min_current_a']: 7,
             ENT['ev_max_current_a']: 21,
             ENT['ev_charger_phases']: 1,
-            ENT['ev_force_current_a']: 0,
+            ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.5,
             ENT['ev_hard_off_low_pv_cycles']: 4,
             ENT['ev_hard_off_release_cycles']: 5,
@@ -219,7 +217,7 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
             ENT['ev_min_current_a']: 6,
             ENT['ev_max_current_a']: 22,
             ENT['ev_charger_phases']: 3,
-            ENT['ev_force_current_a']: 0,
+            ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.3,
             ENT['ev_hard_off_low_pv_cycles']: 3,
             ENT['ev_hard_off_release_cycles']: 4,
@@ -586,7 +584,7 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
             'input_number.ems_ev_garage_current_step_a': 2,
             'input_number.ems_ev_garage_phases': 1,
             'input_number.ems_ev_garage_voltage_v': 230,
-            'input_number.ems_ev_garage_force_current_a': 0,
+            'input_boolean.ems_ev_garage_force_on': False,
             'switch.ev_garage_enabled': False,
             'number.ev_garage_current_a': 6,
         }
@@ -657,7 +655,7 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
 
 @pytest.mark.unit
 def test_policy_outputs_publish_device_policy_contract_and_payloads(project_root):
-    harness = QuarterScenarioHarness(project_root)
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     harness.step(note='policy output contract attrs')
 
     attrs = harness.getattrs(ENT['policy_decision_trace'])

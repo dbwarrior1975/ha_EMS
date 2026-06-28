@@ -26,7 +26,13 @@ from ems_core.domain.models import (
     CoreStateConfig,
     EmsConfig,
 )
-from ems_core.domain.ev_power import ev_max_power_w, ev_min_power_w, ev_power_step_w
+from ems_core.domain.ev_power import (
+    ev_max_current_a_from_max_absorb_w,
+    ev_max_power_w,
+    ev_min_current_a_from_min_absorb_w,
+    ev_min_power_w,
+    ev_power_step_w,
+)
 
 
 SEVERITY_ERROR = 'ERROR'
@@ -312,6 +318,7 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
             _alias('ev_max_current_a', f'ems.devices.{ev_id}.adapter.current_max_a', ev_adapter.get('current_max_a')),
             _alias('ev_current_step_a', f'ems.devices.{ev_id}.adapter.current_step_a', ev_adapter.get('current_step_a')),
             _alias('ev_charger_phases', f'ems.devices.{ev_id}.adapter.phases', ev_adapter.get('phases')),
+            _alias('ev_force_on', f'ems.devices.{ev_id}.policy.force_on', ev_policy.get('force_on')),
             _alias('ev_force_current_a', f'ems.devices.{ev_id}.adapter.force_current_a', ev_adapter.get('force_current_a')),
         ]
     )
@@ -532,11 +539,13 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
     if core_config.battery_protect_charge_floor_w is None:
         core_config.battery_protect_charge_floor_w = core_config.home_battery.guard.protect_min_absorb_w
     if core_config.ev_min_current_a is None and core_config.ev_charger is not None:
-        core_config.ev_min_current_a = core_config.ev_charger.adapter.current_min_a
+        core_config.ev_min_current_a = core_config._derive_ev_min_current_a()
     if core_config.ev_max_current_a is None and core_config.ev_charger is not None:
-        core_config.ev_max_current_a = core_config.ev_charger.adapter.current_max_a
+        core_config.ev_max_current_a = core_config._derive_ev_max_current_a()
     if core_config.ev_charger_phases is None and core_config.ev_charger is not None:
         core_config.ev_charger_phases = core_config.ev_charger.adapter.phases
+    if core_config.ev_force_on is None and core_config.ev_charger is not None:
+        core_config.ev_force_on = core_config.ev_charger.policy.force_on
     if core_config.ev_force_current_a is None and core_config.ev_charger is not None:
         core_config.ev_force_current_a = core_config.ev_charger.adapter.force_current_a
     if core_config.ev_hard_off_pv_threshold_kw is None and core_config.ev_charger is not None:
@@ -599,6 +608,19 @@ def build_ems_config_from_grouped_reader(
             return default
         return str(resolved)
 
+    def read_bool(value: object, default: bool) -> bool:
+        resolved = value if value not in (None, '') else default
+        if isinstance(resolved, bool):
+            return resolved
+        if isinstance(resolved, (int, float)):
+            return bool(resolved)
+        text = str(resolved).strip().lower()
+        if text in ('true', 'on', '1', 'yes'):
+            return True
+        if text in ('false', 'off', '0', 'no', ''):
+            return False
+        return bool(default)
+
     return EmsConfig(
         deadband_w=read_float(core_config.global_config.deadband_w, 50),
         ramp_max_w=read_float(core_config.global_config.ramp_w, 1000),
@@ -612,6 +634,8 @@ def build_ems_config_from_grouped_reader(
         ev_min_current_a=read_int(core_config.ev_min_current_a, 6),
         ev_max_current_a=read_int(core_config.ev_max_current_a, 28),
         ev_charger_phases=read_int(core_config.ev_charger_phases, 1),
+        ev_voltage_v=read_float(core_config.ev_voltage_v, 230.0),
+        ev_force_on=read_bool(core_config.ev_force_on, False),
         ev_force_current_a=read_int(core_config.ev_force_current_a, 0),
         ev_hard_off_pv_threshold_kw=read_float(core_config.ev_hard_off_pv_threshold_kw, 1.6),
         ev_hard_off_low_pv_cycles=read_int(core_config.ev_hard_off_low_pv_cycles, 2),
@@ -676,6 +700,8 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
         ),
         policy=CoreEvPolicyConfig(
             priority=cfg.ev_priority,
+            surplus_allowed='',
+            force_on='',
             low_pv_threshold_w=cfg.ev_hard_off_pv_threshold_kw,
             hard_off_low_pv_cycles=cfg.ev_hard_off_low_pv_cycles,
             hard_off_release_cycles=cfg.ev_hard_off_release_cycles,
@@ -683,11 +709,11 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
         adapter=CoreEvAdapterConfig(
             enabled='',
             current_a='',
-            current_min_a=cfg.ev_min_current_a,
-            current_max_a=cfg.ev_max_current_a,
             current_step_a=cfg.ev_current_step_a,
             phases=cfg.ev_charger_phases,
-            voltage_v=230,
+            voltage_v=cfg.ev_voltage_v,
+            current_min_a=cfg.ev_min_current_a,
+            current_max_a=cfg.ev_max_current_a,
             force_current_a=cfg.ev_force_current_a,
         ),
     )
@@ -781,6 +807,20 @@ def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
 
 
 def build_ems_config_from_core_config(core_config: CoreConfig) -> EmsConfig:
+    def read_bool(value: object, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value in (None, ''):
+            return default
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        if text in ('true', 'on', '1', 'yes'):
+            return True
+        if text in ('false', 'off', '0', 'no', ''):
+            return False
+        return bool(default)
+
     return EmsConfig(
         deadband_w=float(core_config.deadband_w),
         ramp_max_w=float(core_config.ramp_max_w),
@@ -796,6 +836,8 @@ def build_ems_config_from_core_config(core_config: CoreConfig) -> EmsConfig:
         ev_min_current_a=int(core_config.ev_min_current_a),
         ev_max_current_a=int(core_config.ev_max_current_a),
         ev_charger_phases=int(core_config.ev_charger_phases),
+        ev_voltage_v=float(core_config.ev_voltage_v),
+        ev_force_on=read_bool(core_config.ev_force_on, False),
         ev_force_current_a=int(core_config.ev_force_current_a),
         ev_hard_off_pv_threshold_kw=float(core_config.ev_hard_off_pv_threshold_kw),
         ev_hard_off_low_pv_cycles=int(core_config.ev_hard_off_low_pv_cycles),
@@ -878,7 +920,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_required_entities(
             device['policy'],
             f'{device_path}.policy',
-            ('priority', 'surplus_allowed', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
+            ('priority', 'surplus_allowed', 'force_on', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
             issues,
         )
 
@@ -886,12 +928,13 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_required_entities(
             device['adapter'],
             f'{device_path}.adapter',
-            ('enabled', 'current_a', 'current_min_a', 'current_max_a', 'current_step_a', 'phases', 'voltage_v', 'force_current_a'),
+            ('enabled', 'current_a', 'current_step_a', 'phases', 'voltage_v'),
             issues,
         )
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.current_step_a', 'current_step_a', issues, min_value=1)
-        _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.phases', 'phases', issues, allowed_numbers=(1, 3))
+        _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.phases', 'phases', issues, min_value=1)
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.voltage_v', 'voltage_v', issues, min_value=1)
+        _validate_ev_numeric_current_compatibility(device_path, device, issues)
 
     if kind == 'RELAY':
         if isinstance(device.get('policy'), dict):
@@ -918,7 +961,9 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
 
 def _validate_capabilities(device_path: str, capabilities: dict, issues: list[ConfigValidationIssue]) -> None:
     bool_fields = ('can_absorb_w', 'can_produce_w')
-    entity_or_number_fields = ('min_absorb_w', 'max_absorb_w', 'step_w')
+    entity_or_number_fields = ('min_absorb_w', 'max_absorb_w')
+    if not device_path.endswith('.EV_CHARGER'):
+        entity_or_number_fields = entity_or_number_fields + ('step_w',)
 
     for field in bool_fields:
         if field not in capabilities:
@@ -943,6 +988,80 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
     max_produce = capabilities.get('max_produce_w')
     if capabilities.get('can_produce_w') is False and 'max_produce_w' in capabilities:
         issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_WARNING, 'max_produce_w is ignored when can_produce_w=false'))
+
+
+def _validate_ev_numeric_current_compatibility(device_path: str, device: dict, issues: list[ConfigValidationIssue]) -> None:
+    capabilities = device.get('capabilities')
+    policy = device.get('policy')
+    adapter = device.get('adapter')
+    if not isinstance(capabilities, dict) or not isinstance(policy, dict) or not isinstance(adapter, dict):
+        return
+
+    numeric_values = (
+        capabilities.get('min_absorb_w'),
+        capabilities.get('max_absorb_w'),
+        adapter.get('current_step_a'),
+        adapter.get('phases'),
+        adapter.get('voltage_v'),
+    )
+    for value in numeric_values:
+        if not _is_number(value):
+            return
+
+    min_absorb_w = capabilities.get('min_absorb_w')
+    max_absorb_w = capabilities.get('max_absorb_w')
+    current_step_a = adapter.get('current_step_a')
+    phases = adapter.get('phases')
+    voltage_v = adapter.get('voltage_v')
+
+    if float(min_absorb_w) <= 0:
+        issues.append(_issue(f'{device_path}.capabilities.min_absorb_w', SEVERITY_ERROR, 'must be > 0'))
+        return
+
+    try:
+        derived_min_current_a = ev_min_current_a_from_min_absorb_w(
+            min_absorb_w,
+            phases=phases,
+            voltage_v=voltage_v,
+            current_step_a=current_step_a,
+        )
+        derived_max_current_a = ev_max_current_a_from_max_absorb_w(
+            max_absorb_w,
+            phases=phases,
+            voltage_v=voltage_v,
+            current_step_a=current_step_a,
+        )
+    except ValueError as exc:
+        issues.append(_issue(f'{device_path}.adapter', SEVERITY_ERROR, str(exc)))
+        return
+
+    if float(derived_min_current_a) > float(derived_max_current_a):
+        issues.append(
+            _issue(
+                f'{device_path}.adapter.current_step_a',
+                SEVERITY_ERROR,
+                'derived_min_current_a must be <= derived_max_current_a',
+            )
+        )
+
+    if 'current_min_a' in adapter and _is_number(adapter.get('current_min_a')):
+        if float(adapter['current_min_a']) != float(derived_min_current_a):
+            issues.append(
+                _issue(
+                    f'{device_path}.adapter.current_min_a',
+                    SEVERITY_WARNING,
+                    'deprecated compatibility field differs from min_absorb_w-derived current',
+                )
+            )
+    if 'current_max_a' in adapter and _is_number(adapter.get('current_max_a')):
+        if float(adapter['current_max_a']) != float(derived_max_current_a):
+            issues.append(
+                _issue(
+                    f'{device_path}.adapter.current_max_a',
+                    SEVERITY_WARNING,
+                    'deprecated compatibility field differs from max_absorb_w-derived current',
+                )
+            )
 
 
 def _validate_device_capability_semantics(ems: dict, devices: dict, issues: list[ConfigValidationIssue]) -> None:
@@ -1085,7 +1204,9 @@ def _build_core_capabilities(
         can_produce_w=bool(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'can_produce_w'), read_entity, False)),
         min_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'min_absorb_w'), read_entity, default_min_absorb_w),
         max_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'max_absorb_w'), read_entity, default_max_absorb_w),
-        step_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'step_w'), read_entity, default_step_w),
+        step_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'step_w'), read_entity, default_step_w)
+        if 'step_w' in _require_mapping_value(device, 'capabilities')
+        else default_step_w,
         max_produce_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'max_produce_w'), read_entity, default_max_produce_w)
         if 'max_produce_w' in _require_mapping_value(device, 'capabilities')
         else None,
@@ -1136,6 +1257,8 @@ def _build_core_battery_device(
 
 
 def _build_core_ev_device(device_id: str, device: object, read_entity: Callable[[str, object], object]) -> CoreEvChargerDeviceConfig:
+    policy_section = _require_mapping_value(device, 'policy')
+    adapter_section = _require_mapping_value(device, 'adapter')
     return CoreEvChargerDeviceConfig(
         device_id=device_id,
         kind=str(_resolve_core_config_value(_require_mapping_value(device, 'kind'), read_entity, 'EV_CHARGER')),
@@ -1148,20 +1271,28 @@ def _build_core_ev_device(device_id: str, device: object, read_entity: Callable[
             default_max_produce_w=None,
         ),
         policy=CoreEvPolicyConfig(
-            priority=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'priority'), read_entity, 3),
-            low_pv_threshold_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'low_pv_threshold_w'), read_entity, 1.6),
-            hard_off_low_pv_cycles=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'hard_off_low_pv_cycles'), read_entity, 2),
-            hard_off_release_cycles=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'hard_off_release_cycles'), read_entity, 2),
+            priority=_resolve_core_config_value(_require_mapping_value(policy_section, 'priority'), read_entity, 3),
+            surplus_allowed=_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_allowed'), read_entity, ''),
+            force_on=_resolve_core_config_value(_require_mapping_value(policy_section, 'force_on'), read_entity, ''),
+            low_pv_threshold_w=_resolve_core_config_value(_require_mapping_value(policy_section, 'low_pv_threshold_w'), read_entity, 1.6),
+            hard_off_low_pv_cycles=_resolve_core_config_value(_require_mapping_value(policy_section, 'hard_off_low_pv_cycles'), read_entity, 2),
+            hard_off_release_cycles=_resolve_core_config_value(_require_mapping_value(policy_section, 'hard_off_release_cycles'), read_entity, 2),
         ),
         adapter=CoreEvAdapterConfig(
-            enabled=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'enabled'), read_entity, False),
-            current_a=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'current_a'), read_entity, 0),
-            current_min_a=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'current_min_a'), read_entity, 0),
-            current_max_a=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'current_max_a'), read_entity, 0),
-            current_step_a=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'current_step_a'), read_entity, 4),
-            phases=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'phases'), read_entity, 1),
-            voltage_v=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'voltage_v'), read_entity, 230),
-            force_current_a=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'force_current_a'), read_entity, 0),
+            enabled=_resolve_core_config_value(_require_mapping_value(adapter_section, 'enabled'), read_entity, False),
+            current_a=_resolve_core_config_value(_require_mapping_value(adapter_section, 'current_a'), read_entity, 0),
+            current_step_a=_resolve_core_config_value(_require_mapping_value(adapter_section, 'current_step_a'), read_entity, 4),
+            phases=_resolve_core_config_value(_require_mapping_value(adapter_section, 'phases'), read_entity, 1),
+            voltage_v=_resolve_core_config_value(_require_mapping_value(adapter_section, 'voltage_v'), read_entity, 230),
+            current_min_a=_resolve_core_config_value(adapter_section.get('current_min_a'), read_entity, None)
+            if 'current_min_a' in adapter_section
+            else None,
+            current_max_a=_resolve_core_config_value(adapter_section.get('current_max_a'), read_entity, None)
+            if 'current_max_a' in adapter_section
+            else None,
+            force_current_a=_resolve_core_config_value(adapter_section.get('force_current_a'), read_entity, None)
+            if 'force_current_a' in adapter_section
+            else None,
         ),
     )
 

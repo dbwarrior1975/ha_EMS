@@ -10,11 +10,10 @@ from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
     ev_max_power_w,
     ev_min_power_w,
-    ev_phase_power_w,
     ev_power_step_w,
 )
 from ems_core.net_zero.battery_controller import candidate_sp_net_zero
-from ems_core.net_zero.load_projection import ev_strategy_current_a, relay_strategy_command
+from ems_core.net_zero.load_projection import ev_strategy_target_w, relay_strategy_command
 from ems_core.net_zero.surplus_allocator import (
     active_device_stack,
     compute_surplus_device_dispatch,
@@ -170,6 +169,11 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
             selected.ev_max_current_a = 0
             selected.ev_current_step_a = 0
             selected.ev_charger_phases = 1
+            selected.ev_voltage_v = 230.0
+            selected.min_absorb_w = 0.0
+            selected.max_absorb_w = 0.0
+            selected.step_w = 0.0
+            selected.ev_force_on = False
             selected.ev_force_current_a = 0
             selected.ev_hard_off_pv_threshold_kw = 0.0
             selected.ev_hard_off_low_pv_cycles = 0
@@ -178,12 +182,30 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
         return selected
 
     adapter = device.adapter
+    capabilities = device.capabilities
     policy = device.policy
-    selected.ev_min_current_a = int(round(float(adapter.current_min_a)))
-    selected.ev_max_current_a = int(round(float(adapter.current_max_a)))
+    selected.ev_min_current_a = int(round(float(getattr(cfg, 'ev_min_current_a', 0) or 0)))
+    selected.ev_max_current_a = int(round(float(getattr(cfg, 'ev_max_current_a', 0) or 0)))
     selected.ev_current_step_a = int(round(float(adapter.current_step_a)))
     selected.ev_charger_phases = int(round(float(adapter.phases)))
-    selected.ev_force_current_a = int(round(float(adapter.force_current_a)))
+    selected.ev_voltage_v = float(adapter.voltage_v)
+    selected.min_absorb_w = float(capabilities.min_absorb_w)
+    selected.max_absorb_w = float(capabilities.max_absorb_w)
+    selected.step_w = float(getattr(capabilities, 'step_w', 0) or 0)
+    raw_force_on = getattr(policy, 'force_on', False)
+    if isinstance(raw_force_on, str):
+        text = raw_force_on.strip().lower()
+        if text in ('true', 'on', '1', 'yes'):
+            selected.ev_force_on = True
+        elif text in ('false', 'off', '0', 'no', '', 'unknown', 'unavailable', 'none'):
+            selected.ev_force_on = False
+        else:
+            # Grouped-config entity refs must not coerce truthy just because they
+            # are non-empty strings. Prefer the already-resolved scalar fallback.
+            selected.ev_force_on = bool(getattr(cfg, 'ev_force_on', False))
+    else:
+        selected.ev_force_on = bool(raw_force_on)
+    selected.ev_force_current_a = int(round(float(getattr(cfg, 'ev_force_current_a', 0) or 0)))
     low_pv_threshold = float(policy.low_pv_threshold_w)
     selected.ev_hard_off_pv_threshold_kw = low_pv_threshold / 1000.0 if low_pv_threshold > 50.0 else low_pv_threshold
     selected.ev_hard_off_low_pv_cycles = int(round(float(policy.hard_off_low_pv_cycles)))
@@ -499,10 +521,9 @@ def _normalize_previous_ev_device_states(previous_ev_device_states):
     return normalized
 
 
-def _enforce_device_policy_capabilities(cfg, device_policies, ev_current_a):
+def _enforce_device_policy_capabilities(cfg, device_policies):
     sanitized = []
     blocked = []
-    effective_ev_current_a = int(ev_current_a)
     for policy in device_policies:
         device_cfg = _capability_device_config_for_id(cfg, policy.device_id)
         clamped_target_w = clamp_target_w_for_capabilities(device_cfg, policy.target_w)
@@ -518,13 +539,10 @@ def _enforce_device_policy_capabilities(cfg, device_policies, ev_current_a):
             elif str(device_cfg.kind) == 'EV_CHARGER':
                 enabled = False
                 mode = 'restore_min'
-                effective_ev_current_a = 0
             else:
                 enabled = False
                 mode = 'relay'
             reason = block_reason
-        if str(device_cfg.kind) == 'EV_CHARGER' and (not enabled or clamped_target_w <= 0):
-            effective_ev_current_a = 0
         sanitized.append(
             DevicePolicy(
                 device_id=policy.device_id,
@@ -534,7 +552,7 @@ def _enforce_device_policy_capabilities(cfg, device_policies, ev_current_a):
                 reason=reason,
             )
         )
-    return tuple(sanitized), effective_ev_current_a, tuple(blocked)
+    return tuple(sanitized), tuple(blocked)
 
 
 def _device_policy_payloads(device_policies):
@@ -549,7 +567,6 @@ def _build_device_policies(
     *,
     battery_target_w,
     battery_write_enabled,
-    ev_current_a,
     ev_target_w,
     ev_policy_mode,
     adjustable_ev_device_id,
@@ -572,7 +589,7 @@ def _build_device_policies(
                 DevicePolicy(
                     device_id=device_id,
                     target_w=int(round(float(ev_target_w))),
-                    enabled=int(ev_current_a) > 0,
+                    enabled=float(ev_target_w) > 0.0,
                     mode=str(ev_policy_mode),
                     reason='ev_policy',
                 )
@@ -775,9 +792,10 @@ def net_zero_surplus_policy_active(profiles, effective_fc, haeo_nz_plan_active=F
     )
 
 
-def _ev_policy_mode_and_current(
+def _ev_policy_mode_and_target_w(
     profiles, cfg, haeo, *,
     burn_active,
+    force_charge_blocked,
     adjustable_surplus_active,
     ev_release_pending,
     pv_power_kw,
@@ -785,14 +803,12 @@ def _ev_policy_mode_and_current(
     ev_low_pv_cycles,
     rpc_kw,
     rpnz_w,
-    grid_power_w,
-    current_ev_current_a,
     use_ev_adjustable_mode=False,
     use_ev_primary_mode=False,
     use_ev_primary_home_battery_combo=False,
     haeo_nz_plan=None,
 ):
-    current_a = ev_strategy_current_a(
+    target_w = ev_strategy_target_w(
         profiles,
         cfg,
         haeo,
@@ -806,34 +822,25 @@ def _ev_policy_mode_and_current(
         and use_ev_adjustable_mode
         and float(rpnz_w) > 0.0
     ):
-        current_a = int(cfg.ev_max_current_a)
-
-    if (
-        burn_active
-        and (not ev_release_pending)
-        and use_ev_adjustable_mode
-        and float(rpnz_w) > 0.0
-        and int(max(current_ev_current_a, 0)) >= int(cfg.ev_max_current_a)
-    ):
-        current_a = int(cfg.ev_max_current_a)
+        target_w = float(ev_max_power_w(cfg))
 
     if (
         profiles.goal == GoalProfile.NET_ZERO
         and haeo_nz_plan is not None
         and bool(getattr(haeo_nz_plan, 'active', False))
-        and current_a > 0
+        and target_w > 0
     ):
-        limit_a = int(getattr(haeo_nz_plan, 'ev_limit_a', 0))
-        current_a = min(int(current_a), limit_a) if limit_a > 0 else 0
+        limit_w = float(getattr(haeo_nz_plan, 'ev_limit_w', 0))
+        target_w = min(float(target_w), limit_w) if limit_w > 0 else 0.0
 
-    if profiles.goal == GoalProfile.MAX_EXPORT and current_a == 0:
+    if profiles.goal == GoalProfile.MAX_EXPORT and target_w == 0:
         return 'hard_off', 0, 0, False
 
-    if current_a < 0:
-        return 'skip', current_a, 0, False
+    if force_charge_blocked:
+        target_w = 0.0
 
-    if current_a > 0:
-        return 'burn', current_a, 0, False
+    if target_w > 0:
+        return 'burn', float(target_w), 0, False
 
     low_pv_threshold = float(cfg.ev_hard_off_pv_threshold_kw)
     low_pv = pv_power_kw is not None and float(pv_power_kw) < low_pv_threshold
@@ -844,7 +851,6 @@ def _ev_policy_mode_and_current(
         and profiles.goal == GoalProfile.NET_ZERO
         and profiles.guard == GuardProfile.NORMAL_LIMITS
         and not burn_active
-        and cfg.ev_force_current_a <= 0
     )
 
     if hard_off_allowed and ev_hard_off_active:
@@ -852,39 +858,37 @@ def _ev_policy_mode_and_current(
             return 'hard_off', 0, next_low_pv_cycles, True
         ev_threshold_kw = max((ev_max_power_w(cfg) - ev_min_power_w(cfg)) / 1000.0, 0)
         if rpc_kw >= ev_threshold_kw:
-            return 'burn', int(cfg.ev_max_current_a), next_low_pv_cycles, False
+            return 'burn', float(ev_max_power_w(cfg)), next_low_pv_cycles, False
         return 'hard_off', 0, next_low_pv_cycles, True
 
     if hard_off_allowed and next_low_pv_cycles >= int(cfg.ev_hard_off_low_pv_cycles):
         return 'hard_off', 0, next_low_pv_cycles, True
 
-    restore_min_a = int(cfg.ev_min_current_a) if use_ev_primary_mode else 0
-    return 'restore_min', restore_min_a, next_low_pv_cycles, False
+    restore_min_w = float(ev_min_power_w(cfg)) if use_ev_primary_mode else 0.0
+    return 'restore_min', restore_min_w, next_low_pv_cycles, False
 
 
-def _primary_ev_step_current_a(cfg, envelope_w):
-    per_amp_w = float(ev_phase_power_w(cfg.ev_charger_phases))
+def _primary_ev_step_target_w(cfg, envelope_w):
     positive_envelope_w = max(float(envelope_w), 0.0)
-    raw_a = int(round(positive_envelope_w / per_amp_w))
-    if raw_a <= 0:
-        return 0
+    if positive_envelope_w <= 0.0:
+        return 0.0
 
-    min_a = max(1, int(cfg.ev_min_current_a))
-    max_a = max(min_a, int(cfg.ev_max_current_a))
-    step_a = max(1, int(getattr(cfg, 'ev_current_step_a', min_a) or min_a))
+    min_w = float(ev_min_power_w(cfg))
+    max_w = float(ev_max_power_w(cfg))
+    step_w = max(1.0, float(ev_power_step_w(cfg)))
 
-    if raw_a <= min_a:
-        quantized_a = min_a
+    if positive_envelope_w <= min_w:
+        quantized_w = min_w
     else:
-        # Quantize above minimum using configurable EV current steps.
-        offset = raw_a - min_a
-        quantized_a = min_a + (offset // step_a) * step_a
+        # Quantize above minimum using the charger-supported watt resolution.
+        offset_w = positive_envelope_w - min_w
+        quantized_w = min_w + (offset_w // step_w) * step_w
 
-    return int(min(max(quantized_a, min_a), max_a))
+    return float(min(max(quantized_w, min_w), max_w))
 
 
 def _primary_power_envelope_w(cfg, m, nz):
-    current_ev_w = float(ev_current_a_to_power_w(m.charger_current_a, cfg.ev_charger_phases))
+    current_ev_w = float(ev_current_a_to_power_w(m.charger_current_a, cfg.ev_charger_phases, getattr(cfg, 'ev_voltage_v', 230.0)))
     ev_max_w = float(ev_max_power_w(cfg))
     return candidate_sp_net_zero(
         rpnz_w=float(nz.rpnz_w),
@@ -1159,7 +1163,6 @@ def compute_net_zero_engine_outputs(
     ev_primary_burn_active = False
     ev_surplus_burn_active = False
     ev_policy_mode = 'skip'
-    ev_current_a = 0
     next_low_pv_cycles = 0
     ev_hard_off_active_next = False
     primary_envelope_w = None
@@ -1173,7 +1176,6 @@ def compute_net_zero_engine_outputs(
         battery_to_ev_loop_risk = (
             low_pv
             and float(m.current_battery_setpoint_w) < 0.0
-            and int(selected_ev_cfg.ev_force_current_a) <= 0
         )
 
         ev_min_power_kw = float(ev_min_power_w(selected_ev_cfg)) / 1000.0
@@ -1228,11 +1230,12 @@ def compute_net_zero_engine_outputs(
             ev_primary_burn_active = False
             ev_surplus_burn_active = False
         ev_burn_for_cycle = ev_surplus_burn_active or ev_primary_burn_active
-        ev_policy_mode, ev_current_a, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_current(
+        ev_policy_mode, ev_target_w, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_target_w(
             profiles,
             selected_ev_cfg,
             normalized_haeo,
             burn_active=ev_burn_for_cycle,
+            force_charge_blocked=battery_to_ev_loop_risk,
             adjustable_surplus_active=adjustable_active_current,
             ev_release_pending=(surplus_device_decision.release == primary_release_target),
             pv_power_kw=pv_power_kw,
@@ -1240,8 +1243,6 @@ def compute_net_zero_engine_outputs(
             ev_low_pv_cycles=int(selected_previous_ev_state['low_pv_cycles']),
             rpc_kw=nz.required_power_consumption_kw,
             rpnz_w=nz.rpnz_w,
-            grid_power_w=m.grid_power_w,
-            current_ev_current_a=m.charger_current_a,
             use_ev_adjustable_mode=use_ev_surplus_mode,
             use_ev_primary_mode=use_ev_primary_mode,
             use_ev_primary_home_battery_combo=use_ev_primary_home_battery_combo,
@@ -1260,25 +1261,24 @@ def compute_net_zero_engine_outputs(
             and ev_policy_mode != 'skip'
         ):
             ev_policy_mode = 'restore_min'
-            ev_current_a = 0
+            ev_target_w = 0.0
 
         if use_ev_primary_mode and (not use_ev_surplus_mode) and ev_policy_mode == 'burn':
             primary_envelope_w = _primary_power_envelope_w(selected_ev_cfg, m, nz)
-            stepped_primary_a = _primary_ev_step_current_a(selected_ev_cfg, primary_envelope_w)
+            stepped_primary_w = _primary_ev_step_target_w(selected_ev_cfg, primary_envelope_w)
             if haeo_nz_plan_active:
-                limit_a = int(getattr(haeo_nz_plan, 'ev_limit_a', 0))
-                stepped_primary_a = min(int(stepped_primary_a), limit_a) if limit_a > 0 else 0
-            ev_current_a = stepped_primary_a
-            ev_policy_mode = 'burn' if stepped_primary_a > 0 else 'restore_min'
+                limit_w = float(getattr(haeo_nz_plan, 'ev_limit_w', 0))
+                stepped_primary_w = min(float(stepped_primary_w), limit_w) if limit_w > 0 else 0.0
+            ev_target_w = float(stepped_primary_w)
+            ev_policy_mode = 'burn' if stepped_primary_w > 0 else 'restore_min'
 
-        ev_target_w = float(ev_current_a_to_power_w(ev_current_a, selected_ev_cfg.ev_charger_phases))
         ev_burn_active_for_battery = (
-            (ev_policy_mode == 'burn' and int(max(ev_current_a, 0)) > 0)
+            (ev_policy_mode == 'burn' and float(max(ev_target_w, 0.0)) > 0.0)
             or (
                 use_ev_primary_mode
                 and ev_policy_mode == 'restore_min'
                 and bool(m.charger_on)
-                and int(max(ev_current_a, 0)) > 0
+                and float(max(ev_target_w, 0.0)) > 0.0
                 and not battery_to_ev_loop_risk
             )
         )
@@ -1313,17 +1313,12 @@ def compute_net_zero_engine_outputs(
         cfg,
         battery_target_w=battery_target_w,
         battery_write_enabled=battery_write_enabled,
-        ev_current_a=ev_current_a,
         ev_target_w=ev_target_w,
         ev_policy_mode=ev_policy_mode,
         adjustable_ev_device_id=selected_ev_device_id,
         relay_policies=tuple(relay_policy_states),
     )
-    device_policies, _effective_ev_current_a, capability_blocked_devices = _enforce_device_policy_capabilities(
-        cfg,
-        device_policies,
-        ev_current_a,
-    )
+    device_policies, capability_blocked_devices = _enforce_device_policy_capabilities(cfg, device_policies)
     battery_policy = None
     for policy in device_policies:
         if policy.device_id == 'HOME_BATTERY':
@@ -1409,7 +1404,8 @@ def compute_net_zero_engine_outputs(
             'ev_adjustable_mode': bool(use_ev_surplus_mode),
             'ev_primary_burn_active': bool(ev_primary_burn_active),
             'ev_surplus_burn_active': bool(ev_surplus_burn_active),
-            'ev_current_step_a': int(getattr(selected_ev_cfg, 'ev_current_step_a', selected_ev_cfg.ev_min_current_a)),
+            'ev_current_step_a': int(getattr(selected_ev_cfg, 'ev_current_step_a', 1) or 1),
+            'ev_force_on': bool(getattr(selected_ev_cfg, 'ev_force_on', False)),
             'ev_min_power_w': int(ev_min_power_w(selected_ev_cfg)),
             'ev_max_power_w': int(ev_max_power_w(selected_ev_cfg)),
             'ev_power_step_w': int(ev_power_step_w(selected_ev_cfg)),
@@ -1438,7 +1434,6 @@ def compute_net_zero_engine_outputs(
             'haeo_nz_device_limits_w': getattr(haeo_nz_plan, 'device_limits_w', {}) or {},
             'haeo_nz_battery_limit_w': int(getattr(haeo_nz_plan, 'battery_limit_w', 0)),
             'haeo_nz_ev_limit_w': int(getattr(haeo_nz_plan, 'ev_limit_w', 0)),
-            'haeo_nz_ev_limit_a': int(getattr(haeo_nz_plan, 'ev_limit_a', 0)),
             'haeo_nz_combo_reason': getattr(haeo_nz_plan, 'reason', ''),
             'prev_relay1_force_on': bool(relay1_force_on),
             'prev_relay2_force_on': bool(relay2_force_on),

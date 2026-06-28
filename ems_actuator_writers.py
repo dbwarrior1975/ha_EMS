@@ -1,5 +1,5 @@
 from ems_adapter.ha_adapter import get_attr, get_bool, get_float, get_int, get_str, publish_sensor, set_boolean, set_number
-from ems_core.domain.ev_power import ev_power_w_to_selector_current_a
+from ems_core.domain.ev_power import ev_min_current_a_from_min_absorb_w, ev_power_w_to_current_a
 from ems_core.domain.models import EmsDeviceConfig
 from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capability_block_reason
 
@@ -34,6 +34,17 @@ def _ent(key, fallback, entities=None):
         return entities[key]
     ent = globals().get('ENT', {})
     return ent.get(key, fallback)
+
+
+def _resolve_float_value(value, default=0.0):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value:
+        try:
+            return float(value)
+        except ValueError:
+            return get_float(value, default)
+    return float(default)
 
 
 def _quantize_50w(value):
@@ -203,40 +214,48 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
     current_entity = device_runtime.get('current_a') or _ent('actuator_ev_current_a', 'number.charger_current_level', entities)
     current_on = get_bool(enabled_entity)
     current_level = get_int(current_entity, 0)
-    min_a = get_int(device_runtime.get('current_min_a') or _ent('ev_min_current_a', 'input_number.ems_ev_min_current_a', entities), 6)
-    max_a = get_int(device_runtime.get('current_max_a') or _ent('ev_max_current_a', 'input_number.ems_ev_max_current_a', entities), 28)
-    step_a = get_int(device_runtime.get('current_step_a') or _ent('ev_current_step_a', 'input_number.ems_ev_current_step_a', entities), 4)
-    phases = get_int(device_runtime.get('phases') or _ent('ev_charger_phases', 'input_number.ems_ev_charger_phases', entities), 1)
+    step_a = get_float(device_runtime.get('current_step_a') or _ent('ev_current_step_a', 'input_number.ems_ev_current_step_a', entities), 4)
+    phases = get_float(device_runtime.get('phases') or _ent('ev_charger_phases', 'input_number.ems_ev_charger_phases', entities), 1)
+    voltage_v = get_float(device_runtime.get('voltage_v') or _ent('ev_voltage_v', 'input_number.ems_ev_voltage_v', entities), 230)
     ev_policy_mode = str(device_policy.get('mode') or _previous_device_state_mode(entities) or '')
     capability_reason = ''
+    target_w = _device_policy_target_w(device_policy, default=0)
+    capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER')
+    if capability_cfg is None:
+        return {
+            'target': device_id,
+            'action': 'skip',
+            'reason': 'missing_device_config',
+            'written': False,
+            'policy_source': policy_source,
+        }
+    min_absorb_w = _resolve_float_value(device_runtime.get('min_absorb_w', capability_cfg.min_absorb_w), capability_cfg.min_absorb_w)
+    max_absorb_w = _resolve_float_value(device_runtime.get('max_absorb_w', capability_cfg.max_absorb_w), capability_cfg.max_absorb_w)
+    derived_min_a = ev_min_current_a_from_min_absorb_w(
+        min_absorb_w,
+        phases=phases,
+        voltage_v=voltage_v,
+        current_step_a=step_a,
+    )
     if ev_policy_mode == 'skip':
-        strategy_a = -1
+        target_current_a = -1
     else:
-        # EV device policy is watt-based in the canonical production contract.
-        # Any current_a payload is treated only as compatibility/trace metadata.
-        target_w = _device_policy_target_w(device_policy, default=0)
-        capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER')
-        if capability_cfg is None:
-            return {
-                'target': device_id,
-                'action': 'skip',
-                'reason': 'missing_device_config',
-                'written': False,
-                'policy_source': policy_source,
-            }
         capability_reason = capability_block_reason(capability_cfg, target_w)
         target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
         if capability_reason:
             ev_policy_mode = 'hard_off'
-        strategy_a = ev_power_w_to_selector_current_a(
-            target_w,
-            phases,
-            max_a,
-            min_a=min_a,
-            step_a=step_a,
-        )
+        target_current_a = 0
+        if target_w > 0 and ev_policy_mode != 'hard_off':
+            target_current_a = ev_power_w_to_current_a(
+                target_w,
+                phases=phases,
+                voltage_v=voltage_v,
+                min_absorb_w=min_absorb_w,
+                max_absorb_w=max_absorb_w,
+                current_step_a=step_a,
+            )
 
-    if strategy_a < 0:
+    if target_current_a < 0:
         return {
             'target': 'ev',
             'action': 'skip',
@@ -245,70 +264,67 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
             'policy_source': policy_source,
         }
 
-    if strategy_a > 0:
+    if target_current_a > 0:
         enabled_changed = False
         current_changed = False
         if not current_on:
             set_boolean(enabled_entity, True)
             enabled_changed = True
-        if strategy_a != current_level:
-            set_number(current_entity, strategy_a)
+        if target_current_a != current_level:
+            set_number(current_entity, target_current_a)
             current_changed = True
         return {
             'target': 'ev',
             'action': 'enable_and_set_current',
             'reason': capability_reason or ('state_changed' if (enabled_changed or current_changed) else 'already_matching'),
             'written': enabled_changed or current_changed,
-            'policy_current_a': strategy_a,
-            'target_current_a': strategy_a,
+            'policy_target_w': target_w,
+            'target_current_a': target_current_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
             'policy_source': policy_source,
         }
 
+    enabled_changed = False
+    current_changed = False
+    if current_on:
+        set_boolean(enabled_entity, False)
+        enabled_changed = True
+    if current_level != derived_min_a:
+        set_number(current_entity, derived_min_a)
+        current_changed = True
     if ev_policy_mode == 'hard_off':
-        enabled_changed = False
-        current_changed = False
-        if current_on:
-            set_boolean(enabled_entity, False)
-            enabled_changed = True
-        # Charger selector cannot be written below its hardware minimum. Keep it
-        # at minimum while disabling the charger switch.
-        if current_level != min_a:
-            set_number(current_entity, min_a)
-            current_changed = True
         return {
             'target': 'ev',
             'action': 'hard_off',
             'reason': capability_reason or 'hard_off',
             'written': enabled_changed or current_changed,
-            'policy_current_a': strategy_a,
-            'target_current_a': min_a,
+            'policy_target_w': target_w,
+            'target_current_a': derived_min_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
             'policy_source': policy_source,
         }
 
-    # Strategy 0 means EMS releases the active surplus command. Keep charger
-    # state as-is, but restore the current selector to minimum if charger is on.
-    if current_on and current_level != min_a:
-        set_number(current_entity, min_a)
+    if enabled_changed or current_changed:
         return {
             'target': 'ev',
-            'action': 'restore_min_current',
-            'reason': capability_reason or 'restore_min_current',
+            'action': 'disable_and_restore_min_current',
+            'reason': capability_reason or 'target_zero_disable',
             'written': True,
-            'previous_current_a': current_level,
-            'target_current_a': min_a,
+            'policy_target_w': target_w,
+            'target_current_a': derived_min_a,
+            'enabled_changed': enabled_changed,
+            'current_changed': current_changed,
             'policy_source': policy_source,
         }
 
     return {
         'target': 'ev',
         'action': 'skip',
-        'reason': capability_reason or 'already_released',
+        'reason': capability_reason or 'already_disabled',
         'written': False,
-        'policy_current_a': strategy_a,
+        'policy_target_w': target_w,
         'current_a': current_level,
         'policy_source': policy_source,
     }

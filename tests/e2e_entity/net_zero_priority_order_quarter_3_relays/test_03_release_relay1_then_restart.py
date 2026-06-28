@@ -42,7 +42,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_values': {
                 E['actuator_relay1']: True,
                 E['actuator_relay2']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
             },
         },
         {
@@ -91,7 +91,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_values': {
                 E['actuator_relay1']: False,
                 E['actuator_relay2']: False,
-                E['actuator_ev_enabled']: True,
+                E['actuator_ev_enabled']: False,
             },
         },
     ]

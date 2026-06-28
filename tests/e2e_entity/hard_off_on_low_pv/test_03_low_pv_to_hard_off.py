@@ -50,12 +50,12 @@ def test_03_low_pv_to_hard_off(project_root):
                 'EV_CHARGER': {
                     'reason': 'hard_off',
                     'written': True,
-                    'target_current_a': 6,
+                    'target_current_a': 8,
                 },
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
             },
         },
     ]

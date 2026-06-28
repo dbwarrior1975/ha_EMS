@@ -14,7 +14,7 @@ def build_harness(project_root):
         E['forecast_profile']: 'NONE',
         E['control_profile']: 'AUTOMATIC',
         E['guard_profile']: 'NORMAL_LIMITS',
-        E['ev_force_current_a']: 0,
+        E['ev_force_on']: False,
         E['ev_min_current_a']: 6,
         E['ev_max_current_a']: 28,
         E['ev_charger_phases']: 1,

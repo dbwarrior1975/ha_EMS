@@ -44,9 +44,6 @@ def _relay_candidates(
 def test_ev_adjustable_device_target_uses_ev_power_delta_when_no_explicit_activation():
     cfg = make_cfg(
         adjustable_surplus_activation=0,
-        ev_min_current_a=6,
-        ev_max_current_a=28,
-        ev_charger_phases=1,
         adjustable_surplus_load_priority=4,
     )
 
@@ -64,6 +61,8 @@ def test_ev_adjustable_device_target_uses_ev_power_delta_when_no_explicit_activa
     assert adjustable.priority == 4
     assert adjustable.rank == 1
     assert adjustable.threshold_w == 5060
+    assert adjustable.threshold_source == 'ev_incremental_max_minus_min_absorb_w'
+    assert adjustable.incremental_surplus_threshold_w == 5060
     assert adjustable.active is False
 
 
@@ -86,6 +85,8 @@ def test_home_battery_adjustable_device_target_uses_max_solar_charge_when_no_exp
     adjustable = targets[0]
     assert adjustable.device_id == 'HOME_BATTERY'
     assert adjustable.threshold_w == 3700
+    assert adjustable.threshold_source == 'max_solar_charge_w'
+    assert adjustable.incremental_surplus_threshold_w is None
     assert adjustable.active is True
 
 
@@ -115,7 +116,10 @@ def test_explicit_adjustable_activation_overrides_device_default_threshold():
     )
 
     assert ev_targets[0].threshold_w == 2000
+    assert ev_targets[0].threshold_source == 'configured_adjustable_surplus_activation_w'
+    assert ev_targets[0].incremental_surplus_threshold_w is None
     assert battery_targets[0].threshold_w == 2000
+    assert battery_targets[0].threshold_source == 'configured_adjustable_surplus_activation_w'
 
 
 @pytest.mark.unit

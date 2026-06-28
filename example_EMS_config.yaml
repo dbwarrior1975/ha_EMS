@@ -65,10 +65,10 @@ ems:
         can_produce_w: false
         min_absorb_w: input_number.ems_ev_min_power_w
         max_absorb_w: input_number.ems_ev_max_power_w
-        step_w: input_number.ems_ev_power_step_w
       policy:
         priority: input_number.ems_surplus_ev_priority
         surplus_allowed: input_boolean.ems_ev_surplus_allowed
+        force_on: input_boolean.ems_ev_force_on
         low_pv_threshold_w: input_number.ems_ev_hard_off_pv_threshold_kw
         hard_off_low_pv_cycles: input_number.ems_ev_hard_off_low_pv_cycles
         hard_off_release_cycles: input_number.ems_ev_hard_off_release_cycles

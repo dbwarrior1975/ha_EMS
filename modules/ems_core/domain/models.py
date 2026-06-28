@@ -67,6 +67,8 @@ class EmsConfig:
     ev_min_current_a: int = 6
     ev_max_current_a: int = 28
     ev_charger_phases: int = 1
+    ev_voltage_v: float = 230.0
+    ev_force_on: bool = False
     ev_force_current_a: int = 0
     ev_hard_off_pv_threshold_kw: float = 1.6
     ev_hard_off_low_pv_cycles: int = 2
@@ -156,6 +158,8 @@ class CoreBatteryDeviceConfig:
 @dataclass
 class CoreEvPolicyConfig:
     priority: ScalarRef
+    surplus_allowed: EntityRef
+    force_on: EntityRef
     low_pv_threshold_w: ScalarRef
     hard_off_low_pv_cycles: ScalarRef
     hard_off_release_cycles: ScalarRef
@@ -165,12 +169,12 @@ class CoreEvPolicyConfig:
 class CoreEvAdapterConfig:
     enabled: EntityRef
     current_a: EntityRef
-    current_min_a: ScalarRef
-    current_max_a: ScalarRef
     current_step_a: ScalarRef
     phases: ScalarRef
     voltage_v: ScalarRef
-    force_current_a: ScalarRef
+    current_min_a: Optional[ScalarRef] = None
+    current_max_a: Optional[ScalarRef] = None
+    force_current_a: Optional[ScalarRef] = None
 
 
 @dataclass
@@ -282,6 +286,8 @@ class CoreConfig:
     ev_min_current_a: Optional[ScalarRef] = None
     ev_max_current_a: Optional[ScalarRef] = None
     ev_charger_phases: Optional[ScalarRef] = None
+    ev_voltage_v: Optional[ScalarRef] = None
+    ev_force_on: Optional[ScalarRef] = None
     ev_force_current_a: Optional[ScalarRef] = None
     ev_hard_off_pv_threshold_kw: Optional[ScalarRef] = None
     ev_hard_off_low_pv_cycles: Optional[ScalarRef] = None
@@ -336,11 +342,15 @@ class CoreConfig:
         if self.battery_protect_charge_floor_w is None:
             self.battery_protect_charge_floor_w = self.home_battery.guard.protect_min_absorb_w
         if self.ev_min_current_a is None and self.ev_charger is not None:
-            self.ev_min_current_a = self.ev_charger.adapter.current_min_a
+            self.ev_min_current_a = self._derive_ev_min_current_a()
         if self.ev_max_current_a is None and self.ev_charger is not None:
-            self.ev_max_current_a = self.ev_charger.adapter.current_max_a
+            self.ev_max_current_a = self._derive_ev_max_current_a()
         if self.ev_charger_phases is None and self.ev_charger is not None:
             self.ev_charger_phases = self.ev_charger.adapter.phases
+        if self.ev_voltage_v is None and self.ev_charger is not None:
+            self.ev_voltage_v = self.ev_charger.adapter.voltage_v
+        if self.ev_force_on is None and self.ev_charger is not None:
+            self.ev_force_on = self.ev_charger.policy.force_on
         if self.ev_force_current_a is None and self.ev_charger is not None:
             self.ev_force_current_a = self.ev_charger.adapter.force_current_a
         if self.ev_hard_off_pv_threshold_kw is None and self.ev_charger is not None:
@@ -412,6 +422,36 @@ class CoreConfig:
             return device
         return self.nth_device_by_kind('RELAY', index)
 
+    def _derive_ev_min_current_a(self) -> Optional[ScalarRef]:
+        if self.ev_charger is None:
+            return None
+        from ems_core.domain.ev_power import ev_min_current_a_from_min_absorb_w
+
+        try:
+            return ev_min_current_a_from_min_absorb_w(
+                self.ev_charger.capabilities.min_absorb_w,
+                phases=self.ev_charger.adapter.phases,
+                voltage_v=self.ev_charger.adapter.voltage_v,
+                current_step_a=self.ev_charger.adapter.current_step_a,
+            )
+        except ValueError:
+            return self.ev_charger.adapter.current_min_a
+
+    def _derive_ev_max_current_a(self) -> Optional[ScalarRef]:
+        if self.ev_charger is None:
+            return None
+        from ems_core.domain.ev_power import ev_max_current_a_from_max_absorb_w
+
+        try:
+            return ev_max_current_a_from_max_absorb_w(
+                self.ev_charger.capabilities.max_absorb_w,
+                phases=self.ev_charger.adapter.phases,
+                voltage_v=self.ev_charger.adapter.voltage_v,
+                current_step_a=self.ev_charger.adapter.current_step_a,
+            )
+        except ValueError:
+            return self.ev_charger.adapter.current_max_a
+
     def devices_by_kind(self, kind: str) -> tuple[CoreDeviceConfig, ...]:
         if self.devices is None:
             return ()
@@ -470,7 +510,6 @@ class HaeoNetZeroPlan:
     device_limits_w: Optional[dict] = None
     battery_limit_w: int = 0
     ev_limit_w: int = 0
-    ev_limit_a: int = 0
     reason: str = ''
     changed: bool = False
 
@@ -535,6 +574,8 @@ class SurplusDeviceTarget:
     enabled: bool = True
     force_on: bool = False
     active: bool = False
+    threshold_source: str = ''
+    incremental_surplus_threshold_w: Optional[int] = None
 
 
 @dataclass

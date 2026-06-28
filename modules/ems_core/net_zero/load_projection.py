@@ -1,56 +1,42 @@
+from ems_core.domain.ev_power import ev_max_power_w
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile
-from ems_core.integrations.haeo_horizon import ev_kw_to_selector_current_a
 
 
-def ev_strategy_current_a(profiles, cfg, haeo, burn_active):
-    # Safety first: degraded -> no EV control
+def ev_strategy_target_w(profiles, cfg, haeo, burn_active):
+    # Safety first: degraded -> no EV control.
     if profiles.guard == GuardProfile.DEGRADED:
-        return -1
+        return 0.0
 
-    # P2: MANUAL -> user force current acts as direct override
+    force_on = bool(getattr(cfg, 'ev_force_on', False))
+    max_absorb_w = float(ev_max_power_w(cfg))
+
+    # P2: MANUAL -> user force_on acts as direct max-charge override.
     if profiles.control == ControlProfile.MANUAL:
-        if cfg.ev_force_current_a > 0:
-            return int(min(max(cfg.ev_force_current_a, 0), cfg.ev_max_current_a))
-        return -1
+        return max_absorb_w if force_on else 0.0
 
-    # MANUAL_SAFE -> same user-facing EV semantics as MANUAL for now
-    # (battery-side safety/clamping is handled elsewhere)
+    # MANUAL_SAFE -> same user-facing EV semantics as MANUAL for now.
     if profiles.control == ControlProfile.MANUAL_SAFE:
-        if cfg.ev_force_current_a > 0:
-            return int(min(max(cfg.ev_force_current_a, 0), cfg.ev_max_current_a))
-        return -1
+        return max_absorb_w if force_on else 0.0
 
-    # P3: NET_ZERO -> force current acts as floor
+    # NET_ZERO -> force_on overrides optimizer mode but not downstream safety gates.
     if profiles.goal == GoalProfile.NET_ZERO:
-        base = int(cfg.ev_max_current_a) if burn_active else 0
-        if cfg.ev_force_current_a > 0:
-            return int(min(cfg.ev_max_current_a, max(cfg.ev_force_current_a, base)))
-        return base
+        return max_absorb_w if (force_on or burn_active) else 0.0
 
-    # MAX_EXPORT means export-first: flexible EV charging must be off.
-    # Manual / Manual-safe overrides have already returned above, so this applies
-    # to automatic policy control and intentionally ignores EV force-current and
-    # HAEO EV target while MAX_EXPORT is active.
+    # MAX_EXPORT stays export-first unless the user explicitly forces EV on.
     if profiles.goal == GoalProfile.MAX_EXPORT:
-        return 0
+        return max_absorb_w if force_on else 0.0
 
-    # Force-current and HAEO EV target remain valid for CHEAP_GRID_CHARGE.
-    if cfg.ev_force_current_a > 0 and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
-        return int(min(cfg.ev_force_current_a, cfg.ev_max_current_a))
+    if force_on and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
+        return max_absorb_w
 
     if haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
-        return ev_kw_to_selector_current_a(
-            haeo.ev_target_kw,
-            cfg.ev_charger_phases,
-            cfg.ev_max_current_a,
-            min_a=cfg.ev_min_current_a,
-            step_a=getattr(cfg, 'ev_current_step_a', 4),
-        )
+        target_w = float(getattr(haeo, 'ev_target_kw', 0.0) or 0.0) * 1000.0
+        return target_w if target_w > 0.0 else 0.0
 
     if profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
-        return int(cfg.ev_max_current_a)
+        return max_absorb_w
 
-    return -1
+    return 0.0
 
 
 def relay_strategy_command(profiles, surplus_allowed, force_on, net_zero_active):

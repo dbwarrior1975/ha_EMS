@@ -321,11 +321,11 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
-            'expect_values': {
-                E['actuator_ev_current_a']: 24,
-                E['actuator_battery_setpoint_w']: 2500,
+                'expect_values': {
+                    E['actuator_ev_current_a']: 23,
+                    E['actuator_battery_setpoint_w']: 2500,
+                },
             },
-        },
     ]
 
     run_steps(h, steps)

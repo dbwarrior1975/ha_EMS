@@ -1,94 +1,109 @@
 import pytest
+from types import SimpleNamespace
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile
-from ems_core.net_zero.load_projection import ev_strategy_current_a, relay_strategy_command
+from ems_core.net_zero.load_projection import ev_strategy_target_w, relay_strategy_command
 from tests.helpers import make_profiles, make_cfg, make_haeo
 
 
 @pytest.mark.unit
-def test_ev_manual_force_current_overrides():
+def test_ev_manual_force_on_returns_max_power():
     profiles = make_profiles(control=ControlProfile.MANUAL, goal=GoalProfile.NET_ZERO)
-    cfg = make_cfg(ev_force_current_a=12, ev_max_current_a=28)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=28)
     haeo = make_haeo()
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 12
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 6440
 
 
 @pytest.mark.unit
-def test_ev_manual_without_force_is_skip():
+def test_ev_manual_without_force_is_off():
     profiles = make_profiles(control=ControlProfile.MANUAL)
-    cfg = make_cfg(ev_force_current_a=0)
+    cfg = make_cfg(ev_force_on=False)
     haeo = make_haeo()
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == -1
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 0
 
 
 @pytest.mark.unit
-def test_ev_manual_safe_behaves_like_manual_for_force_current():
+def test_ev_manual_safe_behaves_like_manual_for_force_on():
     profiles = make_profiles(control=ControlProfile.MANUAL_SAFE)
-    cfg = make_cfg(ev_force_current_a=10, ev_max_current_a=16)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=16)
     haeo = make_haeo()
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 10
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 3680
 
 
 @pytest.mark.unit
 def test_ev_degraded_always_skips():
     profiles = make_profiles(guard=GuardProfile.DEGRADED)
-    cfg = make_cfg(ev_force_current_a=20)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=20)
     haeo = make_haeo()
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=True) == -1
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=True) == 0
 
 
 @pytest.mark.unit
-def test_net_zero_force_current_is_floor():
+def test_net_zero_force_on_overrides_to_max_power():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
-    cfg = make_cfg(ev_force_current_a=12, ev_max_current_a=28)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=28)
     haeo = make_haeo()
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 12
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=True) == 28
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 6440
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=True) == 6440
 
 
 @pytest.mark.unit
-def test_cheap_charge_force_current_respected():
+def test_net_zero_burn_active_returns_capability_max_power():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = SimpleNamespace(
+        ev_force_on=False,
+        max_absorb_w=5000,
+        ev_max_current_a=16,
+        ev_charger_phases=1,
+        ev_voltage_v=230,
+    )
+    haeo = make_haeo()
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=True) == 5000
+
+
+@pytest.mark.unit
+def test_cheap_charge_force_on_uses_max_power():
     profiles = make_profiles(goal=GoalProfile.CHEAP_GRID_CHARGE)
-    cfg = make_cfg(ev_force_current_a=11, ev_max_current_a=16)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=16)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 11
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 3680
 
 
 @pytest.mark.unit
-def test_cheap_charge_default_ev_is_max_current():
+def test_cheap_charge_default_ev_is_max_power():
     profiles = make_profiles(goal=GoalProfile.CHEAP_GRID_CHARGE)
-    cfg = make_cfg(ev_force_current_a=0, ev_max_current_a=20)
+    cfg = make_cfg(ev_force_on=False, ev_max_current_a=20)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 20
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 4600
 
 
 @pytest.mark.unit
-def test_cheap_charge_haeo_ev_target_uses_parametric_current_step():
+def test_cheap_charge_haeo_ev_target_returns_watt_target():
     profiles = make_profiles(goal=GoalProfile.CHEAP_GRID_CHARGE)
     cfg = make_cfg(
-        ev_force_current_a=0,
+        ev_force_on=False,
         ev_min_current_a=4,
         ev_max_current_a=28,
         ev_current_step_a=2,
         ev_charger_phases=1,
     )
     haeo = make_haeo(effective_forecast=ForecastProfile.HAEO, ev_target_kw=2.3)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 10
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 2300
 
 
 @pytest.mark.unit
 def test_max_export_default_ev_is_off():
     profiles = make_profiles(goal=GoalProfile.MAX_EXPORT)
-    cfg = make_cfg(ev_force_current_a=0, ev_min_current_a=4, ev_max_current_a=28)
+    cfg = make_cfg(ev_force_on=False, ev_min_current_a=4, ev_max_current_a=28)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 0
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 0
 
 
 @pytest.mark.unit
-def test_max_export_force_current_ignored_and_ev_is_off():
+def test_max_export_force_on_overrides_to_max_power():
     profiles = make_profiles(goal=GoalProfile.MAX_EXPORT)
-    cfg = make_cfg(ev_force_current_a=9, ev_max_current_a=16, ev_min_current_a=4)
+    cfg = make_cfg(ev_force_on=True, ev_max_current_a=16, ev_min_current_a=4)
     haeo = make_haeo(effective_forecast=ForecastProfile.NONE)
-    assert ev_strategy_current_a(profiles, cfg, haeo, burn_active=False) == 0
+    assert ev_strategy_target_w(profiles, cfg, haeo, burn_active=False) == 3680
 
 
 @pytest.mark.unit

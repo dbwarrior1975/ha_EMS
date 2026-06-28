@@ -34,7 +34,7 @@ def test_03_min_cell_retrigger_and_recovery(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 1000,
             },
         },
@@ -52,7 +52,7 @@ def test_03_min_cell_retrigger_and_recovery(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 1200,
             },
         },

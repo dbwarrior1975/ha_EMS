@@ -114,6 +114,7 @@ def _with_extra_relay_and_ev(config):
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_hard_off_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_hard_off_low_pv_cycles',
             'hard_off_release_cycles': 'input_number.ems_ev_garage_hard_off_release_cycles',
@@ -121,12 +122,9 @@ def _with_extra_relay_and_ev(config):
         'adapter': {
             'enabled': 'switch.ev_garage_control',
             'current_a': 'number.ev_garage_current_level',
-            'current_min_a': 'input_number.ems_ev_garage_min_current_a',
-            'current_max_a': 'input_number.ems_ev_garage_max_current_a',
             'current_step_a': 'input_number.ems_ev_garage_current_step_a',
             'phases': 'input_number.ems_ev_garage_phases',
             'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-            'force_current_a': 'input_number.ems_ev_garage_force_current_a',
         },
     }
     return config
@@ -161,13 +159,13 @@ def test_runtime_entity_registry_exposes_extra_relay_and_ev_without_top_level_al
         'kind': 'EV_CHARGER',
         'enabled': 'switch.ev_garage_control',
         'current_a': 'number.ev_garage_current_level',
-        'current_min_a': 'input_number.ems_ev_garage_min_current_a',
-        'current_max_a': 'input_number.ems_ev_garage_max_current_a',
         'current_step_a': 'input_number.ems_ev_garage_current_step_a',
         'phases': 'input_number.ems_ev_garage_phases',
         'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-        'force_current_a': 'input_number.ems_ev_garage_force_current_a',
+        'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
+        'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
         'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+        'force_on': 'input_boolean.ems_ev_garage_force_on',
         'priority': 'input_number.ems_surplus_ev_garage_priority',
     }
 
@@ -193,3 +191,23 @@ def test_runtime_entity_registry_keeps_explicit_empty_device_id_lists(project_ro
             'measured_power_w': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
         }
     }
+
+
+def test_runtime_entity_registry_exposes_derived_ev_debug_fields_for_numeric_config(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    ev = config['ems']['devices']['EV_CHARGER']
+    ev['capabilities']['min_absorb_w'] = 1380
+    ev['capabilities']['max_absorb_w'] = 3680
+    ev['adapter']['current_step_a'] = 2
+    ev['adapter']['phases'] = 1
+    ev['adapter']['voltage_v'] = 230
+    ev['adapter']['current_a'] = 10
+
+    entities = build_runtime_entities_from_grouped_config(config)
+    ev_entry = entities['devices']['EV_CHARGER']
+
+    assert ev_entry['ev_per_amp_w'] == 230.0
+    assert ev_entry['ev_derived_min_current_a'] == 6
+    assert ev_entry['ev_derived_max_current_a'] == 16
+    assert ev_entry['ev_derived_step_w'] == 460.0
+    assert ev_entry['ev_current_power_w'] == 2300.0

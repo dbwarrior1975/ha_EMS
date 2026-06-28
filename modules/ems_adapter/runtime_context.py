@@ -9,6 +9,12 @@ from ems_adapter.ha_adapter import get_bool as _get_bool
 from ems_adapter.ha_adapter import get_float as _get_float
 from ems_adapter.ha_adapter import get_int as _get_int
 from ems_adapter.ha_adapter import get_str as _get_str
+from ems_core.domain.ev_power import (
+    ev_current_a_to_power_w,
+    ev_max_current_a_from_max_absorb_w,
+    ev_min_current_a_from_min_absorb_w,
+    ev_per_amp_w,
+)
 
 
 _GROUPED_CONFIG_DUAL_READ_STATUS = {
@@ -185,6 +191,7 @@ def build_runtime_entities_from_grouped_config(config):
         'ev_max_current_a',
         'ev_current_step_a',
         'ev_charger_phases',
+        'ev_force_on',
         'ev_force_current_a',
         'relay1_power_kw',
         'relay1_priority',
@@ -253,16 +260,72 @@ def build_runtime_entities_from_grouped_config(config):
                 entry['measured_power_w'] = adapter.get('measured_power_w')
             elif kind == 'EV_CHARGER':
                 ev_device_ids.append(str(device_id))
+                min_absorb_w = capabilities.get('min_absorb_w')
+                max_absorb_w = capabilities.get('max_absorb_w')
+                current_step_a = adapter.get('current_step_a')
+                phases = adapter.get('phases')
+                voltage_v = adapter.get('voltage_v')
+                current_a = adapter.get('current_a')
                 entry['enabled'] = adapter.get('enabled')
-                entry['current_a'] = adapter.get('current_a')
-                entry['current_min_a'] = adapter.get('current_min_a')
-                entry['current_max_a'] = adapter.get('current_max_a')
+                entry['current_a'] = current_a
                 entry['current_step_a'] = adapter.get('current_step_a')
                 entry['phases'] = adapter.get('phases')
                 entry['voltage_v'] = adapter.get('voltage_v')
-                entry['force_current_a'] = adapter.get('force_current_a')
+                entry['min_absorb_w'] = min_absorb_w
+                entry['max_absorb_w'] = max_absorb_w
                 entry['surplus_allowed'] = policy.get('surplus_allowed')
+                entry['force_on'] = policy.get('force_on')
                 entry['priority'] = policy.get('priority')
+                try:
+                    has_step_context = (
+                        phases not in (None, '')
+                        and voltage_v not in (None, '')
+                        and current_step_a not in (None, '')
+                    )
+                    has_min_context = (
+                        min_absorb_w not in (None, '')
+                        and phases not in (None, '')
+                        and voltage_v not in (None, '')
+                        and current_step_a not in (None, '')
+                    )
+                    has_max_context = (
+                        max_absorb_w not in (None, '')
+                        and phases not in (None, '')
+                        and voltage_v not in (None, '')
+                        and current_step_a not in (None, '')
+                    )
+                    has_current_power_context = (
+                        current_a not in (None, '')
+                        and phases not in (None, '')
+                        and voltage_v not in (None, '')
+                    )
+                    if has_step_context:
+                        entry['ev_per_amp_w'] = ev_per_amp_w(phases, voltage_v)
+                        entry['ev_derived_step_w'] = ev_current_a_to_power_w(current_step_a, phases, voltage_v)
+                    if has_min_context:
+                        entry['ev_derived_min_current_a'] = ev_min_current_a_from_min_absorb_w(
+                            min_absorb_w,
+                            phases=phases,
+                            voltage_v=voltage_v,
+                            current_step_a=current_step_a,
+                        )
+                    if has_max_context:
+                        entry['ev_derived_max_current_a'] = ev_max_current_a_from_max_absorb_w(
+                            max_absorb_w,
+                            phases=phases,
+                            voltage_v=voltage_v,
+                            current_step_a=current_step_a,
+                        )
+                    if has_current_power_context:
+                        entry['ev_current_power_w'] = ev_current_a_to_power_w(current_a, phases, voltage_v)
+                except (TypeError, ValueError):
+                    pass
+                if adapter.get('current_min_a') not in (None, ''):
+                    entry['deprecated_current_min_a'] = adapter.get('current_min_a')
+                if adapter.get('current_max_a') not in (None, ''):
+                    entry['deprecated_current_max_a'] = adapter.get('current_max_a')
+                if adapter.get('force_current_a') not in (None, ''):
+                    entry['deprecated_force_current_a'] = adapter.get('force_current_a')
             elif kind == 'RELAY':
                 relay_device_ids.append(str(device_id))
                 entry['enabled'] = adapter.get('enabled')

@@ -23,7 +23,7 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: -100,
             },
         },
@@ -44,7 +44,7 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 100,
             },
         },
@@ -66,7 +66,7 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 100,
             },
         },
@@ -85,7 +85,7 @@ def test_01_baseline_and_trigger(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 100,
             },
         },       

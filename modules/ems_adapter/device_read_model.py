@@ -36,6 +36,20 @@ def _device_configs_from_core_config(cfg):
     for device in devices:
         capabilities = device.capabilities
         policy = device.policy
+        step_w = max(1, int(round(float(capabilities.step_w))))
+        if str(device.kind) == 'EV_CHARGER':
+            step_w = max(
+                1,
+                int(
+                    round(
+                        ev_current_a_to_power_w(
+                            device.adapter.current_step_a,
+                            device.adapter.phases,
+                            device.adapter.voltage_v,
+                        )
+                    )
+                ),
+            )
         mapped.append(
             EmsDeviceConfig(
                 device_id=str(device.device_id),
@@ -46,7 +60,7 @@ def _device_configs_from_core_config(cfg):
                 min_absorb_w=int(round(float(capabilities.min_absorb_w))),
                 max_absorb_w=int(round(float(capabilities.max_absorb_w))),
                 max_produce_w=int(round(float(capabilities.max_produce_w or 0))),
-                step_w=max(1, int(round(float(capabilities.step_w)))),
+                step_w=step_w,
                 priority=int(round(float(policy.priority))),
             )
         )
@@ -127,6 +141,15 @@ def _ev_phases(cfg):
     return int(cfg.ev_charger_phases)
 
 
+def _ev_voltage_v(cfg):
+    if _is_core_config(cfg):
+        ev_device = cfg.first_device_by_kind('EV_CHARGER') if hasattr(cfg, 'first_device_by_kind') else None
+        if ev_device is not None:
+            return float(ev_device.adapter.voltage_v)
+        return float(getattr(cfg, 'ev_voltage_v', 230))
+    return float(getattr(cfg, 'ev_voltage_v', 230))
+
+
 def _relay_nominal_absorb_w(cfg, device_id):
     if _is_core_config(cfg):
         relay = cfg.device_by_id(device_id)
@@ -149,6 +172,7 @@ def build_device_states(cfg: Union[EmsConfig, CoreConfig], m: RuntimeMeasurement
     ev_target_w = ev_current_a_to_power_w(
         m.charger_current_a if m.charger_on else 0,
         _ev_phases(cfg),
+        _ev_voltage_v(cfg),
     )
     relay1_target_w = _relay_nominal_absorb_w(cfg, _RELAY1_ID) if m.relay1_on else 0
     relay2_target_w = _relay_nominal_absorb_w(cfg, _RELAY2_ID) if m.relay2_on else 0
@@ -195,6 +219,7 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
     ev_target_w = ev_current_a_to_power_w(
         m.charger_current_a if m.charger_on else 0,
         _ev_phases(cfg),
+        _ev_voltage_v(cfg),
     )
 
     states = []

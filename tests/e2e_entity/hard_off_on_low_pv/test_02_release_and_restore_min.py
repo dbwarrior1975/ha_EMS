@@ -75,14 +75,14 @@ def test_02_release_and_restore_min(project_root):
             },
             'expect_writer_trace': {
                 'EV_CHARGER': {
-                    'reason': 'restore_min_current',
+                    'reason': 'target_zero_disable',
                     'written': True,
-                    'target_current_a': 6,
+                    'target_current_a': 8,
                 },
             },
             'expect_values': {
-                E['actuator_ev_enabled']: True,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 8,
             },
         },
     ]

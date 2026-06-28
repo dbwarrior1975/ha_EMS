@@ -1,11 +1,12 @@
 import pytest
 from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile
+from ems_core.domain.ev_power import ev_min_power_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from tests.helpers import make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
-def _core_cfg_with_capability_overrides(project_root, **device_capability_overrides):
+def _core_cfg_with_capability_overrides(project_root, value_overrides=None, **device_capability_overrides):
     grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     for device_id, overrides in device_capability_overrides.items():
         grouped['ems']['devices'][device_id]['capabilities'].update(overrides)
@@ -33,11 +34,14 @@ def _core_cfg_with_capability_overrides(project_root, **device_capability_overri
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 2,
+        'input_number.ems_ev_min_power_w': 1380,
+        'input_number.ems_ev_max_power_w': 3680,
         'input_number.ems_ev_min_current_a': 6,
         'input_number.ems_ev_max_current_a': 16,
         'input_number.ems_ev_current_step_a': 2,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
+        'input_boolean.ems_ev_force_on': False,
         'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_relay1_nominal_absorb_w': 2500,
@@ -46,6 +50,7 @@ def _core_cfg_with_capability_overrides(project_root, **device_capability_overri
         'input_number.ems_relay2_nominal_absorb_w': 5000,
         'input_number.ems_relay2_power_kw': 5000,
     }
+    values.update(value_overrides or {})
     return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
 
@@ -82,11 +87,14 @@ def _core_cfg_with_extra_devices(
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 2,
+        'input_number.ems_ev_min_power_w': 1380,
+        'input_number.ems_ev_max_power_w': 3680,
         'input_number.ems_ev_min_current_a': 6,
         'input_number.ems_ev_max_current_a': 16,
         'input_number.ems_ev_current_step_a': 2,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
+        'input_boolean.ems_ev_force_on': False,
         'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_relay1_nominal_absorb_w': 2500,
@@ -154,6 +162,7 @@ def _garage_ev_device_config():
         'policy': {
             'priority': 'input_number.garage_ev_priority',
             'surplus_allowed': 'input_boolean.garage_ev_surplus_allowed',
+            'force_on': 'input_boolean.garage_ev_force_on',
             'low_pv_threshold_w': 'input_number.garage_ev_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.garage_ev_low_pv_cycles',
             'hard_off_release_cycles': 'input_number.garage_ev_release_cycles',
@@ -180,6 +189,7 @@ def _garage_ev_value_overrides(*, adjustable_surplus_load='GARAGE_EV', adjustabl
         'input_number.garage_ev_power_step_w': 460,
         'input_number.garage_ev_priority': 4,
         'input_boolean.garage_ev_surplus_allowed': True,
+        'input_boolean.garage_ev_force_on': False,
         'input_number.garage_ev_low_pv_threshold_w': 1600,
         'input_number.garage_ev_low_pv_cycles': 2,
         'input_number.garage_ev_release_cycles': 2,
@@ -188,6 +198,7 @@ def _garage_ev_value_overrides(*, adjustable_surplus_load='GARAGE_EV', adjustabl
         'input_number.garage_ev_current_step_a': 2,
         'input_number.garage_ev_phases': 1,
         'input_number.garage_ev_voltage_v': 230,
+        'input_boolean.garage_ev_force_on': False,
         'input_number.garage_ev_force_current_a': 0,
     }
 
@@ -395,6 +406,34 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
 
 
 @pytest.mark.unit
+def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_max():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        ev_min_current_a=6,
+        ev_max_current_a=16,
+        ev_current_step_a=4,
+        ev_charger_phases=3,
+    )
+    m = make_m(charger_on=True, charger_current_a=0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=True,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=True,
+    )
+
+    assert out.attrs['ev_target_w'] == 11040
+
+
+@pytest.mark.unit
 def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
@@ -538,6 +577,7 @@ def test_engine_surplus_device_trace_matches_current_activation_mapping():
     assert out.attrs['surplus_device_next_device_id'] == 'EV_CHARGER'
     assert out.attrs['surplus_device_active_stack'] == 'NONE'
     assert out.attrs['surplus_device_targets'][0]['threshold_w'] == 2000
+    assert out.attrs['surplus_device_targets'][0]['threshold_source'] == 'configured_adjustable_surplus_activation_w'
 
 
 @pytest.mark.unit
@@ -604,6 +644,67 @@ def test_engine_max_export_local_battery_target_and_explanation():
     )
     assert out.battery_target_w == -4000
     assert out.explanation == 'Local export-oriented policy'
+
+
+@pytest.mark.unit
+def test_engine_max_export_force_on_keeps_ev_at_max_power():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT, forecast=ForecastProfile.NONE)
+    cfg = make_cfg(
+        ev_force_on=True,
+        ev_min_current_a=6,
+        ev_max_current_a=16,
+        ev_charger_phases=1,
+        ev_voltage_v=230,
+    )
+    m = make_m(charger_on=False, charger_current_a=0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+    )
+
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert out.attrs['ev_force_on'] is True
+    assert out.attrs['ev_policy_mode'] == 'burn'
+    assert out.attrs['ev_target_w'] == 3680
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].target_w == 3680
+
+
+@pytest.mark.unit
+def test_engine_force_on_uses_ev_capability_max_w_not_compat_current(project_root):
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT, forecast=ForecastProfile.NONE)
+    cfg = _core_cfg_with_capability_overrides(
+        project_root,
+        value_overrides={
+            'input_boolean.ems_ev_force_on': True,
+            'input_number.ems_ev_max_current_a': 16,
+        },
+        EV_CHARGER={'max_absorb_w': 5000, 'step_w': 500},
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(charger_on=False, charger_current_a=0), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=True,
+        relay2_surplus_allowed=True,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+    )
+
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert out.attrs['ev_target_w'] == 5000
+    assert policies['EV_CHARGER'].target_w == 5000
 
 
 @pytest.mark.unit
@@ -941,7 +1042,7 @@ def test_engine_primary_ev_low_pv_and_battery_discharge_triggers_hard_off():
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
-        ev_force_current_a=0,
+        ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
     )
@@ -977,7 +1078,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
         ev_min_current_a=4,
-        ev_force_current_a=0,
+        ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
     )
@@ -1004,6 +1105,40 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
     assert out.attrs['ev_policy_mode'] == 'restore_min'
     assert out.attrs['ev_hard_off_active'] is False
     assert out.attrs['ev_target_w'] == 920
+
+
+@pytest.mark.unit
+def test_engine_primary_ev_force_on_does_not_override_low_pv_battery_safety():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+        ev_force_on=True,
+        ev_hard_off_pv_threshold_kw=1.6,
+        ev_hard_off_low_pv_cycles=2,
+    )
+    m = make_m(current_battery_setpoint_w=-1200, charger_current_a=4)
+    nz = make_nz(rpnz_w=500, required_power_consumption_kw=3.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        relay1_surplus_allowed=False,
+        relay2_surplus_allowed=False,
+        relay1_force_on=False,
+        relay2_force_on=False,
+        relay1_net_zero_active=False,
+        relay2_net_zero_active=False,
+        adjustable_surplus_active=False,
+        pv_power_kw=0.0,
+        ev_low_pv_cycles=2,
+    )
+
+    assert out.attrs['ev_force_on'] is True
+    assert out.attrs['battery_to_ev_loop_risk'] is True
+    assert out.attrs['ev_policy_mode'] == 'hard_off'
+    assert out.attrs['ev_target_w'] == 0
 
 
 @pytest.mark.unit
@@ -1343,7 +1478,7 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
     )
 
     assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_target_w'] == 230 * cfg.ev_min_current_a * cfg.ev_charger_phases
+    assert out.attrs['ev_target_w'] == ev_min_power_w(cfg)
     assert out.attrs['ev_hard_off_active'] is False
     assert out.battery_target_w == -2000
 
@@ -1380,6 +1515,6 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
     )
 
     assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_target_w'] == 230 * cfg.ev_min_current_a * cfg.ev_charger_phases
+    assert out.attrs['ev_target_w'] == ev_min_power_w(cfg)
     assert out.attrs['ev_hard_off_active'] is False
     assert out.battery_target_w == 0

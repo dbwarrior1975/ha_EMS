@@ -50,7 +50,7 @@ def test_05_recovery_and_reactivation(project_root):
             'expect_values': {
                 E['relay1']: False,
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
             },
         },
         {
@@ -81,7 +81,7 @@ def test_05_recovery_and_reactivation(project_root):
             'expect_values': {
                 E['relay1']: True,
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
             },
         },
         {
@@ -104,7 +104,7 @@ def test_05_recovery_and_reactivation(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
             },
         },
         {

@@ -29,8 +29,8 @@ def test_writer_freeze_in_system_degraded(project_root):
             },
             'expect_values': {
                 E['actuator_relay1']: True,
-                E['actuator_ev_enabled']: True,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 0.0,
             },
             'expect_writer_trace': {
@@ -38,7 +38,7 @@ def test_writer_freeze_in_system_degraded(project_root):
                     'reason': 'deadband',
                 },
                 'EV_CHARGER': {
-                    'reason': 'restore_min_current',
+                    'reason': 'target_zero_disable',
                 },
                 'RELAY1': {
                     'reason': 'policy_skip',

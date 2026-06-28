@@ -129,7 +129,7 @@ def test_validate_rejects_unknown_role_constraint_device(project_root):
 @pytest.mark.unit
 def test_validate_rejects_invalid_ev_phases_numeric_constant(project_root):
     config = _load_example(project_root)
-    config['ems']['devices']['EV_CHARGER']['adapter']['phases'] = 2
+    config['ems']['devices']['EV_CHARGER']['adapter']['phases'] = 0
 
     result = validate_grouped_ems_config(config)
     assert result.ok is False
@@ -177,6 +177,22 @@ def test_validate_warns_when_disabled_absorb_direction_keeps_positive_limit(proj
 
     warning_paths = {issue.path for issue in result.issues if issue.severity == SEVERITY_WARNING}
     assert 'ems.devices.EV_CHARGER.capabilities.max_absorb_w' in warning_paths
+
+
+@pytest.mark.unit
+def test_validate_rejects_ev_limits_that_cannot_be_represented_by_current_step(project_root):
+    config = _load_example(project_root)
+    ev = config['ems']['devices']['EV_CHARGER']
+    ev['capabilities']['min_absorb_w'] = 100
+    ev['capabilities']['max_absorb_w'] = 200
+    ev['adapter']['current_step_a'] = 4
+    ev['adapter']['phases'] = 1
+    ev['adapter']['voltage_v'] = 230
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.devices.EV_CHARGER.adapter.current_step_a' in _error_paths(result)
 
 
 @pytest.mark.unit
@@ -229,10 +245,10 @@ def test_build_ems_config_from_grouped_config_no_longer_depends_on_runtime_alias
         'input_number.ems_battery_protect_soc_recovery_margin': 2,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.04,
         'input_number.ems_battery_protect_charge_floor_w': 150,
-        'input_number.ems_ev_min_current_a': 6,
-        'input_number.ems_ev_max_current_a': 16,
+        'input_number.ems_ev_min_power_w': 4140,
+        'input_number.ems_ev_max_power_w': 11040,
         'input_number.ems_ev_charger_phases': 3,
-        'input_number.ems_ev_force_current_a': 0,
+        'input_boolean.ems_ev_force_on': False,
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.8,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 3,
@@ -289,7 +305,7 @@ def test_build_ems_config_from_grouped_reader_uses_core_config_builder(project_r
         lambda entity_id, default: {
             'input_number.ems_deadband_w': 80,
             'input_number.ems_ramp_max_w': 900,
-            'input_number.ems_ev_max_current_a': 16,
+            'input_number.ems_ev_max_power_w': 3680,
         }.get(entity_id, default),
     )
 

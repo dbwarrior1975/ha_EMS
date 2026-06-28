@@ -50,7 +50,7 @@ def test_max_export_hard_off_stability(project_root):
                 'EV_CHARGER': {
                     'reason': 'hard_off',
                     'written': True,
-                    'target_current_a': 6,
+                    'target_current_a': 8,
                 },
                 'RELAY1': {
                     'reason': 'already_matching',
@@ -63,7 +63,7 @@ def test_max_export_hard_off_stability(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_relay1']: False,
                 E['actuator_relay2']: False,
                 E['actuator_battery_setpoint_w']: -1200,
@@ -99,7 +99,7 @@ def test_max_export_hard_off_stability(project_root):
                 'EV_CHARGER': {
                     'reason': 'hard_off',
                     'written': False,
-                    'target_current_a': 6,
+                    'target_current_a': 8,
                 },
                 'RELAY1': {
                     'reason': 'already_matching',
@@ -112,7 +112,7 @@ def test_max_export_hard_off_stability(project_root):
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
-                E['actuator_ev_current_a']: 6,
+                E['actuator_ev_current_a']: 8,
                 E['actuator_relay1']: False,
                 E['actuator_relay2']: False,
                 E['actuator_battery_setpoint_w']: -2200,

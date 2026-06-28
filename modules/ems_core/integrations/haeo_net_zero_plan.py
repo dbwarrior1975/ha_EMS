@@ -5,7 +5,7 @@ from ems_core.domain.models import (
     GuardProfile,
     HaeoNetZeroPlan,
 )
-from ems_core.domain.ev_power import ev_max_power_w, ev_power_w_to_selector_current_a
+from ems_core.domain.ev_power import ev_max_power_w
 
 
 def quarter_key_for_ts(now_ts):
@@ -61,20 +61,11 @@ def _ev_plan_params(cfg, ev_device_id):
     if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
         return {
             'ev_limit_w_cap': int(ev_max_power_w(cfg)),
-            'phases': int(getattr(cfg, 'ev_charger_phases', 1)),
-            'max_current_a': int(getattr(cfg, 'ev_max_current_a', 0)),
-            'min_current_a': int(getattr(cfg, 'ev_min_current_a', 0)),
-            'step_a': int(getattr(cfg, 'ev_current_step_a', 4)),
         }
 
-    adapter = device.adapter
     capabilities = device.capabilities
     return {
         'ev_limit_w_cap': int(round(float(capabilities.max_absorb_w))),
-        'phases': int(round(float(adapter.phases))),
-        'max_current_a': int(round(float(adapter.current_max_a))),
-        'min_current_a': int(round(float(adapter.current_min_a))),
-        'step_a': int(round(float(adapter.current_step_a))),
     }
 
 
@@ -106,13 +97,6 @@ def compute_haeo_net_zero_plan(
 
     ev_params = _ev_plan_params(cfg, selected_ev_device_id)
     ev_limit_w = min(_positive_w(haeo.ev_target_kw), int(ev_params['ev_limit_w_cap']))
-    ev_limit_a = ev_power_w_to_selector_current_a(
-        ev_limit_w,
-        ev_params['phases'],
-        ev_params['max_current_a'],
-        min_a=ev_params['min_current_a'],
-        step_a=ev_params['step_a'],
-    )
 
     if battery_limit_w <= 0 and ev_limit_w <= 0:
         return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='zero_forecast')
@@ -152,7 +136,6 @@ def compute_haeo_net_zero_plan(
         device_limits_w=device_limits_w,
         battery_limit_w=int(battery_limit_w),
         ev_limit_w=int(ev_limit_w),
-        ev_limit_a=int(ev_limit_a),
         reason=reason,
         changed=bool(changed),
     )
