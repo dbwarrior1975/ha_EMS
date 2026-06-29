@@ -2,7 +2,7 @@ import pytest
 
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from ems_adapter.device_read_model import build_device_configs, build_devices, build_device_states
-from tests.helpers import ev_w, make_cfg, make_m
+from tests.helpers import ev_state, ev_w, make_cfg, make_m, relay_state
 
 
 def _config_by_id(cfg):
@@ -65,10 +65,10 @@ def test_ev_device_mapping_converts_current_to_power():
         ev_charger_phases=3,
         ev_priority=8,
     )
-    m = make_m(charger_on=True, charger_current_a=10)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=10)})
 
     ev_cfg = _config_by_id(cfg)['EV_CHARGER']
-    ev_state = _state_by_id(cfg, m)['EV_CHARGER']
+    ev_runtime_state = _state_by_id(cfg, m)['EV_CHARGER']
 
     assert ev_cfg.kind == 'EV_CHARGER'
     assert ev_cfg.response_kind == 'selector'
@@ -80,20 +80,20 @@ def test_ev_device_mapping_converts_current_to_power():
     assert ev_cfg.step_w == 2760
     assert ev_cfg.priority == 8
 
-    assert ev_state.available is True
-    assert ev_state.active is True
-    assert ev_state.measured_power_w == 6900
-    assert ev_state.current_target_w == 6900
-    assert ev_state.guard_state == 'OK'
+    assert ev_runtime_state.available is True
+    assert ev_runtime_state.active is True
+    assert ev_runtime_state.measured_power_w == 6900
+    assert ev_runtime_state.current_target_w == 6900
+    assert ev_runtime_state.guard_state == 'OK'
 
 
 @pytest.mark.unit
 def test_relay1_device_mapping_is_constant_power_when_active():
     cfg = make_cfg()
-    m = make_m(relay1_on=True)
+    m = make_m(relay_states={'RELAY1': relay_state(active=True)})
 
     relay_cfg = _config_by_id(cfg)['RELAY1']
-    relay_state = _state_by_id(cfg, m)['RELAY1']
+    relay_runtime_state = _state_by_id(cfg, m)['RELAY1']
 
     assert relay_cfg.kind == 'RELAY'
     assert relay_cfg.response_kind == 'relay'
@@ -104,19 +104,19 @@ def test_relay1_device_mapping_is_constant_power_when_active():
     assert relay_cfg.step_w == 2500
     assert relay_cfg.priority == 2
 
-    assert relay_state.available is True
-    assert relay_state.active is True
-    assert relay_state.measured_power_w == 2500
-    assert relay_state.current_target_w == 2500
+    assert relay_runtime_state.available is True
+    assert relay_runtime_state.active is True
+    assert relay_runtime_state.measured_power_w == 2500
+    assert relay_runtime_state.current_target_w == 2500
 
 
 @pytest.mark.unit
 def test_relay2_device_mapping_is_zero_when_inactive():
     cfg = make_cfg()
-    m = make_m(relay2_on=False)
+    m = make_m(relay_states={'RELAY2': relay_state(active=False)})
 
     relay_cfg = _config_by_id(cfg)['RELAY2']
-    relay_state = _state_by_id(cfg, m)['RELAY2']
+    relay_runtime_state = _state_by_id(cfg, m)['RELAY2']
 
     assert relay_cfg.kind == 'RELAY'
     assert relay_cfg.response_kind == 'relay'
@@ -125,10 +125,10 @@ def test_relay2_device_mapping_is_zero_when_inactive():
     assert relay_cfg.step_w == 5000
     assert relay_cfg.priority == 1
 
-    assert relay_state.available is True
-    assert relay_state.active is False
-    assert relay_state.measured_power_w == 0
-    assert relay_state.current_target_w == 0
+    assert relay_runtime_state.available is True
+    assert relay_runtime_state.active is False
+    assert relay_runtime_state.measured_power_w == 0
+    assert relay_runtime_state.current_target_w == 0
 
 
 @pytest.mark.unit
@@ -182,7 +182,13 @@ def test_core_config_device_states_use_core_capability_power_for_relays(project_
         grouped_config,
         lambda entity_id, default: values.get(entity_id, default),
     )
-    m = make_m(relay1_on=True, relay2_on=True, charger_on=True, charger_current_a=10)
+    m = make_m(
+        relay_states={
+            'RELAY1': relay_state(active=True),
+            'RELAY2': relay_state(active=True),
+        },
+        ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=10)},
+    )
 
     states = _state_by_id(core_cfg, m)
 
@@ -251,11 +257,11 @@ def test_core_config_device_states_map_custom_relay_ids_without_fixed_relay_name
         lambda entity_id, default: values.get(entity_id, default),
     )
     m = make_m(
-        relay1_on=True,
-        relay2_on=False,
         relay_states={
-            'POOL_PUMP': {'active': True},
-            'BOILER': {'active': False},
+            'RELAY1': relay_state(active=True),
+            'RELAY2': relay_state(active=False),
+            'POOL_PUMP': relay_state(active=True),
+            'BOILER': relay_state(active=False),
         },
     )
 

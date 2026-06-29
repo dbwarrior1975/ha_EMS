@@ -3,7 +3,7 @@ from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, Do
 from ems_core.domain.ev_power import ev_min_power_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
-from tests.helpers import cfg_ev_min_a, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
+from tests.helpers import cfg_ev_min_a, ev_state, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
 def _relay_runtime_args(
@@ -360,7 +360,7 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
         ev_current_step_a=4,
         ev_charger_phases=3,
     )
-    m = make_m(charger_on=True, charger_current_a=10)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=10)})
 
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
@@ -386,7 +386,7 @@ def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_
         ev_current_step_a=4,
         ev_charger_phases=3,
     )
-    m = make_m(charger_on=True, charger_current_a=0)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=0)})
 
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
@@ -408,7 +408,7 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
         ev_max_absorb_w=ev_w(16, phases=3),
         ev_charger_phases=3,
     )
-    m = make_m(charger_on=True, charger_current_a=10)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=10)})
 
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
@@ -590,7 +590,7 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
         ev_charger_phases=1,
         ev_voltage_v=230,
     )
-    m = make_m(charger_on=False, charger_current_a=0)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=0)})
 
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
@@ -619,7 +619,7 @@ def test_engine_force_on_uses_ev_capability_max_w_not_compat_current(project_roo
     )
 
     out = compute_net_zero_engine_outputs(
-        profiles, cfg, make_m(charger_on=False, charger_current_a=0), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
+        profiles, cfg, make_m(ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=0)}), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
         **_relay_runtime_args(),
@@ -853,7 +853,7 @@ def test_engine_same_target_combo_emits_fallback_warning_attrs():
 @pytest.mark.unit
 def test_engine_primary_ev_target_w_uses_derived_power_step():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
-    m = make_m(charger_current_a=4)
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
     nz = make_nz(rpnz_w=1380, required_power_consumption_kw=2.0)
 
     cfg_step_2 = make_cfg(
@@ -903,7 +903,7 @@ def test_engine_primary_ev_low_pv_and_battery_discharge_triggers_hard_off():
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
     )
-    m = make_m(current_battery_setpoint_w=-1200, charger_current_a=4)
+    m = make_m(current_battery_setpoint_w=-1200, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
     nz = make_nz(rpnz_w=500, required_power_consumption_kw=3.0)
 
     out = compute_net_zero_engine_outputs(
@@ -934,7 +934,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
     )
-    m = make_m(current_battery_setpoint_w=-1200, charger_current_a=4)
+    m = make_m(current_battery_setpoint_w=-1200, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
     nz = make_nz(rpnz_w=500, required_power_consumption_kw=1.0)
 
     out = compute_net_zero_engine_outputs(
@@ -964,7 +964,7 @@ def test_engine_primary_ev_force_on_does_not_override_low_pv_battery_safety():
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
     )
-    m = make_m(current_battery_setpoint_w=-1200, charger_current_a=4)
+    m = make_m(current_battery_setpoint_w=-1200, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
     nz = make_nz(rpnz_w=500, required_power_consumption_kw=3.0)
 
     out = compute_net_zero_engine_outputs(
@@ -993,7 +993,7 @@ def test_engine_ev_primary_home_battery_small_positive_rpnz_does_not_release_har
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-10.0, charger_current_a=4)
+    m = make_m(grid_power_w=-10.0, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
     nz = make_nz(rpnz_w=1.0, required_power_consumption_kw=0.0)
 
     out = compute_net_zero_engine_outputs(
@@ -1023,7 +1023,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg_ev_min_a(cfg))
+    m = make_m(grid_power_w=-1100.0, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=cfg_ev_min_a(cfg))})
     release_rpc_kw = ev_min_power_w(cfg) / 1000.0
     nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
@@ -1070,7 +1070,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg_ev_min_a(cfg))
+    m = make_m(grid_power_w=-1100.0, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=cfg_ev_min_a(cfg))})
     release_rpc_kw = ev_min_power_w(cfg) / 1000.0
     nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
@@ -1251,10 +1251,9 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
         adjustable_primary_load='EV_CHARGER',
     )
     m = make_m(
-        charger_on=False,
-        charger_current_a=cfg_ev_min_a(cfg),
         current_battery_setpoint_w=-1000,
         grid_power_w=2900.0,
+        ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=cfg_ev_min_a(cfg))},
     )
     nz = make_nz(rpnz_w=-15.0, required_power_consumption_kw=-2.49)
 
@@ -1283,10 +1282,9 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
         adjustable_primary_load='EV_CHARGER',
     )
     m = make_m(
-        charger_on=True,
-        charger_current_a=cfg_ev_min_a(cfg),
         current_battery_setpoint_w=-1000,
         grid_power_w=2900.0,
+        ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=cfg_ev_min_a(cfg))},
     )
     nz = make_nz(rpnz_w=-15.0, required_power_consumption_kw=-2.49)
 

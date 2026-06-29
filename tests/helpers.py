@@ -264,25 +264,39 @@ def cfg_ev_max_a(cfg):
     )
 
 
+def ev_state(*, enabled=False, active=None, current_a=0):
+    enabled = bool(enabled)
+    current_a = int(current_a)
+    if active is None:
+        active = enabled and current_a > 0
+    return {
+        'enabled': enabled,
+        'current_a': current_a,
+        'active': bool(active),
+    }
+
+
+def relay_state(*, active=False, surplus_allowed=None, force_on=None):
+    state = {
+        'active': bool(active),
+    }
+    if surplus_allowed is not None:
+        state['surplus_allowed'] = bool(surplus_allowed)
+    if force_on is not None:
+        state['force_on'] = bool(force_on)
+    return state
+
+
 def make_m(**overrides):
     ev_states = dict(overrides.pop('ev_states', {}) or {})
     relay_states = dict(overrides.pop('relay_states', {}) or {})
 
-    charger_on = overrides.pop('charger_on', False)
-    charger_current_a = overrides.pop('charger_current_a', 4)
-    relay1_on = overrides.pop('relay1_on', False)
-    relay2_on = overrides.pop('relay2_on', False)
-
     ev_states.setdefault(
         'EV_CHARGER',
-        {
-            'enabled': bool(charger_on),
-            'current_a': int(charger_current_a),
-            'active': bool(charger_on and int(charger_current_a) > 0),
-        },
+        ev_state(),
     )
-    relay_states.setdefault('RELAY1', {'active': bool(relay1_on)})
-    relay_states.setdefault('RELAY2', {'active': bool(relay2_on)})
+    relay_states.setdefault('RELAY1', relay_state())
+    relay_states.setdefault('RELAY2', relay_state())
 
     data = dict(
         now_ts=0.0,

@@ -2,13 +2,13 @@ from ems_core.domain.ev_power import ev_max_power_w
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile
 
 
-def ev_strategy_target_w(profiles, cfg, haeo, burn_active):
+def ev_strategy_target_w(profiles, ev_context, haeo, burn_active):
     # Safety first: degraded -> no EV control.
     if profiles.guard == GuardProfile.DEGRADED:
         return 0.0
 
-    force_on = bool(getattr(cfg, 'ev_force_on', False))
-    max_absorb_w = float(ev_max_power_w(cfg))
+    force_on = bool(getattr(ev_context, 'force_on', False))
+    max_absorb_w = float(ev_max_power_w(ev_context))
 
     # P2: MANUAL -> user force_on acts as direct max-charge override.
     if profiles.control == ControlProfile.MANUAL:

@@ -10,7 +10,6 @@ from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
     ev_max_power_w,
     ev_min_power_w,
-    ev_power_step_w,
 )
 from ems_core.net_zero.battery_controller import candidate_sp_net_zero
 from ems_core.net_zero.load_projection import ev_strategy_target_w, relay_strategy_command
@@ -159,7 +158,7 @@ def _selected_ev_device_id_for_roles(cfg, adjustable_surplus_load, adjustable_pr
     return _default_ev_device_id(cfg)
 
 
-def _cfg_with_selected_ev_scalars(cfg, device_id):
+def _selected_ev_context(cfg, device_id):
     def _positive_float(value, default):
         try:
             parsed = float(value)
@@ -180,34 +179,26 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
         except (TypeError, ValueError):
             return int(default)
 
-    values = dict(getattr(cfg, '__dict__', {}) or {})
-    selected = SimpleNamespace(**values)
-
-    if hasattr(cfg, 'device_by_id'):
-        selected.device_by_id = cfg.device_by_id
-    if hasattr(cfg, 'devices_by_kind'):
-        selected.devices_by_kind = cfg.devices_by_kind
-    if hasattr(cfg, 'home_battery'):
-        selected.home_battery = cfg.home_battery
-
     device = _device_by_id(cfg, device_id)
     if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
-        if hasattr(cfg, 'devices_by_kind'):
-            selected.ev_min_absorb_w = 0.0
-            selected.ev_max_absorb_w = 0.0
-            selected.ev_power_step_w = 0.0
-            selected.ev_current_step_a = 1
-            selected.ev_charger_phases = 1
-            selected.ev_voltage_v = 230.0
-            selected.min_absorb_w = 0.0
-            selected.max_absorb_w = 0.0
-            selected.step_w = 0.0
-            selected.ev_force_on = False
-            selected.ev_hard_off_pv_threshold_kw = 0.0
-            selected.ev_hard_off_low_pv_cycles = 0
-            selected.ev_hard_off_release_cycles = 0
-            selected.ev_priority = 0
-        return selected
+        return SimpleNamespace(
+            device_id='',
+            device=None,
+            adapter=None,
+            capabilities=None,
+            policy=None,
+            current_step_a=1,
+            phases=1,
+            voltage_v=230.0,
+            min_absorb_w=0.0,
+            max_absorb_w=0.0,
+            power_step_w=0.0,
+            force_on=False,
+            hard_off_pv_threshold_kw=0.0,
+            hard_off_low_pv_cycles=0,
+            hard_off_release_cycles=0,
+            priority=0,
+        )
 
     adapter = device.adapter
     capabilities = device.capabilities
@@ -217,62 +208,64 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
     phases = _positive_float(getattr(adapter, 'phases', None), 1.0)
     voltage_v = _positive_float(getattr(adapter, 'voltage_v', None), 230.0)
 
-    selected.ev_current_step_a = int(round(current_step_a))
-    selected.ev_charger_phases = int(round(phases))
-    selected.ev_voltage_v = float(voltage_v)
-
-    selected.ev_min_absorb_w = _non_negative_float(getattr(capabilities, 'min_absorb_w', None), 0.0)
-    selected.ev_max_absorb_w = _non_negative_float(getattr(capabilities, 'max_absorb_w', None), 0.0)
-    selected.min_absorb_w = selected.ev_min_absorb_w
-    selected.max_absorb_w = selected.ev_max_absorb_w
-    selected.step_w = _non_negative_float(getattr(capabilities, 'step_w', 0), 0.0)
-
-    if selected.step_w > 0:
-        selected.ev_power_step_w = float(selected.step_w)
-    else:
-        selected.ev_power_step_w = float(
-            ev_current_a_to_power_w(
-                current_step_a,
-                phases,
-                voltage_v,
-            )
-        )
-
     raw_force_on = getattr(policy, 'force_on', False)
     if isinstance(raw_force_on, str):
         text = raw_force_on.strip().lower()
         if text in ('true', 'on', '1', 'yes'):
-            selected.ev_force_on = True
+            force_on = True
         elif text in ('false', 'off', '0', 'no', '', 'unknown', 'unavailable', 'none'):
-            selected.ev_force_on = False
+            force_on = False
         else:
             # Grouped-config entity refs must not coerce truthy just because they
             # are non-empty strings. Prefer the already-resolved scalar fallback.
-            selected.ev_force_on = bool(getattr(cfg, 'ev_force_on', False))
+            force_on = bool(getattr(cfg, 'ev_force_on', False))
     else:
-        selected.ev_force_on = bool(raw_force_on)
+        force_on = bool(raw_force_on)
 
     low_pv_threshold = _non_negative_float(getattr(policy, 'low_pv_threshold_w', 0), 0.0)
-    selected.ev_hard_off_pv_threshold_kw = (
+    hard_off_pv_threshold_kw = (
         low_pv_threshold / 1000.0
         if low_pv_threshold > 50.0
         else low_pv_threshold
     )
-
-    selected.ev_hard_off_low_pv_cycles = _int_or_default(
-        getattr(policy, 'hard_off_low_pv_cycles', 0),
-        0,
-    )
-    selected.ev_hard_off_release_cycles = _int_or_default(
-        getattr(policy, 'hard_off_release_cycles', 0),
-        0,
-    )
-    selected.ev_priority = _int_or_default(
-        getattr(policy, 'priority', 0),
-        0,
+    min_absorb_w = _non_negative_float(getattr(capabilities, 'min_absorb_w', None), 0.0)
+    max_absorb_w = _non_negative_float(getattr(capabilities, 'max_absorb_w', None), 0.0)
+    configured_step_w = _non_negative_float(getattr(capabilities, 'step_w', 0), 0.0)
+    power_step_w = configured_step_w if configured_step_w > 0 else float(
+        ev_current_a_to_power_w(
+            current_step_a,
+            phases,
+            voltage_v,
+        )
     )
 
-    return selected
+    return SimpleNamespace(
+        device_id=str(getattr(device, 'device_id', '') or ''),
+        device=device,
+        adapter=adapter,
+        capabilities=capabilities,
+        policy=policy,
+        current_step_a=int(round(current_step_a)),
+        phases=int(round(phases)),
+        voltage_v=float(voltage_v),
+        min_absorb_w=min_absorb_w,
+        max_absorb_w=max_absorb_w,
+        power_step_w=float(power_step_w),
+        force_on=force_on,
+        hard_off_pv_threshold_kw=hard_off_pv_threshold_kw,
+        hard_off_low_pv_cycles=_int_or_default(
+            getattr(policy, 'hard_off_low_pv_cycles', 0),
+            0,
+        ),
+        hard_off_release_cycles=_int_or_default(
+            getattr(policy, 'hard_off_release_cycles', 0),
+            0,
+        ),
+        priority=_int_or_default(
+            getattr(policy, 'priority', 0),
+            0,
+        ),
+    )
 
 def _ev_runtime_state(m, device_id):
     return dict((getattr(m, 'ev_states', {}) or {}).get(str(device_id), {}) or {})
@@ -567,6 +560,7 @@ def _build_device_policies(
 def _battery_target_and_authority(
     profiles,
     cfg,
+    ev_context,
     m,
     haeo,
     nz,
@@ -616,7 +610,7 @@ def _battery_target_and_authority(
             battery_min_floor_w = float(min_charge_floor_w)
             effective_rpnz_w = float(nz.rpnz_w) - float(max(ev_target_w, 0.0))
 
-            ev_max_w = float(ev_max_power_w(cfg))
+            ev_max_w = float(ev_max_power_w(ev_context))
             if (
                 ev_burn_active
                 and (not ev_primary_positive_rpnz)
@@ -738,7 +732,7 @@ def net_zero_surplus_policy_active(profiles, effective_fc, haeo_nz_plan_active=F
 
 
 def _ev_policy_mode_and_target_w(
-    profiles, cfg, haeo, *,
+    profiles, ev_context, haeo, *,
     burn_active,
     force_charge_blocked,
     adjustable_surplus_active,
@@ -755,7 +749,7 @@ def _ev_policy_mode_and_target_w(
 ):
     target_w = ev_strategy_target_w(
         profiles,
-        cfg,
+        ev_context,
         haeo,
         burn_active,
     )
@@ -767,7 +761,7 @@ def _ev_policy_mode_and_target_w(
         and use_ev_adjustable_mode
         and float(rpnz_w) > 0.0
     ):
-        target_w = float(ev_max_power_w(cfg))
+        target_w = float(ev_max_power_w(ev_context))
 
     if (
         profiles.goal == GoalProfile.NET_ZERO
@@ -787,7 +781,7 @@ def _ev_policy_mode_and_target_w(
     if target_w > 0:
         return 'burn', float(target_w), 0, False
 
-    low_pv_threshold = float(cfg.ev_hard_off_pv_threshold_kw)
+    low_pv_threshold = float(ev_context.hard_off_pv_threshold_kw)
     low_pv = pv_power_kw is not None and float(pv_power_kw) < low_pv_threshold
     next_low_pv_cycles = int(ev_low_pv_cycles) + 1 if low_pv else 0
 
@@ -801,26 +795,26 @@ def _ev_policy_mode_and_target_w(
     if hard_off_allowed and ev_hard_off_active:
         if use_ev_primary_home_battery_combo:
             return 'hard_off', 0, next_low_pv_cycles, True
-        ev_threshold_kw = max((ev_max_power_w(cfg) - ev_min_power_w(cfg)) / 1000.0, 0)
+        ev_threshold_kw = max((ev_max_power_w(ev_context) - ev_min_power_w(ev_context)) / 1000.0, 0)
         if rpc_kw >= ev_threshold_kw:
-            return 'burn', float(ev_max_power_w(cfg)), next_low_pv_cycles, False
+            return 'burn', float(ev_max_power_w(ev_context)), next_low_pv_cycles, False
         return 'hard_off', 0, next_low_pv_cycles, True
 
-    if hard_off_allowed and next_low_pv_cycles >= int(cfg.ev_hard_off_low_pv_cycles):
+    if hard_off_allowed and next_low_pv_cycles >= int(ev_context.hard_off_low_pv_cycles):
         return 'hard_off', 0, next_low_pv_cycles, True
 
-    restore_min_w = float(ev_min_power_w(cfg)) if use_ev_primary_mode else 0.0
+    restore_min_w = float(ev_min_power_w(ev_context)) if use_ev_primary_mode else 0.0
     return 'restore_min', restore_min_w, next_low_pv_cycles, False
 
 
-def _primary_ev_step_target_w(cfg, envelope_w):
+def _primary_ev_step_target_w(ev_context, envelope_w):
     positive_envelope_w = max(float(envelope_w), 0.0)
     if positive_envelope_w <= 0.0:
         return 0.0
 
-    min_w = float(ev_min_power_w(cfg))
-    max_w = float(ev_max_power_w(cfg))
-    step_w = max(1.0, float(ev_power_step_w(cfg)))
+    min_w = float(ev_min_power_w(ev_context))
+    max_w = float(ev_max_power_w(ev_context))
+    step_w = max(1.0, float(getattr(ev_context, 'power_step_w', 0.0) or 0.0))
 
     if positive_envelope_w <= min_w:
         quantized_w = min_w
@@ -832,15 +826,15 @@ def _primary_ev_step_target_w(cfg, envelope_w):
     return float(min(max(quantized_w, min_w), max_w))
 
 
-def _primary_power_envelope_w(cfg, m, nz, selected_ev_device_id):
+def _primary_power_envelope_w(cfg, ev_context, m, nz):
     current_ev_w = float(
         ev_current_a_to_power_w(
-            _ev_runtime_current_a(m, selected_ev_device_id),
-            cfg.ev_charger_phases,
-            getattr(cfg, 'ev_voltage_v', 230.0),
+            _ev_runtime_current_a(m, ev_context.device_id),
+            ev_context.phases,
+            ev_context.voltage_v,
         )
     )
-    ev_max_w = float(ev_max_power_w(cfg))
+    ev_max_w = float(ev_max_power_w(ev_context))
     return candidate_sp_net_zero(
         rpnz_w=float(nz.rpnz_w),
         grid_actual_w=float(m.grid_power_w),
@@ -949,7 +943,7 @@ def compute_net_zero_engine_outputs(
         adjustable_surplus_load,
         adjustable_primary_load,
     )
-    selected_ev_cfg = _cfg_with_selected_ev_scalars(cfg, selected_ev_device_id)
+    selected_ev = _selected_ev_context(cfg, selected_ev_device_id)
     normalized_previous_ev_device_states = _normalize_previous_ev_device_states(previous_ev_device_states)
     selected_previous_ev_state = normalized_previous_ev_device_states.get(selected_ev_device_id)
     if has_ev_devices and selected_previous_ev_state is None:
@@ -1068,21 +1062,21 @@ def compute_net_zero_engine_outputs(
     if has_ev_devices:
         low_pv = (
             pv_power_kw is not None
-            and float(pv_power_kw) < float(selected_ev_cfg.ev_hard_off_pv_threshold_kw)
+            and float(pv_power_kw) < float(selected_ev.hard_off_pv_threshold_kw)
         )
         battery_to_ev_loop_risk = (
             low_pv
             and float(m.current_battery_setpoint_w) < 0.0
         )
 
-        ev_min_power_kw = float(ev_min_power_w(selected_ev_cfg)) / 1000.0
+        ev_min_power_kw = float(ev_min_power_w(selected_ev)) / 1000.0
         hard_off_release_rpc_kw = ev_min_power_kw if use_ev_primary_home_battery_combo else 0.0
-        hard_off_release_cycles_required = max(1, int(getattr(selected_ev_cfg, 'ev_hard_off_release_cycles', 2) or 2))
+        hard_off_release_cycles_required = max(1, int(getattr(selected_ev, 'hard_off_release_cycles', 2) or 2))
         hard_off_release_condition = (
             use_ev_primary_home_battery_combo
             and bool(selected_previous_ev_state['hard_off_active'])
             and (pv_power_kw is not None)
-            and float(pv_power_kw) >= float(selected_ev_cfg.ev_hard_off_pv_threshold_kw)
+            and float(pv_power_kw) >= float(selected_ev.hard_off_pv_threshold_kw)
             and float(nz.required_power_consumption_kw) >= float(hard_off_release_rpc_kw)
             and (not battery_to_ev_loop_risk)
         )
@@ -1129,7 +1123,7 @@ def compute_net_zero_engine_outputs(
         ev_burn_for_cycle = ev_surplus_burn_active or ev_primary_burn_active
         ev_policy_mode, ev_target_w, next_low_pv_cycles, ev_hard_off_active_next = _ev_policy_mode_and_target_w(
             profiles,
-            selected_ev_cfg,
+            selected_ev,
             normalized_haeo,
             burn_active=ev_burn_for_cycle,
             force_charge_blocked=battery_to_ev_loop_risk,
@@ -1161,8 +1155,8 @@ def compute_net_zero_engine_outputs(
             ev_target_w = 0.0
 
         if use_ev_primary_mode and (not use_ev_surplus_mode) and ev_policy_mode == 'burn':
-            primary_envelope_w = _primary_power_envelope_w(selected_ev_cfg, m, nz, selected_ev_device_id)
-            stepped_primary_w = _primary_ev_step_target_w(selected_ev_cfg, primary_envelope_w)
+            primary_envelope_w = _primary_power_envelope_w(cfg, selected_ev, m, nz)
+            stepped_primary_w = _primary_ev_step_target_w(selected_ev, primary_envelope_w)
             if haeo_nz_plan_active:
                 limit_w = float(getattr(haeo_nz_plan, 'ev_limit_w', 0))
                 stepped_primary_w = min(float(stepped_primary_w), limit_w) if limit_w > 0 else 0.0
@@ -1181,7 +1175,8 @@ def compute_net_zero_engine_outputs(
         )
     battery_target_w, battery_write_enabled, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next = _battery_target_and_authority(
         profiles,
-        selected_ev_cfg,
+        cfg,
+        selected_ev,
         m,
         normalized_haeo,
         nz,
@@ -1296,16 +1291,16 @@ def compute_net_zero_engine_outputs(
             'ev_hard_off_release_cycles_required': hard_off_release_cycles_required,
             'ev_hard_off_release_rpc_kw': hard_off_release_rpc_kw,
             'pv_power_kw': pv_power_kw,
-            'ev_hard_off_pv_threshold_kw': selected_ev_cfg.ev_hard_off_pv_threshold_kw,
+            'ev_hard_off_pv_threshold_kw': selected_ev.hard_off_pv_threshold_kw,
             'battery_to_ev_loop_risk': bool(battery_to_ev_loop_risk),
             'ev_adjustable_mode': bool(use_ev_surplus_mode),
             'ev_primary_burn_active': bool(ev_primary_burn_active),
             'ev_surplus_burn_active': bool(ev_surplus_burn_active),
-            'ev_current_step_a': int(getattr(selected_ev_cfg, 'ev_current_step_a', 1) or 1),
-            'ev_force_on': bool(getattr(selected_ev_cfg, 'ev_force_on', False)),
-            'ev_min_power_w': int(ev_min_power_w(selected_ev_cfg)),
-            'ev_max_power_w': int(ev_max_power_w(selected_ev_cfg)),
-            'ev_power_step_w': int(getattr(selected_ev_cfg, 'ev_power_step_w', 0) or 0),
+            'ev_current_step_a': int(getattr(selected_ev, 'current_step_a', 1) or 1),
+            'ev_force_on': bool(getattr(selected_ev, 'force_on', False)),
+            'ev_min_power_w': int(ev_min_power_w(selected_ev)),
+            'ev_max_power_w': int(ev_max_power_w(selected_ev)),
+            'ev_power_step_w': int(getattr(selected_ev, 'power_step_w', 0) or 0),
             'ev_target_w': int(round(ev_target_w)),
             'primary_power_envelope_w': primary_envelope_w,
             'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.home_battery.policy.priority)),
