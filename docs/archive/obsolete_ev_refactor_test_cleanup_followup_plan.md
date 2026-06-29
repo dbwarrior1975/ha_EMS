@@ -16,7 +16,7 @@ Completed work:
 4. Removed the weaker duplicate dispatch-state legacy-sensor test.
 5. Removed dead EV garage min/max current seed values from grouped-config parity coverage.
 6. Renamed the valid engine test to watt-target semantics.
-7. Shortened `tests/e2e_entity/e2e_refactoring.md` into current e2e conventions.
+7. Shortened `tests/e2e_entity/e2e_conventions.md` into current e2e conventions.
 8. Kept required protections for deprecated config rejection, runtime registry absence, EV W/A helpers, and writer actuator conversion.
 
 Verification status:
@@ -310,14 +310,14 @@ Status: completed.
 
 Notes:
 
-1. Replaced `tests/e2e_entity/e2e_refactoring.md` with a shorter current-conventions document.
+1. Replaced `tests/e2e_entity/e2e_conventions.md` with a shorter current-conventions document.
 2. Removed stale migration-plan sections while keeping current canonical e2e rules and fail-fast guard intent.
 3. Active docs no longer reference the removed surplus name-based API.
 
 Inspect:
 
 ```bash
-sed -n '1,430p' tests/e2e_entity/e2e_refactoring.md
+sed -n '1,430p' tests/e2e_entity/e2e_conventions.md
 ```
 
 If it is now only historical planning material:

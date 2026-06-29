@@ -360,7 +360,7 @@ Targets:
 1. `README.md`
 2. `docs/dev/**`
 3. `docs/user/**`
-4. `tests/e2e_entity/e2e_refactoring.md`
+4. `tests/e2e_entity/e2e_conventions.md`
 5. `EMS_config.yaml`
 6. `example_EMS_config.yaml`
 

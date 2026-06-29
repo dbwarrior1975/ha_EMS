@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tests.e2e_entity.refactored_runner import run_refactored_steps
+from tests.e2e_entity.scenario_runner import run_scenario_steps
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 PV_THRESHOLD_KW = 1.6
 
@@ -31,4 +31,4 @@ def build_harness(project_root):
     return h
 
 def run_steps(h, steps):
-    run_refactored_steps(h, steps)
+    run_scenario_steps(h, steps)

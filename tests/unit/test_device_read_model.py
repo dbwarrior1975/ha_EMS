@@ -88,6 +88,113 @@ def test_ev_device_mapping_converts_current_to_power():
 
 
 @pytest.mark.unit
+def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
+    grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_config['ems']['devices']['EV_A'] = grouped_config['ems']['devices'].pop('EV_CHARGER')
+    grouped_config['ems']['devices']['EV_A']['adapter']['phases'] = 'input_number.ev_a_phases'
+    grouped_config['ems']['devices']['EV_A']['adapter']['voltage_v'] = 'input_number.ev_a_voltage_v'
+    grouped_config['ems']['devices']['EV_A']['adapter']['current_step_a'] = 'input_number.ev_a_current_step_a'
+    grouped_config['ems']['devices']['EV_A']['capabilities']['min_absorb_w'] = 'input_number.ev_a_min_power_w'
+    grouped_config['ems']['devices']['EV_A']['capabilities']['max_absorb_w'] = 'input_number.ev_a_max_power_w'
+    grouped_config['ems']['devices']['EV_A']['capabilities']['step_w'] = 'input_number.ev_a_power_step_w'
+    grouped_config['ems']['devices']['EV_A']['policy']['priority'] = 'input_number.ev_a_priority'
+    grouped_config['ems']['devices']['EV_A']['policy']['surplus_allowed'] = 'input_boolean.ev_a_surplus_allowed'
+    grouped_config['ems']['devices']['EV_A']['policy']['force_on'] = 'input_boolean.ev_a_force_on'
+    grouped_config['ems']['devices']['EV_A']['policy']['low_pv_threshold_w'] = 'input_number.ev_a_low_pv_threshold_w'
+    grouped_config['ems']['devices']['EV_A']['policy']['hard_off_low_pv_cycles'] = 'input_number.ev_a_low_pv_cycles'
+    grouped_config['ems']['devices']['EV_A']['policy']['hard_off_release_cycles'] = 'input_number.ev_a_release_cycles'
+    grouped_config['ems']['devices']['EV_A']['adapter']['enabled'] = 'switch.ev_a_enabled'
+    grouped_config['ems']['devices']['EV_A']['adapter']['current_a'] = 'number.ev_a_current_a'
+    grouped_config['ems']['devices']['EV_B'] = {
+        'kind': 'EV_CHARGER',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 'input_number.ev_b_min_power_w',
+            'max_absorb_w': 'input_number.ev_b_max_power_w',
+            'step_w': 'input_number.ev_b_power_step_w',
+        },
+        'policy': {
+            'priority': 'input_number.ev_b_priority',
+            'surplus_allowed': 'input_boolean.ev_b_surplus_allowed',
+            'force_on': 'input_boolean.ev_b_force_on',
+            'low_pv_threshold_w': 'input_number.ev_b_low_pv_threshold_w',
+            'hard_off_low_pv_cycles': 'input_number.ev_b_low_pv_cycles',
+            'hard_off_release_cycles': 'input_number.ev_b_release_cycles',
+        },
+        'adapter': {
+            'enabled': 'switch.ev_b_enabled',
+            'current_a': 'number.ev_b_current_a',
+            'current_step_a': 'input_number.ev_b_current_step_a',
+            'phases': 'input_number.ev_b_phases',
+            'voltage_v': 'input_number.ev_b_voltage_v',
+        },
+    }
+    values = {
+        'input_number.ems_home_battery_min_absorb_w': 125,
+        'input_number.ems_max_battery_charge_w': 4300,
+        'input_number.ems_max_battery_discharge_w': 5100,
+        'input_number.ems_deadband_w': 25,
+        'input_number.ems_adjustable_surplus_load_priority': 7,
+        'input_number.ev_a_min_power_w': 1380,
+        'input_number.ev_a_max_power_w': 3680,
+        'input_number.ev_a_power_step_w': 230,
+        'input_number.ev_a_priority': 8,
+        'input_boolean.ev_a_surplus_allowed': True,
+        'input_boolean.ev_a_force_on': False,
+        'input_number.ev_a_low_pv_threshold_w': 1600,
+        'input_number.ev_a_low_pv_cycles': 2,
+        'input_number.ev_a_release_cycles': 2,
+        'input_number.ev_a_current_step_a': 1,
+        'input_number.ev_a_phases': 1,
+        'input_number.ev_a_voltage_v': 230,
+        'switch.ev_a_enabled': True,
+        'number.ev_a_current_a': 10,
+        'input_number.ev_b_min_power_w': 4140,
+        'input_number.ev_b_max_power_w': 11040,
+        'input_number.ev_b_power_step_w': 690,
+        'input_number.ev_b_priority': 6,
+        'input_boolean.ev_b_surplus_allowed': True,
+        'input_boolean.ev_b_force_on': False,
+        'input_number.ev_b_low_pv_threshold_w': 1600,
+        'input_number.ev_b_low_pv_cycles': 2,
+        'input_number.ev_b_release_cycles': 2,
+        'input_number.ev_b_current_step_a': 1,
+        'input_number.ev_b_phases': 3,
+        'input_number.ev_b_voltage_v': 230,
+        'switch.ev_b_enabled': True,
+        'number.ev_b_current_a': 10,
+    }
+    core_cfg = build_core_config_from_grouped_reader(
+        grouped_config,
+        lambda entity_id, default: values.get(entity_id, default),
+    )
+    m = make_m(
+        ev_states={
+            'EV_A': ev_state(enabled=True, current_a=10),
+            'EV_B': ev_state(enabled=True, current_a=10),
+        }
+    )
+
+    states = _state_by_id(core_cfg, m)
+
+    assert states['EV_A'].measured_power_w == 2300
+    assert states['EV_B'].measured_power_w == 6900
+
+
+@pytest.mark.unit
+def test_ev_device_states_fall_back_to_default_adapter_power_values():
+    cfg = make_cfg()
+    cfg.devices['EV_CHARGER'].adapter.phases = None
+    cfg.devices['EV_CHARGER'].adapter.voltage_v = None
+    m = make_m(ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=10)})
+
+    states = _state_by_id(cfg, m)
+
+    assert states['EV_CHARGER'].measured_power_w == 2300
+
+
+@pytest.mark.unit
 def test_relay1_device_mapping_is_constant_power_when_active():
     cfg = make_cfg()
     m = make_m(relay_states={'RELAY1': relay_state(active=True)})

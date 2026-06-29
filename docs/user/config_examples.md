@@ -15,7 +15,7 @@ Canonical odotus kaikissa esimerkeissa:
 1. `sensor.ems_device_policies_pyscript` sisaltaa device-id-kohtaiset policyt
 2. `sensor.ems_active_surplus_devices` listaa aktiiviset device-id:t
 3. `sensor.ems_actuator_writer_trace` raportoi writer-toteuman `devices`-mapissa
-4. legacy scalar- tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
+4. vanhat yksittaiskentat tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
 
 ## Only HOME_BATTERY
 
@@ -167,7 +167,7 @@ ems:
 ```
 
 Trace-odotus: aktivointi ja vapautus nakyvat device-id:lla `RELAY3`, eivat
-uutena scalar-legacy-kenttana. Testattu referenssi:
+erillisena peilikenttana. Testattu referenssi:
 `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_config.yaml`.
 Skenaariotestissa `RELAY3`-entityt haetaan harnessilta
 `h.device_entity('RELAY3', 'enabled')`, ei paikallisesta workaround-mapista.
@@ -211,7 +211,7 @@ samanaikaisesti usealle EV:lle. Testattu referenssi:
 
 ## Custom device IDs
 
-Kayttotarkoitus: kuvaavat device-id:t, jotka eivat sisalla legacy
+Kayttotarkoitus: kuvaavat device-id:t, jotka eivat sisalla kiinteita
 `RELAY1`/`RELAY2`-nimia.
 
 ```yaml

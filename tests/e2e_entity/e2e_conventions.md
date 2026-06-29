@@ -2,7 +2,7 @@
 
 Paivays: 2026-06-29
 
-Tama tiedosto korvaa aiemman migration aikana kertyneen refaktorointimuistion.
+Tama tiedosto kokoaa nykyiset e2e-kaytannot yhteen.
 Historiallinen suunnitelmamateriaali on poistettu, mutta seuraavat nykyiset
 saannot ja guardit jaavat voimaan.
 
@@ -59,5 +59,5 @@ Naita ei kayteta e2e-kansion behavioral assert -pintana:
 - vanhat policy mirror -kentat
 - vanhat standalone dispatch mirror -kentat
 
-Jos jokin arvo kuuluu vain compatibility- tai contract-pintaan, testaa se
+Jos jokin arvo kuuluu vain alias- tai contract-pintaan, testaa se
 siella, ei `tests/e2e_entity/`-kansiossa.

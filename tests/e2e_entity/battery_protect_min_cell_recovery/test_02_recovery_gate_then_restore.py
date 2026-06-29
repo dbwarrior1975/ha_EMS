@@ -2,7 +2,7 @@ import pytest
 
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import build_harness
 from tests.e2e_entity.battery_protect_min_cell_recovery.scenario_steps import run_steps
-from tests.e2e_entity.refactored_runner import seed_battery_protect_runtime_state
+from tests.e2e_entity.scenario_runner import seed_battery_protect_runtime_state
 
 @pytest.mark.scenario
 def test_02_recovery_gate_then_restore(project_root):

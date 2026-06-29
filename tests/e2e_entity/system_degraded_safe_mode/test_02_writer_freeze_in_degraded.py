@@ -1,7 +1,7 @@
 import pytest
 
 from tests.e2e_entity.system_degraded_safe_mode.scenario_steps import build_harness, run_steps
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_writer_freeze_in_system_degraded(project_root):

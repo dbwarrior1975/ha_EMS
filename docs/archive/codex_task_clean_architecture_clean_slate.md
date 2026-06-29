@@ -147,7 +147,7 @@ _device_configs_from_legacy_config(...)
 build_device_configs(cfg: Union[EmsConfig, CoreConfig])
 legacy relay scalar fallback paths
 _device_entity_ref(..., legacy_key)
-tests/e2e_entity/e2e_refactoring.md
+tests/e2e_entity/e2e_conventions.md
 legacy fallback tests that only protect obsolete scalar sensor paths
 custom validation/rejection tests for historical EV amp-policy fields
 ```
@@ -510,7 +510,7 @@ pytest -q tests/e2e_entity/
 Target:
 
 ```text
-tests/e2e_entity/e2e_refactoring.md
+tests/e2e_entity/e2e_conventions.md
 ```
 
 Task:

@@ -12,7 +12,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
     steps = [
         {
             'at_s': 0,
-            'note': 't0 custom EV and relay ids load without any legacy device-id dependency.',
+            'note': 't0 custom EV and relay ids load without any fixed device-id dependency.',
             'set': {
                 E['required_power_consumption_kw']: 0.0,
                 E['rpnz_w']: -10.0,

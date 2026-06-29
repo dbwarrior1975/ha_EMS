@@ -2,8 +2,8 @@ import pytest
 
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
-from tests.e2e_entity.refactored_runner import seed_previous_policy_trace
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_previous_policy_trace
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_02_relay1_on_then_release_under_force(project_root):

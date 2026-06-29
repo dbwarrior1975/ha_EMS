@@ -29,7 +29,7 @@ Tama release ei toteuta:
 1. multi-EV simultaneous power splitia
 2. round-robinia usealle EV:lle
 3. useaa `HOME_BATTERY`-akkua
-4. kaikkien core API legacy-parametrien poistoa
+4. kaikkien aiempien core API -parametrien poistoa
 
 HAEO NET_ZERO custom EV -polku tukee selected EV device-id:ta unit-tasolla.
 EMS-internal HAEO combo -semantiikan laajemmat muutokset ovat jatkotyota siltä
@@ -46,9 +46,8 @@ Seuraavat Home Assistant -entityt poistuvat eivatka paivity enaa:
 Jos Home Assistant -automaatiot, dashboardit tai template-sensorit ovat
 nojaaneet naihin entityihin, ne on paivitettava.
 
-Lisaksi erillinen legacy scalar -view ja `EmsConfig`-parity on poistettu
-aktiivisesta runtime-polusta. Tuotantokoodi nojaa `CoreConfig`-malliin ja
-device-registryyn.
+Lisaksi erillinen peilinakyma on poistettu aktiivisesta runtime-polusta.
+Tuotantokoodi nojaa `CoreConfig`-malliin ja device-registryyn.
 
 ## Canonical replacements
 
@@ -75,7 +74,7 @@ Konkreettinen tulkinta:
    `devices`-mapista
 
 Vanhat `relay1`, `relay2`, `ev`, `RELAY1`, `RELAY2`, `EV_CHARGER` ja
-`ADJUSTABLE`-nimet voivat nakya compatibility-diagnostiikassa tai yksittaisina
+`ADJUSTABLE`-nimet voivat nakya trace-diagnostiikassa tai yksittaisina
 validin device-id:n esimerkkeina. Uusia dashboardeja tai automaatioita ei tule
 rakentaa niiden varaan canonical integraatiosopimuksena.
 
@@ -89,14 +88,14 @@ Kanoninen tuotantokonfiguraatio on:
 nyt osa normaalia tuotantopolkua.
 
 `EMS_config.yaml` on nyt pakollinen. Jos tiedosto puuttuu tai ei validoidu,
-EMS ei fallbackaa compatibility-defaultteihin, vaan runtime epäonnistuu
+EMS ei fallbackaa vanhoihin oletuksiin, vaan runtime epäonnistuu
 näkyvästi.
 
 ## Behavioral notes
 
-1. writerit eivat lue legacy `policy_*` -sensoreita fallbackina
-2. dispatch state applier ei yllapida legacy `surplus_*_active` -booleaneja
-3. dispatch trace on device-id-pohjainen, ei legacy boolean -pohjainen
+1. writerit eivat lue poistettuja `policy_*` -sensoreita fallbackina
+2. dispatch state applier ei yllapida poistettuja `surplus_*_active` -booleaneja
+3. dispatch trace on device-id-pohjainen, ei vanha boolean-pohjainen
 4. EV:n amperit ovat edelleen adapteri- ja actuator-rajalla mukana, mutta
    core/writer contract on wattipohjainen
 5. useampi EV voi olla konfiguroituna, mutta vain selected EV saa aktiivisen

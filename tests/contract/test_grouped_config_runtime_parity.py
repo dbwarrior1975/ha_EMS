@@ -443,7 +443,7 @@ def test_scenario_harness_registry_is_isolated_from_root_ent(project_root):
 
 @pytest.mark.unit
 def test_seed_active_surplus_devices_uses_harness_registry_for_scenario_only_relay(project_root):
-    from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+    from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
     scenario_dir = project_root / 'tests' / 'e2e_entity' / 'net_zero_priority_order_quarter_3_relays'
     harness = QuarterScenarioHarness(project_root, scenario_dir=scenario_dir)

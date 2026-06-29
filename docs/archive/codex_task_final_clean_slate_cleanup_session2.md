@@ -538,7 +538,7 @@ notes: runtime registry julkaisee dispatch-tiedon edelleen `surplus_device_dispa
 
 ### Phase 2: Poista legacy policy sensor ENT -avaimet writer-testeista
 status: done
-files changed: `tests/unit/test_writer_semantics.py`, `tests/e2e_entity/refactored_runner.py`, `tests/e2e_entity/e2e_refactoring.md`, `docs/user/operointi.md`, `docs/user/releasenotes.md`
+files changed: `tests/unit/test_writer_semantics.py`, `tests/e2e_entity/scenario_runner.py`, `tests/e2e_entity/e2e_conventions.md`, `docs/user/operointi.md`, `docs/user/releasenotes.md`
 functions/fields removed: writer-testien legacy ENT -avaimet ja niihin sidotut seedit
 tests removed: none
 tests rewritten: writer-testit kirjoitettiin kuvaamaan pelkkaa `device_policies`-pohjaista kayttaytymista

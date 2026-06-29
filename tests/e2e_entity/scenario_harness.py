@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from ems_adapter.config_loader import load_grouped_ems_config
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 
 class FakeEntityStore:

@@ -80,8 +80,8 @@ Tarkeä rajaus:
 
 1. grouped `EMS_config.yaml` on nykyinen kanoninen konfiguraatio
 2. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
-3. `read_config()` palauttaa `CoreConfig`-instanssin; erillista `EmsConfig`-
-   tai legacy scalar -viewta ei enaa ole aktiivisessa runtime-polussa
+3. `read_config()` palauttaa `CoreConfig`-instanssin ilman erillista
+   rinnakkaista config-viewta aktiivisessa runtime-polussa
 4. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
 5. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
@@ -133,10 +133,9 @@ Canonical integraatiopinta on device-id-pohjainen:
 3. `sensor.ems_policy_decision_trace_pyscript`
 4. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
-Legacy decision-nimet, kuten `RELAY1`, `RELAY2`, `EV_CHARGER` ja
-`ADJUSTABLE`, voivat nakya compatibility-diagnostiikassa tai yksittaisina
-validin device-id:n esimerkkeina. Uusia dashboardeja tai automaatioita ei tule
-rakentaa niiden varaan canonical sopimuksena.
+Decision-tracessa voi nakya nimiarvoja kuten `RELAY1`, `RELAY2`,
+`EV_CHARGER` ja `ADJUSTABLE`, mutta uudet dashboardit ja automaatiot kannattaa
+sitouttaa device-id-pohjaisiin payload-kenttiin.
 
 Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
 
@@ -274,7 +273,7 @@ Keskeiset config-avaimet (EMS):
 23. `adjustable_surplus_load_priority`
 24. relekohtaiset power/priority-avaimet device-id:n mukaan
 25. EV-kohtaiset power/priority-avaimet device-id:n mukaan
-26. legacy adapter -polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
+26. adapteri-/debug-polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
 27. `surplus_freeze_s`
 28. `haeo_stale_timeout_s`
 
@@ -316,12 +315,12 @@ Keskeiset policy-ulostuloavaimet (EMS):
 Oleellinen tulkinta:
 
 1. `device_policies` on writerin kanoninen ohjausrajapinta
-2. `policy_decision_trace` on canonical decision trace; erilliset scalar-peilit
-   on poistettu aktiivisesta runtime-polusta eivatka kuulu tuotantosopimukseen
+2. `policy_decision_trace` on kanoninen decision trace; erilliset yksittaiskentat
+   eivat kuulu tuotantosopimukseen
 3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
    actuator-rajan `target_current_a`-kenttiin
-4. `policy_decision_trace`-kentista tehdyt scalar-peilit eivat ole release-contractin
-   osa
+4. `policy_decision_trace`-kentista johdetut yksittaisjulkaisut eivat ole
+   release-contractin osa
 
 Capability-semantiiikka:
 
@@ -359,7 +358,7 @@ Tuetut kombinaatiot:
 
 Nykyinen runtime-yhteensopivuus:
 
-1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa legacy-oletusta (`implicit_legacy_default`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
+1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa oletusta (`implicit_legacy_default`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
 2. trace raportoi taman syylla `primary_surplus_combo_reason = implicit_legacy_default`
 3. tata ei suositella uudessa kayttoonotossa
 

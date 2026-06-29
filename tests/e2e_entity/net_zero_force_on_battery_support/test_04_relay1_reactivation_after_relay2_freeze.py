@@ -2,7 +2,7 @@ import pytest
 
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_04_relay1_reactivation_after_relay2_freeze(project_root):

@@ -61,7 +61,7 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
 
 
 @pytest.mark.unit
-def test_grouped_config_aliases_cover_runtime_scalar_fields(project_root):
+def test_grouped_config_aliases_cover_runtime_alias_fields(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     aliases = runtime_alias_index(config)
 

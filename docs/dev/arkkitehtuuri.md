@@ -19,12 +19,11 @@ Nykyinen tuotantopolku perustuu kanonisesti naihin pintoihin:
 
 `policy_*`-sensorit ja `surplus_*_active`-booleanit eivat kuulu enaa aktiiviseen
 tuotantopintaan. Jaljella olevat `surplus_*_pys`-sensorit ovat diagnostisia
-scalar-julkaisuja, mutta dispatch- ja writer-paatokset nojaavat kanonisesti
+yksittaisjulkaisuja, mutta dispatch- ja writer-paatokset nojaavat kanonisesti
 `policy_decision_trace`-, `device_policies`-, `active_surplus_devices`- ja
 `previous_device_state`-pintoihin.
 
-Legacy scalar- ja compatibility-viewt elavat vain erillisissa deprecated
-adapter -poluissa.
+Adapteri-/debug-viewt elavat vain erillisissa deprecated adapter -poluissa.
 
 Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon
 `docs/user/business_logic_guide.md`.
@@ -44,7 +43,7 @@ flowchart LR
     TRACE --> W
     ACTIVE --> W
     W --> ACT[actuator_* entiteetit]
-    P --> SDIAG[surplus_* scalar diagnostics\n(deprecated adapter only)]
+    P --> SDIAG[surplus_* diagnostics\n(deprecated adapter only)]
     L --> LTRACE[dispatch_state_applier_trace]
     W --> WTRACE[actuator_writer_trace]
 ```
@@ -97,7 +96,7 @@ Vastuut:
 6. laskee net zero -moottorin ulostulot `compute_net_zero_engine_outputs()`-funktion kautta
 7. julkaisee kanoniset `device_policies`, `policy_decision_trace`,
    `active_surplus_devices` ja `previous_device_state` -ulostulot
-8. erillisia legacy scalar -diagnostiikkapeileja ei julkaista aktiivisessa
+8. erillisia vanhoja diagnostiikkapeileja ei julkaista aktiivisessa
    runtime-polussa
 
 Koodin triggerit:
@@ -112,7 +111,7 @@ Julkaistavat kanoniset policy-entiteetit:
 3. `active_surplus_devices`
 4. `previous_device_state`
 
-Julkaistavat diagnostiset scalarit:
+Julkaistavat diagnostiset yksittaiskentat:
 
 1. `surplus_policy_active_pys`
 2. `surplus_next_target_pys`
@@ -147,7 +146,7 @@ Vastuut:
 
 Actuator writer loop toimii kanonisesti `device_policies`-ulostulon perusteella.
 Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on edelleen
-olennainen, mutta writer ei hae paatoksia legacy `policy_*`-attribuuttifallbackeista.
+olennainen, mutta writer ei hae paatoksia vanhoista `policy_*`-attribuuttifallbackeista.
 
 EV-writerin kanoninen syote on `DevicePolicy.target_w`. Ampeerit ovat writer-
 /adapteritason muunnos. `ev_policy_mode` erottaa edelleen kaksi eri `0 A`
@@ -209,13 +208,12 @@ Nykyinen tuotantopolku lukee entity-id:t ensisijaisesti `runtime_context`-
 kerroksen kautta grouped `EMS_config.yaml` -rakenteesta.
 
 `read_config()` palauttaa nykyisin vain `CoreConfig`-instanssin. Erillinen
-`EmsConfig`-view ja legacy scalar -parity on poistettu aktiivisesta runtime-
-polusta.
+rinnakkainen config-view on poistettu aktiivisesta runtime-polusta.
 
 Keskeiset entity-ryhmat ovat edelleen:
 
 1. profiilit: `control_profile`, `goal_profile`, `forecast_profile`, `guard_profile`
-2. konfiguraatio: yhteiset scalarit (`deadband_w`, `ramp_max_w`,
+2. konfiguraatio: yhteiset kentat (`deadband_w`, `ramp_max_w`,
    `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`,
    `ev_*`) seka device-registryyn sidotut laitekohtaiset kentat kuten
    `capabilities.max_absorb_w` ja `policy.priority`
@@ -318,7 +316,7 @@ Tarkemmat guard-vaikutukset:
 `max_battery_discharge_w`-merkkisemantiikka:
 
 1. canonical syote on negatiivinen export-domainissa (esim. `-4000`)
-2. legacy-positiivinen syote (esim. `4000`) on edelleen sallittu backward compatibility -syista
+2. positiivinen syote (esim. `4000`) on edelleen sallittu aiemman syotemuodon vuoksi
 3. moottori normalisoi molemmat samaan clamp-rajaan `-abs(limit)`
 4. trace julkaisee normalisoinnin diagnostiset kentat:
     - `discharge_limit_w`
@@ -481,7 +479,7 @@ Nykyinen koodista todennettava rooli:
 5. HAEO vaikuttaa EV-ohjaukseen `CHEAP_GRID_CHARGE`-tilassa
 6. `HORIZON_BY_HAEO` voi pakottaa forecast-konfiguraation HAEO:on vaikka `forecast_profile` olisi `NONE`
 
-Rajaus: `haeo_horizon.py` tekee vain forecast-aikaleimojen ja -arvojen poiminnan. Se ei enaa sisalla EV-tehosta selector-virtaan tehtavaa legacy-muunnosta.
+Rajaus: `haeo_horizon.py` tekee vain forecast-aikaleimojen ja -arvojen poiminnan. Se ei enaa sisalla EV-tehosta selector-virtaan tehtavaa vanhaa muunnosta.
 
 Tarkeaa: koodin perusteella HAEO ei tee taytta `NET_ZERO`-optimointia. `NET_ZERO`-tilassa seliteteksti on nimenomaan paikallisen policylogiikan hallitsema, vaikka HAEO olisi nakyvissa.
 
@@ -517,11 +515,11 @@ Keskeisia attribuutteja:
 Tulkinta:
 
 1. `device_policies` on kanoninen writer-sopimus
-2. legacy scalar-peilit on poistettu aktiivisesta runtime-polusta eivatka
+2. erilliset peilikentat on poistettu aktiivisesta runtime-polusta eivatka
    kuulu release-contractiin
 3. EV:n kanoninen writer-sopimus kulkee vain `device_policies[*].target_w`-arvona
 4. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
-5. writer ei lue ohjauspaatoksia scalar-peileista, vaan vain kanonisesta
+5. writer ei lue ohjauspaatoksia erillisista peilikentista, vaan vain kanonisesta
    `device_policies`-payloadista
 
 ### `actuator_writer_trace`

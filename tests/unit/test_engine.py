@@ -377,6 +377,41 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
 
 
 @pytest.mark.unit
+def test_engine_selected_ev_context_uses_normalized_power_step_without_partial_cfg_helper(project_root):
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = _core_cfg_with_extra_devices(
+        project_root,
+        extra_devices={'GARAGE_EV': _garage_ev_device_config()},
+        value_overrides={
+            **_garage_ev_value_overrides(),
+            'input_select.ems_adjustable_surplus_load': 'GARAGE_EV',
+            'input_number.garage_ev_power_step_w': 0,
+            'input_number.garage_ev_current_step_a': 1.0,
+            'input_number.garage_ev_phases': 1.0,
+            'input_number.garage_ev_voltage_v': 230.0,
+        },
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles,
+        cfg,
+        make_m(ev_states={'GARAGE_EV': ev_state(enabled=True, current_a=6)}),
+        make_haeo(),
+        make_nz(rpnz_w=2000.0),
+        0.0,
+        freeze_until_ts=None,
+        ev_burn_active=True,
+        **_relay_runtime_args(),
+        adjustable_surplus_active=True,
+    )
+
+    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert out.attrs['ev_power_step_w'] == 230
+    assert out.attrs['ev_min_power_w'] == 1380
+    assert out.attrs['ev_max_power_w'] == 3680
+
+
+@pytest.mark.unit
 def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_max():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
@@ -436,7 +471,7 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
 
 
 @pytest.mark.unit
-def test_engine_relay_policies_include_registry_relays_without_scalar_dependency(project_root):
+def test_engine_relay_policies_include_registry_relays_without_direct_alias_dependency(project_root):
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = _core_cfg_with_extra_devices(
         project_root,
@@ -608,7 +643,7 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
 
 
 @pytest.mark.unit
-def test_engine_force_on_uses_ev_capability_max_w_not_compat_current(project_root):
+def test_engine_force_on_uses_ev_capability_max_w_not_top_level_current_alias(project_root):
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT, forecast=ForecastProfile.NONE)
     cfg = _core_cfg_with_capability_overrides(
         project_root,

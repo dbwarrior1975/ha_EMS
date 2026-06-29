@@ -2,8 +2,8 @@ import pytest
 
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import run_steps
-from tests.e2e_entity.refactored_runner import seed_previous_device_state
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_previous_device_state
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_03_post_hard_off_recovery(project_root):

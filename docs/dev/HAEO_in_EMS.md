@@ -55,7 +55,7 @@ Planner tuottaa:
 Oleellinen huomio:
 
 - `device_limits_w` on nyt suunnitelman kanoninen tehorajarakenne
-- `ev_limit_a` on edelleen mukana compatibility- ja trace-kayttoon
+- `ev_limit_a` on edelleen mukana trace- ja adapterikayttoon
 
 ### 2. Policy engine
 
@@ -82,7 +82,7 @@ Engine käyttää HAEO-plania seuraavasti:
 Tarkeä nykytila:
 
 - EV:n production contract writer-rajaan on wattipohjainen
-- `current_a` on edelleen trace-/compatibility-mirror
+- `current_a` on edelleen trace-mirror
 - writer tekee W -> A -muunnoksen adapteritasolla
 
 ## Combo-valinta

@@ -319,7 +319,7 @@ Those are valid because the Home Assistant charger selector is still amp-based.
 Inspect:
 
 ```text
-tests/e2e_entity/e2e_refactoring.md
+tests/e2e_entity/e2e_conventions.md
 ```
 
 If it is now only a stale migration plan, either:

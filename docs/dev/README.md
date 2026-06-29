@@ -9,6 +9,7 @@ skenaariodokumentit.
 4. `testausautomaatio.md`
 5. `HAEO_in_EMS.md`
 6. `e2e_tests_stories.md`
-7. `release_readiness_fix_plan.md`
-8. `e2e_scenario_yaml_migration_plan.md`
-9. `e2e/`
+7. `e2e/`
+
+Historialliset suunnitelma- ja tarkistuslistadokumentit on siirretty
+`docs/archive/`-kansioon.

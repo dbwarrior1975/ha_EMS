@@ -1,4 +1,4 @@
-# Scenario-specific grouped config for legacy 1 EV + 2 relay E2E coverage.
+# Scenario-specific grouped config for 1 EV + 2 relay E2E coverage.
 
 ems:
   profiles:

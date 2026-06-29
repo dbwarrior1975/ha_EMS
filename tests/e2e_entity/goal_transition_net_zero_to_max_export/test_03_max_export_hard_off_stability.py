@@ -1,7 +1,7 @@
 import pytest
 
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_max_export_hard_off_stability(project_root):

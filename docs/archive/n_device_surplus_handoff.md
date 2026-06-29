@@ -179,7 +179,7 @@ Status: completed.
 
 Toteutettu nykyisessa sessiossa:
 
-1. `tests/e2e_entity/refactored_runner.py` sai `device_entity(device_id, field)`
+1. `tests/e2e_entity/scenario_runner.py` sai `device_entity(device_id, field)`
    helperin.
 2. `seed_active_surplus_devices(...)` tukee nyt:
    - `active_device_ids`

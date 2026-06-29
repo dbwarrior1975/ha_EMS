@@ -133,7 +133,7 @@ Hyvaksynta:
 
 1. `h.device_entity('RELAY3', 'enabled')` toimii 3-releen skenaariossa, vaikka root configissa ei ole `RELAY3`:a.
 2. Virheviesti kertoo scenario config -polun, jos entity puuttuu.
-3. Uudet testit eivat tarvitse `tests.e2e_entity.refactored_runner.device_entity` -funktiota.
+3. Uudet testit eivat tarvitse `tests.e2e_entity.scenario_runner.device_entity` -funktiota.
 
 ## Vaihe 3: paivita e2e seed-helperit harness-aware-malliin
 
@@ -279,7 +279,7 @@ Poistettavat tai rajattavat asiat:
 
 1. `from tests.entity_ids import ENT` e2e-testitiedostoista
 2. `device_entity(...)` global helper e2e-asserttien ja seedauksen ensisijaisena pintana
-3. root `ENT` fallback `tests/e2e_entity/refactored_runner.py`:sta
+3. root `ENT` fallback `tests/e2e_entity/scenario_runner.py`:sta
 
 Sallittu jatkokaytto:
 
@@ -327,7 +327,7 @@ Tavoite: uusi malli on dokumentoitu ja siirtymavaiheen workaroundit poistettu.
 Paivitettavat dokumentit:
 
 1. `docs/dev/testausautomaatio.md`
-2. `tests/e2e_entity/e2e_refactoring.md`
+2. `tests/e2e_entity/e2e_conventions.md`
 3. scenario YAML -esimerkit `docs/user/config_examples.md`, jos helper-malli muuttaa testiviitteita
 
 Poistettavat workaroundit:

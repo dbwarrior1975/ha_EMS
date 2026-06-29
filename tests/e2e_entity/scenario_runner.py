@@ -1,26 +1,26 @@
 DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
-_LEGACY_STEP_KEYS = (
+_FORBIDDEN_STEP_KEYS = (
     'expect_policy_values',
 )
-_LEGACY_POLICY_FIELDS = (
+_FORBIDDEN_POLICY_FIELDS = (
     'policy_source',
     'ev_policy_mode',
 )
-_LEGACY_DISPATCH_FIELDS = (
+_FORBIDDEN_DISPATCH_FIELDS = (
     'adjustable_active',
     'relay1_active',
     'relay2_active',
 )
-_LEGACY_VALUE_ENTITY_IDS = (
+_FORBIDDEN_VALUE_ENTITY_IDS = (
     'input_boolean.ems_surplus_relay1_active',
     'input_boolean.ems_surplus_adjustable_active',
     'input_boolean.ems_surplus_relay2_active',
 )
-_LEGACY_WRITER_FIELDS = (
+_FORBIDDEN_WRITER_FIELDS = (
     'policy_source',
 )
-_LEGACY_WRITER_BRANCHES = (
+_FORBIDDEN_WRITER_BRANCHES = (
     'ev',
     'relay1',
     'relay2',
@@ -82,39 +82,39 @@ def _configured_device_order(active_ids, h=None):
     raise TypeError('e2e helpers require a QuarterScenarioHarness with scenario registry')
 
 
-def _assert_no_legacy_e2e_fields(idx, step):
+def _assert_no_deprecated_e2e_fields(idx, step):
     note = step['note']
-    for key in _LEGACY_STEP_KEYS:
+    for key in _FORBIDDEN_STEP_KEYS:
         assert key not in step, (
             f"step={idx} note={note} forbidden_step_key={key} "
             f"use canonical device-policy/device-dispatch assertions instead"
         )
 
     for field in step.get('expect_policy', {}):
-        assert field not in _LEGACY_POLICY_FIELDS, (
+        assert field not in _FORBIDDEN_POLICY_FIELDS, (
             f"step={idx} note={note} forbidden_policy_field={field} "
             f"use canonical policy trace fields instead"
         )
 
     for field in step.get('expect_dispatch_state', {}):
-        assert field not in _LEGACY_DISPATCH_FIELDS, (
+        assert field not in _FORBIDDEN_DISPATCH_FIELDS, (
             f"step={idx} note={note} forbidden_dispatch_field={field} "
             f"use active_surplus_device_ids or device_dispatch_* instead"
         )
 
     for entity_id in step.get('expect_values', {}):
-        assert entity_id not in _LEGACY_VALUE_ENTITY_IDS, (
+        assert entity_id not in _FORBIDDEN_VALUE_ENTITY_IDS, (
             f"step={idx} note={note} forbidden_expect_value_entity={entity_id} "
-            f"legacy policy/surplus mirror entities are not allowed in e2e asserts"
+            f"deprecated policy/surplus mirror entities are not allowed in e2e asserts"
         )
 
     for branch, expected_fields in step.get('expect_writer_trace', {}).items():
-        assert branch not in _LEGACY_WRITER_BRANCHES, (
+        assert branch not in _FORBIDDEN_WRITER_BRANCHES, (
             f"step={idx} note={note} forbidden_writer_branch={branch} "
             f"use device ids under writer_trace.devices instead"
         )
         for field in expected_fields:
-            assert field not in _LEGACY_WRITER_FIELDS, (
+            assert field not in _FORBIDDEN_WRITER_FIELDS, (
                 f"step={idx} note={note} forbidden_writer_field={branch}.{field} "
                 f"writer policy_source is not allowed in e2e asserts"
             )
@@ -259,9 +259,9 @@ def seed_battery_protect_runtime_state(
     })
 
 
-def run_refactored_steps(h, steps, *, validate=True):
+def run_scenario_steps(h, steps, *, validate=True):
     for idx, step in enumerate(steps):
-        _assert_no_legacy_e2e_fields(idx, step)
+        _assert_no_deprecated_e2e_fields(idx, step)
         h.step(set_values=step.get('set', {}), note=step['note'], at_s=step.get('at_s'))
 
         if not validate:

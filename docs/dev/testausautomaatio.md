@@ -30,7 +30,7 @@ Nykyinen koko testisetti ajetaan samalla komennolla:
 pytest -q tests
 ```
 
-Viimeisin varmennettu tila nykyisessa refaktorointivaiheessa:
+Viimeisin varmennettu tila nykyisessa siivousvaiheessa:
 
 1. `python3 -m pytest -q tests`
 2. `python3 -m pytest -q tests/e2e_entity`
@@ -204,7 +204,7 @@ Nykyiset testit kattavat esimerkiksi:
 
 ### HAEO-integraatio
 
-`modules/ems_core/integrations/haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. EV selector current -legacy-muunnos ei kuulu enaa HAEO-integraatioon. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
+`modules/ems_core/integrations/haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. EV selector current -muunnos ei kuulu enaa HAEO-integraatioon. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
 
 `tests/unit/test_ev_power.py` kattaa EV-domainin wattipohjaisen teho-virta-kvantisoinnin, rajojen johtamisen ja askelkoon validoinnin.
 
@@ -214,7 +214,7 @@ Grouped-config- ja parity-testeilla on nyt perustason kattavuus. Lisaakattavuude
 
 1. etta grouped-configin kaikki pakolliset device-pinnat on validoitu
 2. ettei runtime-entity-id -konflikteja ole
-3. etta grouped-configin ja compatibility-pintojen erot ovat tarkoituksellisia
+3. etta grouped-configin ja alias-pintojen erot ovat tarkoituksellisia
 
 ### DEGRADED- ja anti-flap-kattavuus
 

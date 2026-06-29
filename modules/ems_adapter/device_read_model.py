@@ -65,15 +65,18 @@ def _battery_heartbeat_timeout_s(cfg):
     return float(cfg.battery_heartbeat_timeout_s)
 
 
-def _ev_phases(cfg):
-    ev_device = cfg.first_device_by_kind('EV_CHARGER') if hasattr(cfg, 'first_device_by_kind') else None
-    if ev_device is not None:
-        return int(round(float(ev_device.adapter.phases)))
-    return int(round(float(getattr(cfg, 'ev_charger_phases', 1))))
+def _ev_adapter_int(value, default):
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return int(default)
 
 
-def _ev_voltage_v(cfg):
-    return float(getattr(cfg, 'ev_voltage_v', 230))
+def _ev_adapter_float(value, default):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _relay_nominal_absorb_w(cfg, device_id):
@@ -122,10 +125,12 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
             ev_runtime = _ev_runtime_state(m, device_id)
             ev_enabled = bool(ev_runtime.get('enabled', False))
             ev_current_a = int(ev_runtime.get('current_a', 0) or 0)
+            ev_phases = _ev_adapter_int(getattr(device.adapter, 'phases', None), 1)
+            ev_voltage_v = _ev_adapter_float(getattr(device.adapter, 'voltage_v', None), 230.0)
             ev_target_w = ev_current_a_to_power_w(
                 ev_current_a if ev_enabled else 0,
-                _ev_phases(cfg),
-                _ev_voltage_v(cfg),
+                ev_phases,
+                ev_voltage_v,
             )
             states.append(
                 EmsDeviceState(

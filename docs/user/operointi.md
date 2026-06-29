@@ -24,7 +24,7 @@ Kaytannollinen tulkinta:
 5. `actuator_writer_trace.devices` kertoo mita writer teki device-id-kohtaisesti
 6. `previous_device_state` kantaa yli syklien erityisesti EV:n edellisen moodin muistia
 
-Poistetut legacy-peilit:
+Poistetut vanhat peilit:
 
 1. vanhat policy mirror -sensorit on poistettu
 2. vanhat surplus active -boolean peilit on poistettu
@@ -152,7 +152,7 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 1. `input_datetime.ems_surplus_freeze_until`
 2. `sensor.ems_active_surplus_devices`
 
-### Poistetut legacy-peilit
+### Poistetut peilit
 
 1. vanhat policy mirror -sensorit on poistettu
 2. vanhat surplus active -boolean peilit on poistettu
@@ -165,7 +165,7 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 4. `switch.relay_1_2`
 5. `switch.relay_2_2`
 
-Nimet ylla ovat legacy-esimerkin Home Assistant -entityja. Canonical EMS-pinta
+Nimet ylla ovat yhden esimerkkiasennuksen Home Assistant -entityja. Canonical EMS-pinta
 ei sido releita nimiin `RELAY1` tai `RELAY2`, vaan writer trace raportoi
 toteuman device-id-kohtaisesti `sensor.ems_actuator_writer_trace` -sensorin
 `devices`-mapissa.
@@ -175,8 +175,8 @@ toteuman device-id-kohtaisesti `sensor.ems_actuator_writer_trace` -sensorin
 1. `sensor.ems_policy_decision_trace_pyscript`
 2. `sensor.ems_actuator_writer_trace`
 3. `sensor.ems_dispatch_state_applier_trace`
-4. deprecated scalar- ja compatibility-avaimet elavat vain adapteri-/debug-polussa,
-   eivat kanonisessa operointisopimuksessa
+4. adapteri-/debug-avaimet elavat vain diagnostiikassa, eivat kanonisessa
+   operointisopimuksessa
 
 ## Operatiivinen kayttaytyminen profiileittain
 
@@ -342,7 +342,7 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 Tulkitse policy trace oikein:
 
 1. `device_policies` on writerin kanoninen ohjauspyynto
-2. legacy scalar-peilit eivat kuulu release-sopimukseen
+2. yksittaiset peilikentat eivat kuulu release-sopimukseen
 3. writerin ampeeritotuus loytyy `actuator_writer_trace.devices.<device_id>.target_current_a`-kentasta valitulle EV:lle
 4. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
    toteutuneeseen actuator-traceen ja nykyiseen actuator-stateen

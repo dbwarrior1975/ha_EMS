@@ -31,13 +31,13 @@ Root `ENT` -riippuvuudet `tests/e2e_entity/`-puolella:
 
 - testit ja scenario-stepit importtaavat edelleen `tests.entity_ids.ENT` laajasti
 - harness kaytti globaalia `ENT`:a seedauksessa ja moduloiden injektoinnissa
-- `tests/e2e_entity/refactored_runner.py` kaytti globaalia `ENT`:a device-lookupissa ja aktiivisten laitteiden seedauksessa
+- `tests/e2e_entity/scenario_runner.py` kaytti globaalia `ENT`:a device-lookupissa ja aktiivisten laitteiden seedauksessa
 - `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/scenario_steps.py` sisaltaa paikallisen `RELAY3`-workaroundin
 
 Muutoskohteet vaiheille 1-3:
 
 - `tests/e2e_entity/scenario_harness.py`
-- `tests/e2e_entity/refactored_runner.py`
+- `tests/e2e_entity/scenario_runner.py`
 - regressiotestit kolmen releen scenario-YAML:lle
 
 ## Vaihe 5 regressiosuoja
@@ -55,7 +55,7 @@ Toteutettu:
 
 - e2e-testit ja `scenario_steps.py`-tiedostot eivat enaa importtaa `tests.entity_ids.ENT`:a
 - e2e-assertit ja seedaus kayttavat `h.ent`-registrya
-- `tests/e2e_entity/refactored_runner.py` ei fallbackaa root `ENT`:iin
+- `tests/e2e_entity/scenario_runner.py` ei fallbackaa root `ENT`:iin
 
 Jaljelle jaa sallitusti vain:
 
@@ -77,7 +77,7 @@ Toteutettu:
 
 - `docs/dev/testausautomaatio.md` kuvaa nyt scenario-YAML -mallin valmiina
   infrastruktuurina eika tulevana migraatiotavoitteena
-- `tests/e2e_entity/e2e_refactoring.md` dokumentoi `h.ent`- ja
+- `tests/e2e_entity/e2e_conventions.md` dokumentoi `h.ent`- ja
   `h.device_entity(...)` -pinnan e2e-polun ainoana entity-hakuna
 - `docs/user/config_examples.md` kertoo, etta e2e-skenaarion config kuuluu
   skenaariokansion omaan `EMS_config.yaml`:iin

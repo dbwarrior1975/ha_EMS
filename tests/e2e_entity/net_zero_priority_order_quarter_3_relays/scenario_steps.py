@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from tests.e2e_entity.refactored_runner import run_refactored_steps
-from tests.e2e_entity.refactored_runner import seed_active_surplus_devices
+from tests.e2e_entity.scenario_runner import run_scenario_steps
+from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
@@ -34,4 +34,4 @@ def build_harness(project_root):
 
 
 def run_steps(h, steps):
-    run_refactored_steps(h, steps)
+    run_scenario_steps(h, steps)
