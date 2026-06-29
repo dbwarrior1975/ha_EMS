@@ -455,7 +455,7 @@ Erityisen hyodyllisia attribuutteja:
 3. `dominant_limitation`
 4. `effective_forecast`
 5. `battery_write_enabled`
-6. `surplus_dispatch_decision`
+6. `surplus_device_dispatch_action`
 7. `ev_policy_mode`
 
 ## Tunnetut rajoitteet

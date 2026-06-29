@@ -83,6 +83,14 @@ def _relay_nominal_absorb_w(cfg, device_id):
     return int(round(float(relay.capabilities.max_absorb_w)))
 
 
+def _ev_runtime_state(m: RuntimeMeasurements, device_id: str) -> dict:
+    return dict((m.ev_states or {}).get(str(device_id), {}) or {})
+
+
+def _relay_runtime_state(m: RuntimeMeasurements, device_id: str) -> dict:
+    return dict((m.relay_states or {}).get(str(device_id), {}) or {})
+
+
 def build_device_states(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDeviceState, ...]:
     return _build_device_states_from_core_config(cfg, m)
 
@@ -93,18 +101,8 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
         m.soc is not None
         and float(m.battery_heartbeat_age_s) <= _battery_heartbeat_timeout_s(cfg)
     )
-    ev_target_w = ev_current_a_to_power_w(
-        m.charger_current_a if m.charger_on else 0,
-        _ev_phases(cfg),
-        _ev_voltage_v(cfg),
-    )
 
     states = []
-    relay_devices = tuple(cfg.devices_by_kind('RELAY'))
-    relay_state_map = dict(m.relay_states or {})
-    legacy_relay_flags = {}
-    for index, relay in enumerate(relay_devices[:2]):
-        legacy_relay_flags[str(relay.device_id)] = bool(m.relay1_on if index == 0 else m.relay2_on)
     for device in cfg.devices.values():
         device_id = str(device.device_id)
         kind = str(device.kind)
@@ -121,22 +119,31 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
             )
             continue
         if kind == 'EV_CHARGER':
+            ev_runtime = _ev_runtime_state(m, device_id)
+            ev_enabled = bool(ev_runtime.get('enabled', False))
+            ev_current_a = int(ev_runtime.get('current_a', 0) or 0)
+            ev_target_w = ev_current_a_to_power_w(
+                ev_current_a if ev_enabled else 0,
+                _ev_phases(cfg),
+                _ev_voltage_v(cfg),
+            )
             states.append(
                 EmsDeviceState(
                     device_id=device_id,
-                    available=True,
-                    active=bool(m.charger_on and int(m.charger_current_a) > 0),
+                    available=bool(ev_runtime),
+                    active=bool(ev_enabled and ev_current_a > 0),
                     measured_power_w=ev_target_w,
                     current_target_w=ev_target_w,
+                    guard_state='OK' if ev_runtime else 'UNWIRED',
                 )
             )
             continue
         if kind == 'RELAY':
-            relay_runtime = dict(relay_state_map.get(device_id, {}) or {})
+            relay_runtime = _relay_runtime_state(m, device_id)
             relay_on = relay_runtime.get('active')
-            relay_available = bool(relay_runtime) or device_id in legacy_relay_flags
+            relay_available = bool(relay_runtime)
             if relay_on is None:
-                relay_on = legacy_relay_flags.get(device_id, False)
+                relay_on = False
             relay_target_w = _relay_nominal_absorb_w(cfg, device_id) if relay_on else 0
             states.append(
                 EmsDeviceState(

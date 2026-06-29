@@ -200,6 +200,45 @@ def test_validate_rejects_ev_limits_that_cannot_be_represented_by_current_step(p
 
 
 @pytest.mark.unit
+def test_validate_rejects_unknown_ev_adapter_field_generically(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['adapter']['unexpected_field'] = 'input_number.foo'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.devices.EV_CHARGER.adapter.unexpected_field'] == (
+        'Unknown config field: ems.devices.EV_CHARGER.adapter.unexpected_field'
+    )
+
+
+@pytest.mark.unit
+def test_validate_rejects_unknown_relay_policy_field_generically(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['RELAY1']['policy']['extra_policy_flag'] = 'input_boolean.foo'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.devices.RELAY1.policy.extra_policy_flag'] == (
+        'Unknown config field: ems.devices.RELAY1.policy.extra_policy_flag'
+    )
+
+
+@pytest.mark.unit
+def test_validate_rejects_unknown_policy_output_field_generically(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs']['unexpected_output'] = 'sensor.foo'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_outputs.unexpected_output'] == (
+        'Unknown config field: ems.policy_outputs.unexpected_output'
+    )
+
+
+@pytest.mark.unit
 def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
     aliases = runtime_alias_index(config)

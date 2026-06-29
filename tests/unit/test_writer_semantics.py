@@ -48,13 +48,9 @@ def _load_writer_module(project_root):
         state[entity_id] = {'value': value, 'attrs': attrs or {}}
 
     ENT = {
-        'policy_battery_target_w': 'sensor.policy_battery',
         'actuator_battery_setpoint_w': 'input_number.test_actuator_battery_setpoint_w',
-        'policy_ev_current_a': 'sensor.policy_ev',
         'actuator_ev_enabled': 'input_boolean.actuator_ev_enabled',
         'actuator_ev_current_a': 'input_number.test_actuator_ev_current_a',
-        'policy_relay1_command': 'sensor.policy_relay1',
-        'policy_relay2_command': 'sensor.policy_relay2',
         'actuator_relay1': 'input_boolean.actuator_relay1',
         'actuator_relay2': 'input_boolean.actuator_relay2',
     }
@@ -123,10 +119,9 @@ def _install_core_capabilities(mod, **overrides):
 
 
 @pytest.mark.unit
-def test_writer_ev_without_device_policy_does_not_use_legacy_current_even_without_device_id(project_root):
+def test_writer_ev_without_device_policy_skips_without_writing_even_without_device_id(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
-    state[ENT['policy_ev_current_a']] = 12
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
 
@@ -144,7 +139,6 @@ def test_writer_manual_battery_is_hands_off(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     state['input_select.ems_control_profile'] = 'MANUAL'
-    state[ENT['policy_battery_target_w']] = 1500
     state[ENT['actuator_battery_setpoint_w']] = 250
 
     result = mod['_write_battery_actuator']()
@@ -170,7 +164,6 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
     )
 
     state['input_select.ems_control_profile'] = 'MANUAL_SAFE'
-    state[ENT['policy_battery_target_w']] = 500
     state[ENT['actuator_battery_setpoint_w']] = -500
 
     result = mod['_write_battery_actuator']()
@@ -181,10 +174,9 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
 
 
 @pytest.mark.unit
-def test_writer_ev_does_not_fallback_to_legacy_current_without_device_policy(project_root):
+def test_writer_ev_without_device_policy_skips_without_writing(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
-    state[ENT['policy_ev_current_a']] = 16
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
 
@@ -217,7 +209,6 @@ def test_writer_battery_can_read_device_policy_target(project_root):
     state['input_select.ems_control_profile'] = 'AUTOMATIC'
     state['input_number.ems_deadband_w'] = 1
     state['input_number.ems_ramp_max_w'] = 1000
-    state[ENT['policy_battery_target_w']] = 0
     state[ENT['actuator_battery_setpoint_w']] = 0
 
     result = mod['_write_battery_actuator']()
@@ -274,7 +265,6 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
         ],
     )
 
-    state[ENT['policy_ev_current_a']] = -1
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
     state['input_number.ems_ev_current_step_a'] = 1
@@ -337,7 +327,6 @@ def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(p
         ],
     )
 
-    state[ENT['policy_ev_current_a']] = -1
     state[ENT['actuator_ev_enabled']] = False
     state[ENT['actuator_ev_current_a']] = 4
     state['input_number.ems_ev_current_step_a'] = 4
@@ -384,7 +373,7 @@ def test_writer_ev_exact_max_target_w_maps_to_supported_max_current(project_root
 
 
 @pytest.mark.unit
-def test_writer_relay_device_policy_overrides_legacy_command(project_root):
+def test_writer_relay_device_policy_can_turn_off_actuator(project_root):
     mod, state, ENT = _load_writer_module(project_root)
     _install_core_capabilities(mod)
 
@@ -400,11 +389,10 @@ def test_writer_relay_device_policy_overrides_legacy_command(project_root):
         ],
     )
 
-    state[ENT['policy_relay1_command']] = 1
     state[ENT['actuator_relay1']] = True
 
     result = mod['_write_relay_actuator'](
-        ENT['policy_relay1_command'],
+        '',
         ENT['actuator_relay1'],
         'relay1',
         device_id='RELAY1',
@@ -435,7 +423,7 @@ def test_writer_relay_turns_off_when_absorb_is_disallowed(project_root):
     state[ENT['actuator_relay1']] = True
 
     result = mod['_write_relay_actuator'](
-        ENT['policy_relay1_command'],
+        '',
         ENT['actuator_relay1'],
         'relay1',
         device_id='RELAY1',
@@ -462,11 +450,10 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
         ],
     )
 
-    state[ENT['policy_relay1_command']] = 0
     state[ENT['actuator_relay1']] = True
 
     result = mod['_write_relay_actuator'](
-        ENT['policy_relay1_command'],
+        '',
         ENT['actuator_relay1'],
         'relay1',
         device_id='RELAY1',
@@ -479,7 +466,7 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
 
 
 @pytest.mark.unit
-def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(project_root):
+def test_writer_loop_uses_device_policies_across_all_devices(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies(
@@ -524,11 +511,6 @@ def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(pr
     state[ENT['actuator_ev_current_a']] = 6
     state[ENT['actuator_relay1']] = False
     state[ENT['actuator_relay2']] = True
-
-    state[ENT['policy_battery_target_w']] = -2000
-    state[ENT['policy_ev_current_a']] = -1
-    state[ENT['policy_relay1_command']] = 0
-    state[ENT['policy_relay2_command']] = 1
 
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
@@ -760,11 +742,8 @@ def test_writer_loop_disables_ev_and_restores_min_current_when_target_w_is_zero(
     state['input_number.ems_deadband_w'] = 100
     state['input_number.ems_ramp_max_w'] = 500
 
-    state[ENT['policy_battery_target_w']] = 0
     state[ENT['actuator_battery_setpoint_w']] = 0
 
-    state[ENT['policy_relay1_command']] = -1
-    state[ENT['policy_relay2_command']] = -1
     state[ENT['actuator_relay1']] = False
     state[ENT['actuator_relay2']] = False
 
@@ -773,7 +752,6 @@ def test_writer_loop_disables_ev_and_restores_min_current_when_target_w_is_zero(
     state[ENT['actuator_ev_current_a']] = 16
 
     # Policy kertoo, että aktiivinen EV-burn on päättynyt -> target_w 0
-    state[ENT['policy_ev_current_a']] = 0
     state['input_number.ems_ev_current_step_a'] = 1
     state['input_number.ems_ev_charger_phases'] = 1
     state['input_number.ems_ev_voltage_v'] = 230
@@ -811,7 +789,6 @@ def test_writer_hard_off_disables_ev_and_sets_current_to_derived_min(project_roo
 
     state[ENT['actuator_ev_enabled']] = True
     state[ENT['actuator_ev_current_a']] = 16
-    state[ENT['policy_ev_current_a']] = 0
     state['input_number.ems_ev_current_step_a'] = 1
     state['input_number.ems_ev_charger_phases'] = 1
     state['input_number.ems_ev_voltage_v'] = 230

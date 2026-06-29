@@ -56,12 +56,8 @@ Writer trace:
 
 Naita ei kayteta e2e-kansion behavioral assert -pintana:
 
-- `policy_ev_current_a`
-- `policy_relay1_command`
-- `policy_relay2_command`
-- `policy_battery_target_w`
-- `surplus_dispatch_decision_pys`
-- legacy `relay*_command` / `surplus_dispatch_decision` tracekentat
+- vanhat policy mirror -kentat
+- vanhat standalone dispatch mirror -kentat
 
 Jos jokin arvo kuuluu vain compatibility- tai contract-pintaan, testaa se
 siella, ei `tests/e2e_entity/`-kansiossa.

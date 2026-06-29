@@ -39,14 +39,9 @@ osin kuin niita ei ole katettu nykyisilla e2e-testeilla.
 
 Seuraavat Home Assistant -entityt poistuvat eivatka paivity enaa:
 
-1. `sensor.ems_policy_battery_target_w_pyscript`
-2. `sensor.ems_policy_ev_current_a_pyscript`
-3. `sensor.ems_policy_relay1_command_pyscript`
-4. `sensor.ems_policy_relay2_command_pyscript`
-5. `sensor.ems_net_zero_surplus_dispatch_decision_pyscript`
-6. `input_boolean.ems_surplus_adjustable_active`
-7. `input_boolean.ems_surplus_relay1_active`
-8. `input_boolean.ems_surplus_relay2_active`
+1. vanhat policy mirror -sensorit
+2. vanha standalone surplus dispatch -mirrorisensori
+3. vanhat surplus active -boolean peilit
 
 Jos Home Assistant -automaatiot, dashboardit tai template-sensorit ovat
 nojaaneet naihin entityihin, ne on paivitettava.

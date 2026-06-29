@@ -26,13 +26,8 @@ Kaytannollinen tulkinta:
 
 Poistetut legacy-peilit:
 
-1. `sensor.ems_policy_battery_target_w_pyscript`
-2. `sensor.ems_policy_ev_current_a_pyscript`
-3. `sensor.ems_policy_relay1_command_pyscript`
-4. `sensor.ems_policy_relay2_command_pyscript`
-5. `input_boolean.ems_surplus_adjustable_active`
-6. `input_boolean.ems_surplus_relay1_active`
-7. `input_boolean.ems_surplus_relay2_active`
+1. vanhat policy mirror -sensorit on poistettu
+2. vanhat surplus active -boolean peilit on poistettu
 
 Jos HA:ssa on viela automaatioita tai dashboardeja, jotka lukevat naita, ne
 pitää paivittaa kayttamaan kanonisia entityja.
@@ -159,13 +154,8 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 
 ### Poistetut legacy-peilit
 
-1. `sensor.ems_policy_battery_target_w_pyscript`
-2. `sensor.ems_policy_ev_current_a_pyscript`
-3. `sensor.ems_policy_relay1_command_pyscript`
-4. `sensor.ems_policy_relay2_command_pyscript`
-5. `input_boolean.ems_surplus_adjustable_active`
-6. `input_boolean.ems_surplus_relay1_active`
-7. `input_boolean.ems_surplus_relay2_active`
+1. vanhat policy mirror -sensorit on poistettu
+2. vanhat surplus active -boolean peilit on poistettu
 
 ### Aktuaattorit
 

@@ -143,7 +143,6 @@ ems:
     decision_trace: sensor.ems_policy_decision_trace_pyscript
     device_policies: sensor.ems_device_policies_pyscript
     surplus_policy_active: binary_sensor.ems_net_zero_surplus_policy_active_pyscript
-    surplus_dispatch_decision: sensor.ems_net_zero_surplus_dispatch_decision_pyscript
     surplus_next_target: sensor.ems_net_zero_surplus_next_target_pyscript
     surplus_next_threshold: sensor.ems_net_zero_surplus_next_threshold_kw_pyscript
     surplus_release_candidate: sensor.ems_net_zero_surplus_release_candidate_pyscript

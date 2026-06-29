@@ -42,30 +42,16 @@ def read_profiles(entities):
     )
 
 
-def _compat_device(cfg, kind, index=0):
-    if kind == 'EV_CHARGER':
-        device = getattr(cfg, 'ev_charger', None)
-        if device is not None and str(getattr(device, 'kind', '')) == 'EV_CHARGER':
-            return device
-        if hasattr(cfg, 'first_device_by_kind'):
-            return cfg.first_device_by_kind('EV_CHARGER')
-        return None
-
-    if kind == 'RELAY':
-        attr_name = f'relay{index + 1}'
-        device = getattr(cfg, attr_name, None)
-        if device is not None and str(getattr(device, 'kind', '')) == 'RELAY':
-            return device
-        if hasattr(cfg, 'nth_device_by_kind'):
-            return cfg.nth_device_by_kind('RELAY', index)
-    return None
-
-
-def _compat_device_id(cfg, kind, index=0, default=''):
-    device = _compat_device(cfg, kind, index=index)
-    if device is None:
-        return str(default or '')
-    return str(getattr(device, 'device_id', '') or default or '')
+def _ev_state_payload(device):
+    enabled_entity = device.get('enabled', '')
+    current_entity = device.get('current_a', '')
+    current_a = get_int(current_entity, 0)
+    return {
+        'enabled': get_bool(enabled_entity),
+        'current_a': current_a,
+        'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
+        'active': bool(get_bool(enabled_entity) and current_a > 0),
+    }
 
 
 def read_measurements(now_ts, cfg, entities):
@@ -85,18 +71,7 @@ def read_measurements(now_ts, cfg, entities):
                 'active': str(device_id) in active_surplus_device_ids,
             }
         elif kind == 'EV_CHARGER':
-            ev_states[str(device_id)] = {
-                'enabled': get_bool(device.get('enabled', '')),
-                'current_a': get_int(device.get('current_a', ''), 0),
-                'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
-            }
-
-    ev_device_id = _compat_device_id(cfg, 'EV_CHARGER', default='EV_CHARGER')
-    relay1_device_id = _compat_device_id(cfg, 'RELAY', index=0, default='RELAY1')
-    relay2_device_id = _compat_device_id(cfg, 'RELAY', index=1, default='RELAY2')
-    ev_runtime = device_entities.get(ev_device_id, {})
-    relay1_runtime = device_entities.get(relay1_device_id, {})
-    relay2_runtime = device_entities.get(relay2_device_id, {})
+            ev_states[str(device_id)] = _ev_state_payload(device)
 
     return RuntimeMeasurements(
         now_ts=now_ts,
@@ -106,10 +81,6 @@ def read_measurements(now_ts, cfg, entities):
         grid_power_w=get_float(entities['grid_power_w'], 0),
         current_battery_setpoint_w=get_float(entities['current_battery_sp'], 100),
         hourly_energy_balance_kwh=get_float(entities['hourly_energy_balance'], 0),
-        charger_on=get_bool(ev_runtime.get('enabled', '')),
-        charger_current_a=get_int(ev_runtime.get('current_a', ''), 4),
-        relay1_on=get_bool(relay1_runtime.get('enabled', '')),
-        relay2_on=get_bool(relay2_runtime.get('enabled', '')),
         relay_states=relay_states,
         ev_states=ev_states,
     )

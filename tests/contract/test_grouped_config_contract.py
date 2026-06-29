@@ -105,3 +105,18 @@ def test_example_grouped_config_exposes_explicit_unit_aliases(project_root):
     assert aliases['pv_power_kw'].unit_transform == 'W_TO_KW'
     assert aliases['ev_hard_off_pv_threshold_kw'].unit_transform == 'W_TO_KW'
     assert aliases['ev_hard_off_pv_threshold_kw'].config_path == 'ems.devices.EV_CHARGER.policy.low_pv_threshold_w'
+
+
+@pytest.mark.unit
+def test_grouped_config_rejects_unknown_fields_in_active_contract(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    config['ems']['devices']['EV_CHARGER']['adapter']['unexpected_field'] = 'input_number.foo'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert any(
+        issue.path == 'ems.devices.EV_CHARGER.adapter.unexpected_field'
+        and issue.message == 'Unknown config field: ems.devices.EV_CHARGER.adapter.unexpected_field'
+        for issue in result.errors
+    )

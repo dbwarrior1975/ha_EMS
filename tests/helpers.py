@@ -221,7 +221,6 @@ def make_cfg(**overrides):
             decision_trace='sensor.decision_trace',
             device_policies='sensor.device_policies',
             surplus_policy_active='binary_sensor.surplus_policy_active',
-            surplus_dispatch_decision='sensor.surplus_dispatch_decision',
         ),
         devices={
             'HOME_BATTERY': home_battery,
@@ -266,6 +265,25 @@ def cfg_ev_max_a(cfg):
 
 
 def make_m(**overrides):
+    ev_states = dict(overrides.pop('ev_states', {}) or {})
+    relay_states = dict(overrides.pop('relay_states', {}) or {})
+
+    charger_on = overrides.pop('charger_on', False)
+    charger_current_a = overrides.pop('charger_current_a', 4)
+    relay1_on = overrides.pop('relay1_on', False)
+    relay2_on = overrides.pop('relay2_on', False)
+
+    ev_states.setdefault(
+        'EV_CHARGER',
+        {
+            'enabled': bool(charger_on),
+            'current_a': int(charger_current_a),
+            'active': bool(charger_on and int(charger_current_a) > 0),
+        },
+    )
+    relay_states.setdefault('RELAY1', {'active': bool(relay1_on)})
+    relay_states.setdefault('RELAY2', {'active': bool(relay2_on)})
+
     data = dict(
         now_ts=0.0,
         soc=50.0,
@@ -274,10 +292,8 @@ def make_m(**overrides):
         grid_power_w=0.0,
         current_battery_setpoint_w=100.0,
         hourly_energy_balance_kwh=0.0,
-        charger_on=False,
-        charger_current_a=4,
-        relay1_on=False,
-        relay2_on=False,
+        ev_states=ev_states,
+        relay_states=relay_states,
     )
     data.update(overrides)
     return RuntimeMeasurements(**data)

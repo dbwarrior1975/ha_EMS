@@ -66,6 +66,56 @@ ALLOWED_ROLE_KEYS = {
     'EV_PRIMARY',
     'HOME_BATTERY_PRIMARY',
 }
+ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
+ALLOWED_POLICY_OUTPUT_KEYS = frozenset(
+    (
+        'decision_trace',
+        'device_policies',
+        'surplus_policy_active',
+        'surplus_next_target',
+        'surplus_next_threshold',
+        'surplus_release_candidate',
+        'surplus_explanation',
+        'actuator_writer_trace',
+    )
+)
+ALLOWED_DEVICE_KEYS = frozenset(('kind', 'capabilities', 'policy', 'adapter', 'guard'))
+ALLOWED_CAPABILITIES_KEYS = frozenset(
+    (
+        'can_absorb_w',
+        'can_produce_w',
+        'min_absorb_w',
+        'max_absorb_w',
+        'step_w',
+        'max_produce_w',
+    )
+)
+ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'default_min_absorb_w'))
+ALLOWED_BATTERY_GUARD_KEYS = frozenset(
+    (
+        'soc',
+        'min_cell_voltage_v',
+        'heartbeat',
+        'protect_soc',
+        'protect_soc_recovery_margin',
+        'protect_min_cell_voltage_v',
+        'protect_min_absorb_w',
+    )
+)
+ALLOWED_BATTERY_ADAPTER_KEYS = frozenset(('target_w', 'measured_power_w'))
+ALLOWED_EV_POLICY_KEYS = frozenset(
+    (
+        'priority',
+        'surplus_allowed',
+        'force_on',
+        'low_pv_threshold_w',
+        'hard_off_low_pv_cycles',
+        'hard_off_release_cycles',
+    )
+)
+ALLOWED_EV_ADAPTER_KEYS = frozenset(('enabled', 'current_a', 'current_step_a', 'phases', 'voltage_v'))
+ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'force_on'))
+ALLOWED_RELAY_ADAPTER_KEYS = frozenset(('enabled',))
 
 
 @dataclass
@@ -141,6 +191,8 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         issues.append(_issue('ems', SEVERITY_ERROR, 'missing or not a mapping'))
         return _validation_result(False, issues)
 
+    _validate_unknown_fields(ems, 'ems', ALLOWED_EMS_SECTION_KEYS, issues)
+
     for section in REQUIRED_TOP_LEVEL_SECTIONS:
         if section not in ems:
             issues.append(_issue(f'ems.{section}', SEVERITY_ERROR, 'missing required section'))
@@ -191,6 +243,12 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         )
 
     if isinstance(ems.get('policy_outputs'), dict):
+        _validate_unknown_fields(
+            ems['policy_outputs'],
+            'ems.policy_outputs',
+            ALLOWED_POLICY_OUTPUT_KEYS,
+            issues,
+        )
         _validate_required_entities(
             ems['policy_outputs'],
             'ems.policy_outputs',
@@ -198,7 +256,6 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
                 'decision_trace',
                 'device_policies',
                 'surplus_policy_active',
-                'surplus_dispatch_decision',
                 'surplus_next_target',
                 'surplus_next_threshold',
                 'surplus_release_candidate',
@@ -485,7 +542,6 @@ def build_core_config_from_grouped_reader(
             decision_trace=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'decision_trace'), read_entity, ''),
             device_policies=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'device_policies'), read_entity, ''),
             surplus_policy_active=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'surplus_policy_active'), read_entity, ''),
-            surplus_dispatch_decision=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'surplus_dispatch_decision'), read_entity, ''),
         ),
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),
@@ -583,6 +639,7 @@ def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> Non
 def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue]) -> None:
     device_path = f'ems.devices.{device_id}'
     kind = device.get('kind')
+    _validate_unknown_fields(device, device_path, ALLOWED_DEVICE_KEYS, issues)
     if kind not in SUPPORTED_DEVICE_KINDS:
         issues.append(_issue(f'{device_path}.kind', SEVERITY_ERROR, f'unsupported kind {kind!r}'))
     elif expected_kind is not None and kind != expected_kind:
@@ -604,6 +661,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             issues.append(_issue(f'{device_path}.{section}', SEVERITY_ERROR, 'must be a mapping'))
 
     if device_id == 'HOME_BATTERY' and isinstance(device.get('guard'), dict):
+        _validate_unknown_fields(
+            device['guard'],
+            f'{device_path}.guard',
+            ALLOWED_BATTERY_GUARD_KEYS,
+            issues,
+        )
         _validate_required_entities(
             device['guard'],
             f'{device_path}.guard',
@@ -611,7 +674,21 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             issues,
         )
 
+    if device_id == 'HOME_BATTERY' and isinstance(device.get('policy'), dict):
+        _validate_unknown_fields(
+            device['policy'],
+            f'{device_path}.policy',
+            ALLOWED_BATTERY_POLICY_KEYS,
+            issues,
+        )
+
     if device_id == 'HOME_BATTERY' and isinstance(device.get('adapter'), dict):
+        _validate_unknown_fields(
+            device['adapter'],
+            f'{device_path}.adapter',
+            ALLOWED_BATTERY_ADAPTER_KEYS,
+            issues,
+        )
         _validate_required_entities(
             device['adapter'],
             f'{device_path}.adapter',
@@ -620,6 +697,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         )
 
     if kind == 'EV_CHARGER' and isinstance(device.get('policy'), dict):
+        _validate_unknown_fields(
+            device['policy'],
+            f'{device_path}.policy',
+            ALLOWED_EV_POLICY_KEYS,
+            issues,
+        )
         _validate_required_entities(
             device['policy'],
             f'{device_path}.policy',
@@ -628,6 +711,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         )
 
     if kind == 'EV_CHARGER' and isinstance(device.get('adapter'), dict):
+        _validate_unknown_fields(
+            device['adapter'],
+            f'{device_path}.adapter',
+            ALLOWED_EV_ADAPTER_KEYS,
+            issues,
+        )
         _validate_required_entities(
             device['adapter'],
             f'{device_path}.adapter',
@@ -641,6 +730,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
 
     if kind == 'RELAY':
         if isinstance(device.get('policy'), dict):
+            _validate_unknown_fields(
+                device['policy'],
+                f'{device_path}.policy',
+                ALLOWED_RELAY_POLICY_KEYS,
+                issues,
+            )
             _validate_required_entities(
                 device['policy'],
                 f'{device_path}.policy',
@@ -648,6 +743,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                 issues,
             )
         if isinstance(device.get('adapter'), dict):
+            _validate_unknown_fields(
+                device['adapter'],
+                f'{device_path}.adapter',
+                ALLOWED_RELAY_ADAPTER_KEYS,
+                issues,
+            )
             _validate_required_entities(
                 device['adapter'],
                 f'{device_path}.adapter',
@@ -663,6 +764,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
 
 
 def _validate_capabilities(device_path: str, capabilities: dict, issues: list[ConfigValidationIssue]) -> None:
+    _validate_unknown_fields(
+        capabilities,
+        f'{device_path}.capabilities',
+        ALLOWED_CAPABILITIES_KEYS,
+        issues,
+    )
     bool_fields = ('can_absorb_w', 'can_produce_w')
     entity_or_number_fields = ('min_absorb_w', 'max_absorb_w')
     if not device_path.endswith('.EV_CHARGER'):
@@ -845,6 +952,17 @@ def _validate_entity_or_number(
         return
 
     issues.append(_issue(path, SEVERITY_ERROR, 'must be an entity id string or numeric constant'))
+
+
+def _validate_unknown_fields(
+    section: dict,
+    section_path: str,
+    allowed_fields: frozenset[str],
+    issues: list[ConfigValidationIssue],
+) -> None:
+    for field in section:
+        if field not in allowed_fields:
+            issues.append(_issue(f'{section_path}.{field}', SEVERITY_ERROR, f'Unknown config field: {section_path}.{field}'))
 
 
 def _is_valid_entity_id(value: object) -> bool:

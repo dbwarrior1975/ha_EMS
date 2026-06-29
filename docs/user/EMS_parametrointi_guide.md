@@ -370,7 +370,7 @@ Suositeltu jarjestys kenttakayttoon:
 
 Vahintaan seuraa näitä kenttia ongelmanrajausta varten:
 
-- surplus_dispatch_decision
+- surplus_device_dispatch_action
 - surplus_explanation
 - ev_policy_mode
 - ev_hard_off_active

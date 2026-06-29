@@ -194,7 +194,6 @@ class CorePolicyOutputsConfig:
     decision_trace: EntityRef
     device_policies: EntityRef
     surplus_policy_active: EntityRef
-    surplus_dispatch_decision: EntityRef
 
 
 @dataclass
@@ -379,12 +378,14 @@ class RuntimeMeasurements:
     grid_power_w: float
     current_battery_setpoint_w: float
     hourly_energy_balance_kwh: float
-    charger_on: bool
-    charger_current_a: int
-    relay1_on: bool
-    relay2_on: bool
     relay_states: Optional[dict[str, dict]] = None
     ev_states: Optional[dict[str, dict]] = None
+
+    def __post_init__(self):
+        if self.relay_states is None:
+            self.relay_states = {}
+        if self.ev_states is None:
+            self.ev_states = {}
 
 
 @dataclass

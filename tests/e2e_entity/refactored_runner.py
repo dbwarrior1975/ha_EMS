@@ -6,9 +6,6 @@ _LEGACY_STEP_KEYS = (
 _LEGACY_POLICY_FIELDS = (
     'policy_source',
     'ev_policy_mode',
-    'relay1_command',
-    'relay2_command',
-    'surplus_dispatch_decision',
 )
 _LEGACY_DISPATCH_FIELDS = (
     'adjustable_active',
@@ -16,11 +13,6 @@ _LEGACY_DISPATCH_FIELDS = (
     'relay2_active',
 )
 _LEGACY_VALUE_ENTITY_IDS = (
-    'sensor.ems_policy_battery_target_w_pyscript',
-    'sensor.ems_policy_ev_current_a_pyscript',
-    'sensor.ems_policy_relay1_command_pyscript',
-    'sensor.ems_policy_relay2_command_pyscript',
-    'sensor.ems_net_zero_surplus_dispatch_decision_pyscript',
     'input_boolean.ems_surplus_relay1_active',
     'input_boolean.ems_surplus_adjustable_active',
     'input_boolean.ems_surplus_relay2_active',

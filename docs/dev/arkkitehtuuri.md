@@ -505,7 +505,7 @@ Keskeisia attribuutteja:
 10. `surplus_next_target`
 11. `surplus_next_threshold_kw`
 12. `surplus_release_candidate`
-13. `surplus_dispatch_decision`
+13. `surplus_device_dispatch_action`
 14. `surplus_explanation`
 15. `configured_forecast`
 16. `active_stack`
