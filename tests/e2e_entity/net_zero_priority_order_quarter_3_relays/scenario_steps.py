@@ -17,7 +17,7 @@ def build_harness(project_root):
         E['adjustable_surplus_load_priority']: 3,
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,
-        E['ev_max_current_a']: 28,
+        E['ev_max_absorb_w']: 6440,
         E['relay1_priority']: 4,
         E['relay2_priority']: 2,
         relay3['priority']: 1,

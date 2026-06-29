@@ -3,7 +3,7 @@ import pytest
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from ems_core.domain.models import ControlProfile, ForecastProfile, GoalProfile, GuardProfile
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
-from tests.helpers import make_cfg, make_haeo, make_profiles
+from tests.helpers import ev_w, make_cfg, make_haeo, make_profiles
 
 
 def _fresh_haeo(**overrides):
@@ -53,12 +53,9 @@ def _core_cfg_with_selected_custom_ev(
         'adapter': {
             'enabled': 'switch.ev_garage_enabled',
             'current_a': 'number.ev_garage_current_a',
-            'current_min_a': 'input_number.ems_ev_garage_min_current_a',
-            'current_max_a': 'input_number.ems_ev_garage_max_current_a',
             'current_step_a': 'input_number.ems_ev_garage_current_step_a',
             'phases': 'input_number.ems_ev_garage_phases',
             'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-            'force_current_a': 'input_number.ems_ev_garage_force_current_a',
         },
     }
 
@@ -85,12 +82,9 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 2,
-        'input_number.ems_ev_min_current_a': 6,
-        'input_number.ems_ev_max_current_a': 16,
         'input_number.ems_ev_current_step_a': 2,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
-        'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_relay1_nominal_absorb_w': 2500,
         'input_number.ems_relay1_power_kw': 2500,
@@ -105,13 +99,10 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,
         'input_number.ems_ev_garage_release_cycles': 2,
-        'input_number.ems_ev_garage_min_current_a': 10,
-        'input_number.ems_ev_garage_max_current_a': 30,
         'input_number.ems_ev_garage_current_step_a': 10,
         'input_number.ems_ev_garage_phases': 1,
         'input_number.ems_ev_garage_voltage_v': 230,
         'input_boolean.ems_ev_garage_force_on': False,
-        'input_number.ems_ev_garage_force_current_a': 0,
     }
     return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
@@ -120,7 +111,7 @@ def _core_cfg_with_selected_custom_ev(
 def test_ev_larger_forecast_selects_ev_primary():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
-        make_cfg(ev_min_current_a=4, ev_current_step_a=4),
+        make_cfg(ev_min_absorb_w=ev_w(4), ev_current_step_a=4),
         _fresh_haeo(battery_target_kw=2.0, ev_target_kw=5.0),
         now_ts=0.0,
     )
@@ -138,7 +129,7 @@ def test_ev_larger_forecast_selects_ev_primary():
 def test_battery_larger_forecast_selects_home_battery_primary():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
-        make_cfg(ev_min_current_a=4, ev_current_step_a=4),
+        make_cfg(ev_min_absorb_w=ev_w(4), ev_current_step_a=4),
         _fresh_haeo(battery_target_kw=3.0, ev_target_kw=1.5),
         now_ts=0.0,
     )
@@ -239,7 +230,7 @@ def test_zero_forecast_disables_plan():
 def test_limits_are_clamped_to_device_bounds():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
-        make_cfg(max_solar_charge_w=2500, ev_max_current_a=10, ev_min_current_a=4, ev_current_step_a=4),
+        make_cfg(max_solar_charge_w=2500, ev_max_absorb_w=ev_w(10), ev_min_absorb_w=ev_w(4), ev_current_step_a=4),
         _fresh_haeo(battery_target_kw=6.0, ev_target_kw=9.0),
         now_ts=0.0,
     )

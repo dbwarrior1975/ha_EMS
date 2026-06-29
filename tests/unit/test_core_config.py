@@ -112,9 +112,8 @@ def test_build_core_config_from_grouped_config_maps_devices_with_kind_specific_f
     assert ev_device.policy.low_pv_threshold_w == 1.6
     assert ev_device.adapter.voltage_v == 230
     assert ev_device.adapter.current_step_a == 4
-    assert ev_device.adapter.force_current_a is None
-    assert core.ev_min_current_a == 20
-    assert core.ev_max_current_a == 48
+    assert ev_device.capabilities.min_absorb_w == 4140
+    assert ev_device.capabilities.max_absorb_w == 11040
 
     assert relay1 is not None
     assert relay1.kind == 'RELAY'

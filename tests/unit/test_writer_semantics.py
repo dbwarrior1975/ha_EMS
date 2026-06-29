@@ -567,8 +567,8 @@ def test_writer_loop_uses_device_policies_when_legacy_policy_sensors_conflict(pr
     state['input_select.ems_control_profile'] = 'AUTOMATIC'
     state['input_number.ems_deadband_w'] = 1
     state['input_number.ems_ramp_max_w'] = 1000
-    state['input_number.ems_ev_min_current_a'] = 6
-    state['input_number.ems_ev_max_current_a'] = 28
+    state['input_number.ems_ev_min_power_w'] = 1380
+    state['input_number.ems_ev_max_power_w'] = 6440
     state['input_number.ems_ev_current_step_a'] = 2
     state['input_number.ems_ev_charger_phases'] = 1
     state[ENT['actuator_battery_setpoint_w']] = 0

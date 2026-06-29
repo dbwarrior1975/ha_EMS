@@ -63,16 +63,17 @@ Keskeiset konfiguraatioentiteetit:
 6. `input_number.ems_battery_protect_soc`
 7. `input_number.ems_battery_protect_soc_recovery_margin`
 8. `input_number.ems_battery_protect_min_cell_voltage_v`
-9. `input_number.ems_ev_min_current_a`
-10. `input_number.ems_ev_max_current_a`
+9. `input_number.ems_ev_min_power_w`
+10. `input_number.ems_ev_max_power_w`
 11. `input_number.ems_ev_charger_phases`
-12. `input_number.ems_ev_force_current_a`
+12. `input_boolean.ems_ev_force_on`
 13. `input_number.ems_ev_hard_off_pv_threshold_kw`
 14. `input_number.ems_ev_hard_off_low_pv_cycles`
 15. `input_number.ems_ev_hard_off_release_cycles`
 16. `input_number.ems_ev_current_step_a`
-17. `input_number.ems_haeo_stale_timeout_s`
-18. relekohtaiset power/helper-entityt, esimerkiksi `input_number.ems_relay_sauna_power_kw`
+17. `input_number.ems_ev_voltage_v`
+18. `input_number.ems_haeo_stale_timeout_s`
+19. relekohtaiset power/helper-entityt, esimerkiksi `input_number.ems_relay_sauna_power_kw`
 19. relekohtaiset nominal/step-helperit, esimerkiksi `input_number.ems_relay_sauna_nominal_absorb_w`
 20. `input_number.ems_nz_battery_floor_default_w`
 21. `input_number.ems_nz_battery_floor_ev_active_w`
@@ -222,9 +223,9 @@ Nykyinen writer-koodi tukee tata semantiikkaa `ev_policy_mode=hard_off` -attribu
 Nykyinen kayttaytyminen:
 
 1. akun paikallinen fallback-target on `100` W
-2. EV oletuksena `ev_max_current_a`
-3. jos `ev_force_current_a > 0`, sita kunnioitetaan
-4. jos HAEO on voimassa, EV-current voidaan johtaa HAEO-targetista
+2. EV oletuksena `capabilities.max_absorb_w`
+3. jos `ev_force_on` on tosi, EV pidetaan `capabilities.max_absorb_w` -tasolla
+4. jos HAEO on voimassa, EV-target voidaan johtaa HAEO-targetista watteina
 5. releet pysyvat pois paalta
 
 ### `MANUAL`
@@ -233,7 +234,7 @@ Nykyinen kayttaytyminen:
 
 1. akkuun ei kirjoiteta writerissa
 2. moottori raportoi `battery_write_enabled=False`
-3. EV-virta tulee `ev_force_current_a`:sta, jos se on yli nollan
+3. EV-target tulee `capabilities.max_absorb_w`:sta, jos `ev_force_on` on tosi
 4. muuten EV skipataan
 5. releet seuraavat vain `force_on`-tilaa
 
@@ -383,7 +384,7 @@ Tulkitse:
 
 Tarkista:
 
-1. `ev_force_current_a`
+1. `ev_force_on`
 2. `goal_profile`
 3. `sensor.ems_device_policies_pyscript`
 4. `actuator_writer_trace.ev.reason`

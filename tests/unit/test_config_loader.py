@@ -24,6 +24,10 @@ def _error_paths(result):
     return {issue.path for issue in result.issues if issue.severity == SEVERITY_ERROR}
 
 
+def _error_messages(result):
+    return {issue.path: issue.message for issue in result.issues if issue.severity == SEVERITY_ERROR}
+
+
 @pytest.mark.unit
 def test_example_grouped_config_loads_and_validates(project_root):
     config, result = load_and_validate_grouped_ems_config(project_root / 'example_EMS_config.yaml')
@@ -193,6 +197,31 @@ def test_validate_rejects_ev_limits_that_cannot_be_represented_by_current_step(p
 
     assert result.ok is False
     assert 'ems.devices.EV_CHARGER.adapter.current_step_a' in _error_paths(result)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('field', 'value', 'expected_hint'),
+    (
+        ('current_min_a', 'input_number.legacy_ev_min_current_a', 'capabilities.min_absorb_w'),
+        ('current_max_a', 'input_number.legacy_ev_max_current_a', 'capabilities.max_absorb_w'),
+        (
+            'force_current_a',
+            'input_number.legacy_ev_force_current_a',
+            'policy.force_on',
+        ),
+    ),
+)
+def test_validate_rejects_deprecated_ev_adapter_fields(project_root, field, value, expected_hint):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['adapter'][field] = value
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    path = f'ems.devices.EV_CHARGER.adapter.{field}'
+    assert path in _error_paths(result)
+    assert expected_hint in _error_messages(result)[path]
 
 
 @pytest.mark.unit

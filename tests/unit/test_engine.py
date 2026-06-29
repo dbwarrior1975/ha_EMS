@@ -3,7 +3,7 @@ from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, Do
 from ems_core.domain.ev_power import ev_min_power_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
-from tests.helpers import make_profiles, make_cfg, make_m, make_haeo, make_nz
+from tests.helpers import cfg_ev_min_a, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
 def _core_cfg_with_capability_overrides(project_root, value_overrides=None, **device_capability_overrides):
@@ -36,13 +36,10 @@ def _core_cfg_with_capability_overrides(project_root, value_overrides=None, **de
         'input_number.ems_ev_hard_off_release_cycles': 2,
         'input_number.ems_ev_min_power_w': 1380,
         'input_number.ems_ev_max_power_w': 3680,
-        'input_number.ems_ev_min_current_a': 6,
-        'input_number.ems_ev_max_current_a': 16,
         'input_number.ems_ev_current_step_a': 2,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
         'input_boolean.ems_ev_force_on': False,
-        'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_relay1_nominal_absorb_w': 2500,
         'input_number.ems_relay1_power_kw': 2500,
@@ -89,13 +86,10 @@ def _core_cfg_with_extra_devices(
         'input_number.ems_ev_hard_off_release_cycles': 2,
         'input_number.ems_ev_min_power_w': 1380,
         'input_number.ems_ev_max_power_w': 3680,
-        'input_number.ems_ev_min_current_a': 6,
-        'input_number.ems_ev_max_current_a': 16,
         'input_number.ems_ev_current_step_a': 2,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
         'input_boolean.ems_ev_force_on': False,
-        'input_number.ems_ev_force_current_a': 0,
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_relay1_nominal_absorb_w': 2500,
         'input_number.ems_relay1_power_kw': 2500,
@@ -170,12 +164,9 @@ def _garage_ev_device_config():
         'adapter': {
             'enabled': 'switch.garage_ev_enabled',
             'current_a': 'number.garage_ev_current_a',
-            'current_min_a': 'input_number.garage_ev_min_current_a',
-            'current_max_a': 'input_number.garage_ev_max_current_a',
             'current_step_a': 'input_number.garage_ev_current_step_a',
             'phases': 'input_number.garage_ev_phases',
             'voltage_v': 'input_number.garage_ev_voltage_v',
-            'force_current_a': 'input_number.garage_ev_force_current_a',
         },
     }
 
@@ -193,13 +184,10 @@ def _garage_ev_value_overrides(*, adjustable_surplus_load='GARAGE_EV', adjustabl
         'input_number.garage_ev_low_pv_threshold_w': 1600,
         'input_number.garage_ev_low_pv_cycles': 2,
         'input_number.garage_ev_release_cycles': 2,
-        'input_number.garage_ev_min_current_a': 6,
-        'input_number.garage_ev_max_current_a': 16,
         'input_number.garage_ev_current_step_a': 2,
         'input_number.garage_ev_phases': 1,
         'input_number.garage_ev_voltage_v': 230,
         'input_boolean.garage_ev_force_on': False,
-        'input_number.garage_ev_force_current_a': 0,
     }
 
 
@@ -379,8 +367,8 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
-        ev_min_current_a=6,
-        ev_max_current_a=16,
+        ev_min_absorb_w=ev_w(6, phases=3),
+        ev_max_absorb_w=ev_w(16, phases=3),
         ev_current_step_a=4,
         ev_charger_phases=3,
     )
@@ -410,8 +398,8 @@ def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
-        ev_min_current_a=6,
-        ev_max_current_a=16,
+        ev_min_absorb_w=ev_w(6, phases=3),
+        ev_max_absorb_w=ev_w(16, phases=3),
         ev_current_step_a=4,
         ev_charger_phases=3,
     )
@@ -438,8 +426,8 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
-        ev_min_current_a=6,
-        ev_max_current_a=16,
+        ev_min_absorb_w=ev_w(6, phases=3),
+        ev_max_absorb_w=ev_w(16, phases=3),
         ev_charger_phases=3,
         relay1_power_kw=2.5,
         relay2_power_kw=5.0,
@@ -548,8 +536,8 @@ def test_engine_surplus_device_trace_matches_current_activation_mapping():
         adjustable_surplus_load='EV_CHARGER',
         adjustable_primary_load='HOME_BATTERY',
         adjustable_surplus_activation=2000,
-        ev_min_current_a=4,
-        ev_max_current_a=28,
+        ev_min_absorb_w=ev_w(4),
+        ev_max_absorb_w=ev_w(28),
         ev_charger_phases=1,
     )
     m = make_m()
@@ -651,8 +639,8 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.MAX_EXPORT, forecast=ForecastProfile.NONE)
     cfg = make_cfg(
         ev_force_on=True,
-        ev_min_current_a=6,
-        ev_max_current_a=16,
+        ev_min_absorb_w=ev_w(6),
+        ev_max_absorb_w=ev_w(16),
         ev_charger_phases=1,
         ev_voltage_v=230,
     )
@@ -685,7 +673,6 @@ def test_engine_force_on_uses_ev_capability_max_w_not_compat_current(project_roo
         project_root,
         value_overrides={
             'input_boolean.ems_ev_force_on': True,
-            'input_number.ems_ev_max_current_a': 16,
         },
         EV_CHARGER={'max_absorb_w': 5000, 'step_w': 500},
     )
@@ -916,8 +903,8 @@ def test_engine_adjustable_surplus_activation_overrides_threshold_source():
         adjustable_surplus_load='EV_CHARGER',
         adjustable_primary_load='HOME_BATTERY',
         adjustable_surplus_activation=2000,
-        ev_max_current_a=28,
-        ev_min_current_a=4,
+        ev_max_absorb_w=ev_w(28),
+        ev_min_absorb_w=ev_w(4),
         ev_charger_phases=1,
     )
     m = make_m()
@@ -993,8 +980,8 @@ def test_engine_primary_ev_current_uses_configurable_step_size():
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
         ev_charger_phases=1,
-        ev_min_current_a=4,
-        ev_max_current_a=28,
+        ev_min_absorb_w=ev_w(4),
+        ev_max_absorb_w=ev_w(28),
         ev_current_step_a=2,
     )
     out_step_2 = compute_net_zero_engine_outputs(
@@ -1014,8 +1001,8 @@ def test_engine_primary_ev_current_uses_configurable_step_size():
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
         ev_charger_phases=1,
-        ev_min_current_a=4,
-        ev_max_current_a=28,
+        ev_min_absorb_w=ev_w(4),
+        ev_max_absorb_w=ev_w(28),
         ev_current_step_a=4,
     )
     out_step_4 = compute_net_zero_engine_outputs(
@@ -1077,7 +1064,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
-        ev_min_current_a=4,
+        ev_min_absorb_w=ev_w(4),
         ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
@@ -1186,8 +1173,8 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg.ev_min_current_a)
-    release_rpc_kw = (cfg.ev_min_current_a * max(cfg.ev_charger_phases, 1) * 230) / 1000.0
+    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg_ev_min_a(cfg))
+    release_rpc_kw = ev_min_power_w(cfg) / 1000.0
     nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
     first = compute_net_zero_engine_outputs(
@@ -1243,8 +1230,8 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
     )
-    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg.ev_min_current_a)
-    release_rpc_kw = (cfg.ev_min_current_a * max(cfg.ev_charger_phases, 1) * 230) / 1000.0
+    m = make_m(grid_power_w=-1100.0, charger_current_a=cfg_ev_min_a(cfg))
+    release_rpc_kw = ev_min_power_w(cfg) / 1000.0
     nz = make_nz(rpnz_w=2600.0, required_power_consumption_kw=release_rpc_kw)
 
     first = compute_net_zero_engine_outputs(
@@ -1455,7 +1442,7 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
     )
     m = make_m(
         charger_on=False,
-        charger_current_a=cfg.ev_min_current_a,
+        charger_current_a=cfg_ev_min_a(cfg),
         current_battery_setpoint_w=-1000,
         grid_power_w=2900.0,
     )
@@ -1492,7 +1479,7 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
     )
     m = make_m(
         charger_on=True,
-        charger_current_a=cfg.ev_min_current_a,
+        charger_current_a=cfg_ev_min_a(cfg),
         current_battery_setpoint_w=-1000,
         grid_power_w=2900.0,
     )

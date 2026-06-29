@@ -2,7 +2,7 @@ import pytest
 
 from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
 from ems_adapter.device_read_model import build_device_configs, build_devices, build_device_states
-from tests.helpers import make_cfg, make_m
+from tests.helpers import ev_w, make_cfg, make_m
 
 
 def _config_by_id(cfg):
@@ -59,8 +59,8 @@ def test_battery_device_mapping_uses_current_limits_and_runtime_state():
 @pytest.mark.unit
 def test_ev_device_mapping_converts_current_to_power():
     cfg = make_cfg(
-        ev_min_current_a=6,
-        ev_max_current_a=16,
+        ev_min_absorb_w=ev_w(6, phases=3),
+        ev_max_absorb_w=ev_w(16, phases=3),
         ev_current_step_a=4,
         ev_charger_phases=3,
         ev_priority=8,

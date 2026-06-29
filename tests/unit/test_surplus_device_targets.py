@@ -6,7 +6,7 @@ from ems_core.net_zero.surplus_device_targets import (
     device_target_to_legacy_target,
 )
 from ems_core.domain.models import SurplusDispatchDecision
-from tests.helpers import make_cfg
+from tests.helpers import ev_w, make_cfg
 
 
 def _relay_candidates(
@@ -95,8 +95,8 @@ def test_explicit_adjustable_activation_overrides_device_default_threshold():
     cfg = make_cfg(
         adjustable_surplus_activation=2000,
         max_solar_charge_w=3700,
-        ev_min_current_a=6,
-        ev_max_current_a=28,
+        ev_min_absorb_w=ev_w(6),
+        ev_max_absorb_w=ev_w(28),
         ev_charger_phases=1,
     )
 

@@ -159,7 +159,7 @@ Export-first -tila.
 Latauspainotteinen tila.
 
 1. akun paikallinen fallback on `100 W`
-2. EV oletuksena `ev_max_current_a`
+2. EV oletuksena `capabilities.max_absorb_w`
 3. HAEO voi syottaa battery- ja EV-targetteja, jos forecast on tuore
 4. releet ovat pois paalta
 
@@ -257,15 +257,16 @@ Keskeiset config-avaimet (EMS):
 7. `battery_protect_soc_recovery_margin`
 8. `battery_protect_min_cell_voltage_v`
 9. `battery_protect_charge_floor_w`
-10. `ev_min_current_a`
-11. `ev_max_current_a`
+10. `ev_min_absorb_w`
+11. `ev_max_absorb_w`
 12. `ev_charger_phases`
-13. `ev_force_current_a`
+13. `ev_force_on`
 14. `ev_hard_off_pv_threshold_kw`
 15. `ev_hard_off_low_pv_cycles`
 16. `ev_hard_off_release_cycles`
 17. `ev_current_step_a`
-18. `nz_battery_floor_default_w`
+18. `ev_voltage_v`
+19. `nz_battery_floor_default_w`
 19. `nz_battery_floor_ev_active_w`
 20. `adjustable_surplus_load`
 21. `adjustable_primary_load`

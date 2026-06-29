@@ -14,8 +14,8 @@ def build_harness(project_root):
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['actuator_ev_enabled']: True,
         E['actuator_ev_current_a']: 6,
-        E['ev_min_current_a']: 6,
-        E['ev_max_current_a']: 28,
+        E['ev_min_absorb_w']: 1380,
+        E['ev_max_absorb_w']: 6440,
         E['goal_profile']: 'NET_ZERO',
         E['forecast_profile']: 'NONE',
     })

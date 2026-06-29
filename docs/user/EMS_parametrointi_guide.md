@@ -191,12 +191,12 @@ Tarvittavat HA-helperit uudelle EV-laturille:
 8. `input_number.*_release_cycles`
 9. `switch.*_enabled`
 10. `number.*_current_a`
-11. `input_number.*_min_current_a`
-12. `input_number.*_max_current_a`
-13. `input_number.*_current_step_a`
-14. `input_number.*_phases`
-15. `input_number.*_voltage_v`
-16. `input_number.*_force_current_a`
+11. `input_number.*_min_power_w`
+12. `input_number.*_max_power_w`
+13. `input_number.*_power_step_w`
+14. `input_number.*_current_step_a`
+15. `input_number.*_phases`
+16. `input_number.*_voltage_v`
 
 Testatut referenssit:
 
@@ -337,8 +337,8 @@ Selvennys activation-parametriin (tarkea):
 - ems_ev_priority = 2 tai 3
 - ems_surplus_relay1_priority = 2
 - ems_surplus_relay2_priority = 1
-- ems_ev_min_current_a = 6 A
-- ems_ev_max_current_a = 28 A
+- ems_ev_min_power_w = 1380 W
+- ems_ev_max_power_w = 6440 W
 
 ### 4.3 Mitä odottaa kaytannossa
 

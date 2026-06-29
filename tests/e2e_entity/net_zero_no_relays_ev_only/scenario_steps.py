@@ -25,7 +25,7 @@ def build_harness(project_root):
         E['actuator_ev_current_a']: 6,
         E['ev_current_step_a']: 1,
         E['ev_charger_phases']: 1,
-        E['ev_max_current_a']: 28,
+        E['ev_max_absorb_w']: 6440,
         E['max_solar_charge_w']: 2000,
         E['current_battery_sp']: 0.0,
         E['pv_power_kw']: 4.0,

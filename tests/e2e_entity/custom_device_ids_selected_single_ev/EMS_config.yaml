@@ -74,12 +74,9 @@ ems:
       adapter:
         enabled: switch.ev_main_enabled
         current_a: number.ev_main_current_a
-        current_min_a: input_number.ems_ev_main_min_current_a
-        current_max_a: input_number.ems_ev_main_max_current_a
         current_step_a: input_number.ems_ev_main_current_step_a
         phases: input_number.ems_ev_main_phases
         voltage_v: input_number.ems_ev_main_voltage_v
-        force_current_a: input_number.ems_ev_main_force_current_a
 
     EV_GARAGE:
       kind: EV_CHARGER
@@ -99,12 +96,9 @@ ems:
       adapter:
         enabled: switch.ev_garage_enabled
         current_a: number.ev_garage_current_a
-        current_min_a: input_number.ems_ev_garage_min_current_a
-        current_max_a: input_number.ems_ev_garage_max_current_a
         current_step_a: input_number.ems_ev_garage_current_step_a
         phases: input_number.ems_ev_garage_phases
         voltage_v: input_number.ems_ev_garage_voltage_v
-        force_current_a: input_number.ems_ev_garage_force_current_a
 
     RELAY_SAUNA:
       kind: RELAY

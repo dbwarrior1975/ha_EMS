@@ -1,5 +1,4 @@
 from datetime import datetime
-from ems_core.domain.ev_power import ev_power_w_to_selector_current_a
 
 def _to_ts(value):
     if value is None:
@@ -29,12 +28,3 @@ def latest_forecast_value_at_or_before(forecast, now_ts, default=0.0):
             except (TypeError, ValueError):
                 best_value = None
     return default if best_value is None else best_value
-
-def ev_kw_to_selector_current_a(kw, phases, max_a, min_a=4, step_a=4):
-    return ev_power_w_to_selector_current_a(
-        float(kw) * 1000.0,
-        phases,
-        max_a,
-        min_a=min_a,
-        step_a=step_a,
-    )

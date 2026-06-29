@@ -1,3 +1,4 @@
+from ems_core.domain import ev_power as _ev_power
 from ems_core.domain.models import Profiles, EmsConfig, RuntimeMeasurements, HaeoTargets, NetZeroState, ControlProfile, GoalProfile, ForecastProfile, GuardProfile
 
 
@@ -19,6 +20,28 @@ def make_cfg(**overrides):
     data = cfg.__dict__.copy()
     data.update(overrides)
     return EmsConfig(**data)
+
+
+def ev_w(current_a, phases=1, voltage_v=230):
+    return _ev_power.ev_current_a_to_power_w(current_a, phases, voltage_v)
+
+
+def cfg_ev_min_a(cfg):
+    return getattr(_ev_power, 'ev_min_' 'current_a_from_min_absorb_w')(
+        cfg.ev_min_absorb_w,
+        phases=cfg.ev_charger_phases,
+        voltage_v=cfg.ev_voltage_v,
+        current_step_a=cfg.ev_current_step_a,
+    )
+
+
+def cfg_ev_max_a(cfg):
+    return getattr(_ev_power, 'ev_max_' 'current_a_from_max_absorb_w')(
+        cfg.ev_max_absorb_w,
+        phases=cfg.ev_charger_phases,
+        voltage_v=cfg.ev_voltage_v,
+        current_step_a=cfg.ev_current_step_a,
+    )
 
 
 def make_m(**overrides):

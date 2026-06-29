@@ -361,7 +361,7 @@ Tiedosto: `modules/ems_core/net_zero/load_projection.py`
 
 ### `MANUAL`
 
-Jos `ev_force_current_a > 0`, sita kaytetaan suorana EV-ohjauksena, rajattuna `ev_max_current_a`:han. Muuten palautetaan `-1`, joka tarkoittaa skip-tilaa.
+Jos `ev_force_on` on tosi, EV-targetiksi asetetaan `capabilities.max_absorb_w`. Muuten EV-target on `0`.
 
 ### `MANUAL_SAFE`
 
@@ -369,19 +369,17 @@ EV-semantiikka on koodikommentin mukaan sama kuin `MANUAL` "for now". Akkuun lii
 
 ### `DEGRADED`
 
-`DEGRADED`-guard palauttaa EV:lle aina `-1`, eli writer ei tee aktiivista EV-ohjausta.
+`DEGRADED`-guard palauttaa EV:lle aina `0`, eli writer ei tee aktiivista EV-ohjausta.
 
 ### `NET_ZERO`
 
-`NET_ZERO`-tilassa `ev_force_current_a` toimii kayttajan minimipyyntona eli floorina, ellei guard muuta kayttaytymista.
+`NET_ZERO`-tilassa `ev_force_on` pakottaa EV:n `capabilities.max_absorb_w` -tasolle. Ilman forcea EV saa targetin vain surplus-burnin kautta.
 
 Semantiikka:
 
-1. jos `burn_active` on epatosi, perusvirta on `0`
-2. jos `burn_active` on tosi, perusvirta on `ev_max_current_a`
-3. jos `ev_force_current_a > 0`, lopputulos on vahintaan force-current mutta ei yli `ev_max_current_a`
-
-Tama vastaa kaytannossa pyyntoa: force-current toimii kayttajan minimipyyntona, mutta ei esty guard-tilojen vaikutuksia.
+1. jos `burn_active` on epatosi ja `ev_force_on` on epatosi, EV-target on `0`
+2. jos `burn_active` on tosi, EV-target on `capabilities.max_absorb_w`
+3. jos `ev_force_on` on tosi, EV-target on `capabilities.max_absorb_w`
 
 ### `MAX_EXPORT`
 
@@ -402,9 +400,9 @@ Nykyinen writer-toteutus tukee taman tavoitesemantiikan `hard_off`-attribuutilla
 
 Semantiikka:
 
-1. jos `ev_force_current_a > 0`, sita kunnioitetaan
-2. muuten HAEO voi syottaa EV-kohdevirran `ev_kw_to_selector_current_a()`-funktion kautta
-3. ilman forcea ja ilman HAEO:ta oletus on `ev_max_current_a`
+1. jos `ev_force_on` on tosi, EV-target on `capabilities.max_absorb_w`
+2. muuten HAEO voi syottaa EV-kohdetehon watteina
+3. ilman forcea ja ilman HAEO:ta oletus on `capabilities.max_absorb_w`
 
 ### EV hard-off low-PV -kayttaytyminen
 
@@ -470,7 +468,7 @@ Kokonaisuus on testattu useissa quarter-skenaarioissa.
 
 ## HAEO:n nykyinen rooli
 
-Tiedosto: `modules/ems_core/integrations/haeo_horizon.py` ja moottorin forecast-kasittely `engine.py`:ssa.
+Tiedostot: `modules/ems_core/integrations/haeo_horizon.py` ja moottorin forecast-kasittely `engine.py`:ssa.
 
 Nykyinen koodista todennettava rooli:
 
@@ -480,6 +478,8 @@ Nykyinen koodista todennettava rooli:
 4. HAEO vaikuttaa akkusetpointiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
 5. HAEO vaikuttaa EV-ohjaukseen `CHEAP_GRID_CHARGE`-tilassa
 6. `HORIZON_BY_HAEO` voi pakottaa forecast-konfiguraation HAEO:on vaikka `forecast_profile` olisi `NONE`
+
+Rajaus: `haeo_horizon.py` tekee vain forecast-aikaleimojen ja -arvojen poiminnan. Se ei enaa sisalla EV-tehosta selector-virtaan tehtavaa legacy-muunnosta.
 
 Tarkeaa: koodin perusteella HAEO ei tee taytta `NET_ZERO`-optimointia. `NET_ZERO`-tilassa seliteteksti on nimenomaan paikallisen policylogiikan hallitsema, vaikka HAEO olisi nakyvissa.
 

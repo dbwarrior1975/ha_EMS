@@ -36,6 +36,18 @@ def test_required_entities_exist():
 
 
 @pytest.mark.unit
+def test_runtime_registry_does_not_expose_removed_ev_amp_keys():
+    assert 'ev_min_current_a' not in ENT
+    assert 'ev_max_current_a' not in ENT
+    assert 'ev_force_current_a' not in ENT
+    assert 'deprecated_current_min_a' not in ENT
+    assert 'deprecated_current_max_a' not in ENT
+    assert 'deprecated_force_current_a' not in ENT
+    assert ENT['ev_min_absorb_w'].startswith('input_number.')
+    assert ENT['ev_max_absorb_w'].startswith('input_number.')
+
+
+@pytest.mark.unit
 def test_entity_ids_are_unique():
     # Reuse is intentional only where actuator and current sensor target are same HA entity.
     duplicates = {}

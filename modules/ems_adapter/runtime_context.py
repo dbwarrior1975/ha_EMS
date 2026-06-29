@@ -187,12 +187,12 @@ def build_runtime_entities_from_grouped_config(config):
         'actuator_ev_enabled',
         'charger_current',
         'actuator_ev_current_a',
-        'ev_min_current_a',
-        'ev_max_current_a',
+        'ev_min_absorb_w',
+        'ev_max_absorb_w',
+        'ev_power_step_w',
         'ev_current_step_a',
         'ev_charger_phases',
         'ev_force_on',
-        'ev_force_current_a',
         'relay1_power_kw',
         'relay1_priority',
         'relay1_surplus_allowed',
@@ -320,12 +320,6 @@ def build_runtime_entities_from_grouped_config(config):
                         entry['ev_current_power_w'] = ev_current_a_to_power_w(current_a, phases, voltage_v)
                 except (TypeError, ValueError):
                     pass
-                if adapter.get('current_min_a') not in (None, ''):
-                    entry['deprecated_current_min_a'] = adapter.get('current_min_a')
-                if adapter.get('current_max_a') not in (None, ''):
-                    entry['deprecated_current_max_a'] = adapter.get('current_max_a')
-                if adapter.get('force_current_a') not in (None, ''):
-                    entry['deprecated_force_current_a'] = adapter.get('force_current_a')
             elif kind == 'RELAY':
                 relay_device_ids.append(str(device_id))
                 entry['enabled'] = adapter.get('enabled')

@@ -84,16 +84,13 @@ ems:
       adapter:
         enabled: switch.charger_control
         current_a: number.charger_current_level
-        current_min_a: input_number.ems_ev_min_current_a
-        current_max_a: input_number.ems_ev_max_current_a
         current_step_a: input_number.ems_ev_current_step_a
         phases: input_number.ems_ev_charger_phases
         voltage_v: input_number.ems_ev_voltage_v
-        force_current_a: input_number.ems_ev_force_current_a
 ```
 
 Tarvittavat helperit ovat EV:n power-, priority-, surplus_allowed-, hard_off-,
-current-, phases-, voltage- ja force_current-entityt. Testattu referenssi:
+current-, current_step-, phases-, voltage- ja force_on-entityt. Testattu referenssi:
 `tests/e2e_entity/net_zero_no_relays_ev_only/EMS_config.yaml`.
 
 ## No EV, relays only

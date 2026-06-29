@@ -208,11 +208,10 @@ class QuarterScenarioHarness:
             ('strict_limits_max_w', 4600),
             ('max_battery_discharge_w', 4600),
             ('max_solar_charge_w', 3700),
-            ('ev_min_current_a', 6),
-            ('ev_max_current_a', 28),
+            ('ev_min_absorb_w', 1380),
+            ('ev_max_absorb_w', 6440),
             ('ev_charger_phases', 1),
             ('ev_force_on', False),
-            ('ev_force_current_a', 0),
             ('ev_current_step_a', 4),
             ('ev_hard_off_pv_threshold_kw', 1.6),
             ('ev_hard_off_low_pv_cycles', 2),
@@ -259,11 +258,10 @@ class QuarterScenarioHarness:
             'strict_limits_max_w',
             'max_battery_discharge_w',
             'max_solar_charge_w',
-            'ev_min_current_a',
-            'ev_max_current_a',
+            'ev_min_absorb_w',
+            'ev_max_absorb_w',
             'ev_charger_phases',
             'ev_force_on',
-            'ev_force_current_a',
             'ev_hard_off_pv_threshold_kw',
             'ev_hard_off_low_pv_cycles',
             'ev_hard_off_release_cycles',
@@ -315,8 +313,6 @@ class QuarterScenarioHarness:
         for key, default in (
             ('relay1_power_kw', 2.5),
             ('relay2_power_kw', 5.0),
-            ('ev_min_current_a', 6),
-            ('ev_max_current_a', 28),
             ('ev_current_step_a', 4),
             ('ev_charger_phases', 1),
         ):
@@ -327,8 +323,6 @@ class QuarterScenarioHarness:
     def _sync_grouped_config_entities(self, entity_id, value):
         voltage_v = self.store.get_value('input_number.ems_ev_voltage_v', 230) or 230
         ev_charger_phases = self._optional_entity_id('ev_charger_phases')
-        ev_min_current_a = self._optional_entity_id('ev_min_current_a')
-        ev_max_current_a = self._optional_entity_id('ev_max_current_a')
         ev_current_step_a = self._optional_entity_id('ev_current_step_a')
         relay1_power_kw = self._optional_entity_id('relay1_power_kw')
         relay2_power_kw = self._optional_entity_id('relay2_power_kw')
@@ -337,8 +331,6 @@ class QuarterScenarioHarness:
         if entity_id == 'input_number.ems_ev_voltage_v':
             voltage_v = value or 230
             for dep_entity_id, dep_default in (
-                (ev_min_current_a, 6),
-                (ev_max_current_a, 28),
                 (ev_current_step_a, 4),
             ):
                 if dep_entity_id:
@@ -348,20 +340,10 @@ class QuarterScenarioHarness:
         if entity_id == ev_charger_phases:
             phases = value or 1
             for dep_entity_id, dep_default in (
-                (ev_min_current_a, 6),
-                (ev_max_current_a, 28),
                 (ev_current_step_a, 4),
             ):
                 if dep_entity_id:
                     self._sync_grouped_config_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
-            return
-
-        if entity_id == ev_min_current_a:
-            self.store.set_value('input_number.ems_ev_min_power_w', int(round(float(value) * float(phases) * float(voltage_v))))
-            return
-
-        if entity_id == ev_max_current_a:
-            self.store.set_value('input_number.ems_ev_max_power_w', int(round(float(value) * float(phases) * float(voltage_v))))
             return
 
         if entity_id == ev_current_step_a:

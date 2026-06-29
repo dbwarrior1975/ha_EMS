@@ -204,7 +204,9 @@ Nykyiset testit kattavat esimerkiksi:
 
 ### HAEO-integraatio
 
-`modules/ems_core/integrations/haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
+`modules/ems_core/integrations/haeo_horizon.py`-tiedostolle on perustason testit forecast-parsinnasta, aikavyohykkeista ja fallback-kayttaytymisesta. EV selector current -legacy-muunnos ei kuulu enaa HAEO-integraatioon. Lisaakattavuudelle on silti tilaa esimerkiksi laajemmissa payload- ja aikavyohykeskenaarioissa.
+
+`tests/unit/test_ev_power.py` kattaa EV-domainin wattipohjaisen teho-virta-kvantisoinnin, rajojen johtamisen ja askelkoon validoinnin.
 
 ### Contract-kattavuus
 

@@ -165,8 +165,9 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
     device = _device_by_id(cfg, device_id)
     if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
         if hasattr(cfg, 'devices_by_kind'):
-            selected.ev_min_current_a = 0
-            selected.ev_max_current_a = 0
+            selected.ev_min_absorb_w = 0.0
+            selected.ev_max_absorb_w = 0.0
+            selected.ev_power_step_w = 0.0
             selected.ev_current_step_a = 0
             selected.ev_charger_phases = 1
             selected.ev_voltage_v = 230.0
@@ -174,7 +175,6 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
             selected.max_absorb_w = 0.0
             selected.step_w = 0.0
             selected.ev_force_on = False
-            selected.ev_force_current_a = 0
             selected.ev_hard_off_pv_threshold_kw = 0.0
             selected.ev_hard_off_low_pv_cycles = 0
             selected.ev_hard_off_release_cycles = 0
@@ -184,8 +184,9 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
     adapter = device.adapter
     capabilities = device.capabilities
     policy = device.policy
-    selected.ev_min_current_a = int(round(float(getattr(cfg, 'ev_min_current_a', 0) or 0)))
-    selected.ev_max_current_a = int(round(float(getattr(cfg, 'ev_max_current_a', 0) or 0)))
+    selected.ev_min_absorb_w = float(capabilities.min_absorb_w)
+    selected.ev_max_absorb_w = float(capabilities.max_absorb_w)
+    selected.ev_power_step_w = float(ev_power_step_w(selected))
     selected.ev_current_step_a = int(round(float(adapter.current_step_a)))
     selected.ev_charger_phases = int(round(float(adapter.phases)))
     selected.ev_voltage_v = float(adapter.voltage_v)
@@ -205,7 +206,6 @@ def _cfg_with_selected_ev_scalars(cfg, device_id):
             selected.ev_force_on = bool(getattr(cfg, 'ev_force_on', False))
     else:
         selected.ev_force_on = bool(raw_force_on)
-    selected.ev_force_current_a = int(round(float(getattr(cfg, 'ev_force_current_a', 0) or 0)))
     low_pv_threshold = float(policy.low_pv_threshold_w)
     selected.ev_hard_off_pv_threshold_kw = low_pv_threshold / 1000.0 if low_pv_threshold > 50.0 else low_pv_threshold
     selected.ev_hard_off_low_pv_cycles = int(round(float(policy.hard_off_low_pv_cycles)))

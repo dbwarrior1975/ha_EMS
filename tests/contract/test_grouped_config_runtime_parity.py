@@ -13,6 +13,7 @@ from ems_adapter.device_read_model import build_device_configs
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config, read_runtime_context
 from tests.entity_ids import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
+from tests.helpers import ev_w
 
 
 def _write_grouped_config_with_override(project_root, tmp_path, dotted_path, value):
@@ -106,8 +107,8 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
             ENT['battery_protect_soc_recovery_margin']: 2,
             ENT['battery_protect_min_cell_voltage_v']: 3.12,
             ENT['battery_protect_charge_floor_w']: 350,
-            ENT['ev_min_current_a']: 6,
-            ENT['ev_max_current_a']: 20,
+            ENT['ev_min_absorb_w']: ev_w(6, phases=3),
+            ENT['ev_max_absorb_w']: ev_w(20, phases=3),
             ENT['ev_charger_phases']: 3,
             ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.4,
@@ -158,8 +159,8 @@ def test_grouped_config_runtime_reader_matches_dict_scalar_view(project_root):
             ENT['battery_protect_soc_recovery_margin']: 3,
             ENT['battery_protect_min_cell_voltage_v']: 3.11,
             ENT['battery_protect_charge_floor_w']: 250,
-            ENT['ev_min_current_a']: 7,
-            ENT['ev_max_current_a']: 21,
+            ENT['ev_min_absorb_w']: ev_w(7),
+            ENT['ev_max_absorb_w']: ev_w(21),
             ENT['ev_charger_phases']: 1,
             ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.5,
@@ -214,8 +215,8 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
             ENT['battery_protect_soc_recovery_margin']: 2,
             ENT['battery_protect_min_cell_voltage_v']: 3.10,
             ENT['battery_protect_charge_floor_w']: 300,
-            ENT['ev_min_current_a']: 6,
-            ENT['ev_max_current_a']: 22,
+            ENT['ev_min_absorb_w']: ev_w(6, phases=3),
+            ENT['ev_max_absorb_w']: ev_w(22, phases=3),
             ENT['ev_charger_phases']: 3,
             ENT['ev_force_on']: False,
             ENT['ev_hard_off_pv_threshold_kw']: 1.3,
