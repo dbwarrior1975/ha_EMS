@@ -580,8 +580,6 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
             'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
             'input_number.ems_ev_garage_low_pv_cycles': 2,
             'input_number.ems_ev_garage_release_cycles': 2,
-            'input_number.ems_ev_garage_min_current_a': 6,
-            'input_number.ems_ev_garage_max_current_a': 16,
             'input_number.ems_ev_garage_current_step_a': 2,
             'input_number.ems_ev_garage_phases': 1,
             'input_number.ems_ev_garage_voltage_v': 230,

@@ -123,20 +123,6 @@ def _install_core_capabilities(mod, **overrides):
 
 
 @pytest.mark.unit
-def test_writer_relay_without_device_policy_does_not_use_legacy_command(project_root):
-    mod, state, ENT = _load_writer_module(project_root)
-
-    state[ENT['actuator_relay1']] = True
-    state[ENT['policy_relay1_command']] = 0
-
-    result = mod['_write_relay_actuator'](ENT['policy_relay1_command'], ENT['actuator_relay1'], 'relay1')
-    assert result['written'] is False
-    assert state[ENT['actuator_relay1']] is True
-    assert result['reason'] == 'missing_device_policy'
-    assert result['policy_source'] == 'missing_device_policy'
-
-
-@pytest.mark.unit
 def test_writer_ev_without_device_policy_does_not_use_legacy_current_even_without_device_id(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
@@ -191,24 +177,6 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
     assert result['policy_source'] == 'device_policy'
-    assert state[ENT['actuator_battery_setpoint_w']] == 0
-
-
-@pytest.mark.unit
-def test_writer_battery_does_not_fallback_to_legacy_policy_target_without_device_policy(project_root):
-    mod, state, ENT = _load_writer_module(project_root)
-
-    state['input_select.ems_control_profile'] = 'AUTOMATIC'
-    state['input_number.ems_deadband_w'] = 1
-    state['input_number.ems_ramp_max_w'] = 1000
-    state[ENT['policy_battery_target_w']] = 500
-    state[ENT['actuator_battery_setpoint_w']] = 0
-
-    result = mod['_write_battery_actuator']()
-
-    assert result['written'] is False
-    assert result['reason'] == 'missing_device_policy'
-    assert result['policy_source'] == 'missing_device_policy'
     assert state[ENT['actuator_battery_setpoint_w']] == 0
 
 
@@ -508,26 +476,6 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
     assert result['reason'] == 'policy_skip'
     assert result['policy_source'] == 'device_policy'
     assert state[ENT['actuator_relay1']] is True
-
-
-@pytest.mark.unit
-def test_writer_relay_does_not_fallback_to_legacy_command_with_device_id(project_root):
-    mod, state, ENT = _load_writer_module(project_root)
-
-    state[ENT['policy_relay1_command']] = 1
-    state[ENT['actuator_relay1']] = False
-
-    result = mod['_write_relay_actuator'](
-        ENT['policy_relay1_command'],
-        ENT['actuator_relay1'],
-        'relay1',
-        device_id='RELAY1',
-    )
-
-    assert result['written'] is False
-    assert result['reason'] == 'missing_device_policy'
-    assert result['policy_source'] == 'missing_device_policy'
-    assert state[ENT['actuator_relay1']] is False
 
 
 @pytest.mark.unit

@@ -537,23 +537,12 @@ class SurplusDeviceTarget:
 
 
 @dataclass
-class SurplusTargetConfig:
-    name: str
-    priority: int
-    rank: int
-    threshold_kw: float
-    enabled: bool = True
-    force_on: bool = False
-    active: bool = False
-
-
-@dataclass
 class SurplusDispatchInput:
     policy_active: bool
     freeze_until_ts: Optional[float]
     rpc_kw: float
     rpnz_w: float
-    targets: tuple[SurplusTargetConfig, ...]
+    targets: tuple[SurplusDeviceTarget, ...]
 
 
 @dataclass

@@ -1,5 +1,5 @@
 from ems_core.domain.ev_power import ev_max_power_w, ev_min_power_w
-from ems_core.domain.models import SurplusDeviceTarget, SurplusTargetConfig, SurplusDispatchDecision
+from ems_core.domain.models import SurplusDeviceTarget
 
 
 def _ev_incremental_surplus_threshold_w(cfg, device):
@@ -78,46 +78,11 @@ def build_surplus_device_targets(
         next_rank += 1
     return tuple(targets)
 
-
-def device_target_to_legacy_target(target):
-    return SurplusTargetConfig(
-        name=target.decision_name,
-        priority=int(target.priority),
-        rank=int(target.rank),
-        threshold_kw=float(target.threshold_w) / 1000.0,
-        enabled=bool(target.enabled),
-        force_on=bool(target.force_on),
-        active=bool(target.active),
-    )
-
-
-def device_targets_to_legacy_targets(targets):
-    legacy_targets = []
-    for target in targets:
-        legacy_targets.append(device_target_to_legacy_target(target))
-    return tuple(legacy_targets)
-
-
 def decision_name_for_device_id(targets, device_id):
     for target in targets:
         if target.device_id == device_id:
             return target.decision_name
     return ''
-
-
-def device_dispatch_to_legacy_dispatch(decision, targets):
-    activate = decision_name_for_device_id(targets, decision.activate) if decision.activate else None
-    release = decision_name_for_device_id(targets, decision.release) if decision.release else None
-    explanation = decision.explanation
-    for target in targets:
-        explanation = explanation.replace(target.device_id, target.decision_name)
-    return SurplusDispatchDecision(
-        activate=activate,
-        release=release,
-        clear_all=bool(decision.clear_all),
-        freeze_until_ts=decision.freeze_until_ts,
-        explanation=explanation,
-    )
 
 
 def device_targets_payload(targets):

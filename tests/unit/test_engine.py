@@ -971,7 +971,7 @@ def test_engine_same_target_combo_emits_fallback_warning_attrs():
 
 
 @pytest.mark.unit
-def test_engine_primary_ev_current_uses_configurable_step_size():
+def test_engine_primary_ev_target_w_uses_derived_power_step():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     m = make_m(charger_current_a=4)
     nz = make_nz(rpnz_w=1380, required_power_consumption_kw=2.0)

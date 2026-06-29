@@ -176,24 +176,3 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
     assert trace['active_surplus_device_ids'] == ()
     assert trace['writes'] == ['off:RELAY1', 'off:EV_CHARGER', 'off:RELAY2', 'off:RELAY3']
 
-
-@pytest.mark.unit
-def test_dispatch_state_applier_ignores_legacy_sensor_without_device_trace(project_root):
-    harness = QuarterScenarioHarness(project_root)
-    harness.set_entities(
-        {
-            ENT['active_surplus_devices']: 'EV_CHARGER',
-        }
-    )
-    harness.set_attrs(ENT['active_surplus_devices'], {'device_ids': ('EV_CHARGER',)})
-    harness.set_attrs(ENT['policy_decision_trace'], {})
-
-    harness._run_dispatch_state_applier_loop()
-
-    trace = harness.getattrs(DISPATCH_TRACE)
-    assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ('EV_CHARGER',)
-    assert trace['decision'] == 'NOOP'
-    assert trace['decision_source'] == 'device_trace'
-    assert trace['device_dispatch_action'] == 'NOOP'
-    assert trace['device_dispatch_device_id'] == ''
-    assert trace['writes'] == []

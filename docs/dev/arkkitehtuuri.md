@@ -167,7 +167,7 @@ Projektin keskeiset mallit:
 4. `RuntimeMeasurements`
 5. `HaeoTargets`
 6. `NetZeroState`
-7. `SurplusTargetConfig`
+7. `SurplusDeviceTarget`
 8. `SurplusDispatchInput`
 9. `SurplusDispatchDecision`
 10. `NetZeroOutputs`
@@ -461,8 +461,8 @@ Peruskayttaytyminen:
 
 Prioriteetti ja jarjestys:
 
-1. `next_target()` valitsee suurimman prioriteetin, pienimman rankin kohteen
-2. `release_target()` vapauttaa pienimman prioriteetin, suurimman rankin aktiivisen kohteen
+1. `next_device_target()` valitsee suurimman prioriteetin, pienimman rankin kohteen
+2. `release_device_target()` vapauttaa pienimman prioriteetin, suurimman rankin aktiivisen kohteen
 
 Kokonaisuus on testattu useissa quarter-skenaarioissa.
 

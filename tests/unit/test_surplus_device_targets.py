@@ -1,11 +1,6 @@
 import pytest
 
-from ems_core.net_zero.surplus_device_targets import (
-    build_surplus_device_targets,
-    device_dispatch_to_legacy_dispatch,
-    device_target_to_legacy_target,
-)
-from ems_core.domain.models import SurplusDispatchDecision
+from ems_core.net_zero.surplus_device_targets import build_surplus_device_targets
 from tests.helpers import ev_w, make_cfg
 
 
@@ -159,49 +154,3 @@ def test_relay_target_is_disabled_when_device_cannot_absorb():
     assert targets[1].device_id == 'RELAY1'
     assert targets[1].enabled is False
 
-
-@pytest.mark.unit
-def test_device_target_export_mapping_preserves_threshold_and_state():
-    cfg = make_cfg(relay1_power_kw=2.5)
-    relay1 = build_surplus_device_targets(
-        cfg,
-        adjustable_device_id='EV_CHARGER',
-        adjustable_priority=2,
-        adjustable_active=False,
-        relay_candidates=_relay_candidates(
-            relay1_enabled=False,
-            relay1_force_on=True,
-            relay1_active=True,
-        ),
-    )[1]
-
-    legacy = device_target_to_legacy_target(relay1)
-
-    assert legacy.name == 'RELAY1'
-    assert legacy.priority == relay1.priority
-    assert legacy.rank == relay1.rank
-    assert legacy.threshold_kw == 2.5
-    assert legacy.enabled is False
-    assert legacy.force_on is True
-    assert legacy.active is True
-
-
-@pytest.mark.unit
-def test_device_dispatch_export_mapping_maps_device_id_to_decision_name():
-    cfg = make_cfg(adjustable_surplus_load='EV_CHARGER', adjustable_surplus_activation=2000)
-    targets = build_surplus_device_targets(
-        cfg,
-        adjustable_device_id='EV_CHARGER',
-        adjustable_priority=3,
-        adjustable_active=False,
-        relay_candidates=_relay_candidates(),
-    )
-
-    legacy = device_dispatch_to_legacy_dispatch(
-        SurplusDispatchDecision(activate='EV_CHARGER', freeze_until_ts=35.0),
-        targets,
-    )
-
-    assert legacy.activate == 'ADJUSTABLE'
-    assert legacy.release is None
-    assert legacy.freeze_until_ts == 35.0

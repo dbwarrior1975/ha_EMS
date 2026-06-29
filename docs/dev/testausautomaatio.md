@@ -156,11 +156,11 @@ runtime-parityssa.
 
 ### Surplus allocator
 
-`tests/unit/test_surplus_allocator.py` kattaa ainakin:
+`tests/unit/test_engine.py` ja `tests/unit/test_surplus_device_targets.py` kattavat ainakin:
 
 1. aktivointijarjestyksen prioriteetin mukaan
 2. vapautusjarjestyksen kanteisprioriteetin mukaan
-3. `active_stack()`-jarjestyksen
+3. device-stack-jarjestyksen trace- ja payload-polkujen kautta
 4. `policy inactive -> clear all`
 5. `freeze`-estologikan
 6. aktiivisen mutta ei-enää-kelvollisen kohteen vapautuksen
