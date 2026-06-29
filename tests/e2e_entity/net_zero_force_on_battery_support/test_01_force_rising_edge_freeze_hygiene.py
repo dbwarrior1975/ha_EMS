@@ -21,8 +21,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
                 'surplus_next_target': 'RELAY2',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': False,
+                'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
@@ -44,8 +43,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
                 'surplus_next_target': 'RELAY2',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': False,
+                'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
@@ -60,7 +58,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'at_s': 60,
             'note': 't60 user forces RELAY2 on and RELAY1 must not react immediately',
             'set': {
-                E['relay2_force_on']: True,
+                E['devices']['RELAY2']['force_on']: True,
                 E['required_power_consumption_kw']: 3.0,
                 E['rpnz_w']: 500.0,
                 E['grid_power_w']: 2500.0,
@@ -69,8 +67,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'RELAY1',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
@@ -107,8 +104,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'RELAY1',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
@@ -141,8 +137,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
                 'surplus_freeze_until_ts': 105.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_target': 'RELAY1',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},

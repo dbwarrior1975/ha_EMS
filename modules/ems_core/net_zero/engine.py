@@ -162,6 +162,12 @@ def _selected_ev_device_id_for_roles(cfg, adjustable_surplus_load, adjustable_pr
 def _cfg_with_selected_ev_scalars(cfg, device_id):
     values = dict(getattr(cfg, '__dict__', {}) or {})
     selected = SimpleNamespace(**values)
+    if hasattr(cfg, 'device_by_id'):
+        selected.device_by_id = cfg.device_by_id
+    if hasattr(cfg, 'devices_by_kind'):
+        selected.devices_by_kind = cfg.devices_by_kind
+    if hasattr(cfg, 'home_battery'):
+        selected.home_battery = cfg.home_battery
     device = _device_by_id(cfg, device_id)
     if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
         if hasattr(cfg, 'devices_by_kind'):
@@ -297,48 +303,6 @@ def _device_policy_payload(policy):
 
 
 def _capability_device_config_for_id(cfg, device_id):
-    if not hasattr(cfg, 'home_battery'):
-        if device_id == 'HOME_BATTERY':
-            return EmsDeviceConfig(
-                device_id='HOME_BATTERY',
-                kind='BATTERY',
-                response_kind='continuous',
-                can_absorb_w=True,
-                can_produce_w=True,
-                min_absorb_w=0,
-                max_absorb_w=int(round(float(cfg.max_solar_charge_w))),
-                max_produce_w=int(round(abs(float(cfg.max_battery_discharge_w)))),
-                step_w=max(1, int(round(float(cfg.deadband_w)))),
-                priority=int(round(float(cfg.adjustable_surplus_load_priority))),
-            )
-        if device_id == 'EV_CHARGER':
-            return EmsDeviceConfig(
-                device_id='EV_CHARGER',
-                kind='EV_CHARGER',
-                response_kind='selector',
-                can_absorb_w=True,
-                can_produce_w=False,
-                min_absorb_w=int(ev_min_power_w(cfg)),
-                max_absorb_w=int(ev_max_power_w(cfg)),
-                max_produce_w=0,
-                step_w=max(1, int(ev_power_step_w(cfg))),
-                priority=int(round(float(cfg.ev_priority))),
-            )
-        relay_power_kw = cfg.relay1_power_kw if device_id == 'RELAY1' else cfg.relay2_power_kw
-        relay_priority = cfg.relay1_priority if device_id == 'RELAY1' else cfg.relay2_priority
-        relay_power_w = int(round(float(relay_power_kw) * 1000.0))
-        return EmsDeviceConfig(
-            device_id=device_id,
-            kind='RELAY',
-            response_kind='relay',
-            can_absorb_w=True,
-            can_produce_w=False,
-            min_absorb_w=relay_power_w,
-            max_absorb_w=relay_power_w,
-            max_produce_w=0,
-            step_w=max(1, relay_power_w),
-            priority=int(round(float(relay_priority))),
-        )
     device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
     if device is not None:
         caps = device.capabilities
@@ -355,83 +319,15 @@ def _capability_device_config_for_id(cfg, device_id):
             step_w=max(1, int(round(float(caps.step_w)))),
             priority=int(round(float(policy.priority))),
         )
-    if device_id == 'HOME_BATTERY':
-        caps = cfg.home_battery.capabilities
-        policy = cfg.home_battery.policy
-        return EmsDeviceConfig(
-            device_id='HOME_BATTERY',
-            kind='BATTERY',
-            response_kind='continuous',
-            can_absorb_w=bool(caps.can_absorb_w),
-            can_produce_w=bool(caps.can_produce_w),
-            min_absorb_w=int(round(float(caps.min_absorb_w))),
-            max_absorb_w=int(round(float(caps.max_absorb_w))),
-            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
-            step_w=max(1, int(round(float(caps.step_w)))),
-            priority=int(round(float(policy.priority))),
-        )
-    if device_id == 'EV_CHARGER':
-        caps = cfg.ev_charger.capabilities
-        policy = cfg.ev_charger.policy
-        return EmsDeviceConfig(
-            device_id='EV_CHARGER',
-            kind='EV_CHARGER',
-            response_kind='selector',
-            can_absorb_w=bool(caps.can_absorb_w),
-            can_produce_w=bool(caps.can_produce_w),
-            min_absorb_w=int(round(float(caps.min_absorb_w))),
-            max_absorb_w=int(round(float(caps.max_absorb_w))),
-            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
-            step_w=max(1, int(round(float(caps.step_w)))),
-            priority=int(round(float(policy.priority))),
-        )
-    relay = cfg.relay1 if device_id == 'RELAY1' else cfg.relay2
-    caps = relay.capabilities
-    policy = relay.policy
-    return EmsDeviceConfig(
-        device_id=device_id,
-        kind='RELAY',
-        response_kind='relay',
-        can_absorb_w=bool(caps.can_absorb_w),
-        can_produce_w=bool(caps.can_produce_w),
-        min_absorb_w=int(round(float(caps.min_absorb_w))),
-        max_absorb_w=int(round(float(caps.max_absorb_w))),
-        max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
-        step_w=max(1, int(round(float(caps.step_w)))),
-        priority=int(round(float(policy.priority))),
-    )
+    raise KeyError(f'unknown device_id: {device_id}')
 
 
 def _relay_devices(cfg):
-    if hasattr(cfg, 'devices_by_kind'):
-        return tuple(cfg.devices_by_kind('RELAY'))
-    relay1_power_w = _legacy_relay_scalar_to_w(getattr(cfg, 'relay1_power_kw', 0.0))
-    relay2_power_w = _legacy_relay_scalar_to_w(getattr(cfg, 'relay2_power_kw', 0.0))
-    return (
-        SimpleNamespace(
-            device_id='RELAY1',
-            kind='RELAY',
-            capabilities=SimpleNamespace(max_absorb_w=relay1_power_w, can_absorb_w=True),
-            policy=SimpleNamespace(priority=getattr(cfg, 'relay1_priority', 2)),
-        ),
-        SimpleNamespace(
-            device_id='RELAY2',
-            kind='RELAY',
-            capabilities=SimpleNamespace(max_absorb_w=relay2_power_w, can_absorb_w=True),
-            policy=SimpleNamespace(priority=getattr(cfg, 'relay2_priority', 1)),
-        ),
-    )
+    return tuple(cfg.devices_by_kind('RELAY'))
 
 
 def _ev_devices(cfg):
-    if hasattr(cfg, 'devices_by_kind'):
-        return tuple(cfg.devices_by_kind('EV_CHARGER'))
-    return (
-        SimpleNamespace(
-            device_id='EV_CHARGER',
-            kind='EV_CHARGER',
-        ),
-    )
+    return tuple(cfg.devices_by_kind('EV_CHARGER'))
 
 
 def _relay_device_ids_payload(cfg):
@@ -448,20 +344,13 @@ def _ev_device_ids_payload(cfg):
     return tuple(payload)
 
 
-def _legacy_relay_scalar_to_w(value):
-    numeric = float(value or 0.0)
-    if abs(numeric) <= 50.0:
-        return int(round(numeric * 1000.0))
-    return int(round(numeric))
-
-
 def _relay_runtime_candidates(cfg, relay_device_states):
     candidates = []
     state_map = relay_device_states or {}
     for relay in _relay_devices(cfg):
         device_id = str(relay.device_id)
         state = dict(state_map.get(device_id, {}) or {})
-        threshold_w = _legacy_relay_scalar_to_w(getattr(relay.capabilities, 'max_absorb_w', 0))
+        threshold_w = max(int(round(float(getattr(relay.capabilities, 'max_absorb_w', 0) or 0))), 0)
         candidates.append(
             {
                 'device_id': device_id,
@@ -473,16 +362,6 @@ def _relay_runtime_candidates(cfg, relay_device_states):
             }
         )
     return tuple(candidates)
-
-
-def _relay_compat_fallbacks(cfg, *, relay1, relay2):
-    relays = _relay_devices(cfg)
-    fallbacks = {}
-    if len(relays) > 0:
-        fallbacks[str(relays[0].device_id)] = relay1
-    if len(relays) > 1:
-        fallbacks[str(relays[1].device_id)] = relay2
-    return fallbacks
 
 
 def _selected_ev_device_id(cfg, adjustable_surplus_load):
@@ -901,28 +780,6 @@ def _primary_power_envelope_w(cfg, m, nz):
     )
 
 
-def _apply_force_rising_edge_freeze(
-    now_ts,
-    freeze_until_ts,
-    freeze_s,
-    relay1_force_on,
-    relay2_force_on,
-    prev_relay1_force_on,
-    prev_relay2_force_on,
-):
-    freeze_until = freeze_until_ts
-    rising_edge = (relay1_force_on and (not prev_relay1_force_on)) or (
-        relay2_force_on and (not prev_relay2_force_on)
-    )
-    if rising_edge:
-        target_freeze = now_ts + freeze_s
-        if freeze_until is None:
-            freeze_until = target_freeze
-        else:
-            freeze_until = max(float(freeze_until), float(target_freeze))
-    return freeze_until
-
-
 def _apply_force_rising_edge_freeze_for_devices(
     now_ts,
     freeze_until_ts,
@@ -954,19 +811,11 @@ def compute_net_zero_engine_outputs(
     profiles, cfg, m, haeo, nz, now_ts, *,
     freeze_until_ts,
     ev_burn_active,
-    relay1_surplus_allowed,
-    relay2_surplus_allowed,
-    relay1_force_on,
-    relay2_force_on,
-    relay1_net_zero_active,
-    relay2_net_zero_active,
     adjustable_surplus_active=False,
     pv_power_kw=None,
     ev_hard_off_active=False,
     ev_low_pv_cycles=0,
     ev_hard_off_release_ready_cycles=0,
-    prev_relay1_force_on=False,
-    prev_relay2_force_on=False,
     relay_device_states=None,
     previous_ev_device_states=None,
     previous_force_on_device_ids=None,
@@ -1048,35 +897,21 @@ def compute_net_zero_engine_outputs(
 
     configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
     adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
-    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.ev_priority))
+    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.home_battery.policy.priority))
     adjustable_capable = bool(_capability_device_config_for_id(cfg, adjustable_surplus_load).can_absorb_w)
     normalized_relay_device_states = {}
     for device_id, state in (relay_device_states or {}).items():
         normalized_relay_device_states[str(device_id)] = dict(state or {})
-    relay_surplus_allowed_fallbacks = _relay_compat_fallbacks(
-        cfg,
-        relay1=relay1_surplus_allowed,
-        relay2=relay2_surplus_allowed,
-    )
-    relay_force_on_fallbacks = _relay_compat_fallbacks(
-        cfg,
-        relay1=relay1_force_on,
-        relay2=relay2_force_on,
-    )
-    relay_active_fallbacks = _relay_compat_fallbacks(
-        cfg,
-        relay1=relay1_net_zero_active,
-        relay2=relay2_net_zero_active,
-    )
-    for relay in _relay_devices(cfg):
+    relay_devices = _relay_devices(cfg)
+    for index, relay in enumerate(relay_devices):
         device_id = str(relay.device_id)
         state = normalized_relay_device_states.setdefault(device_id, {})
         if 'surplus_allowed' not in state:
-            state['surplus_allowed'] = bool(relay_surplus_allowed_fallbacks.get(device_id, False))
+            state['surplus_allowed'] = bool(relay.policy.surplus_allowed)
         if 'force_on' not in state:
-            state['force_on'] = bool(relay_force_on_fallbacks.get(device_id, False))
+            state['force_on'] = bool(relay.policy.force_on)
         if 'active' not in state:
-            state['active'] = bool(relay_active_fallbacks.get(device_id, False))
+            state['active'] = False
     relay_runtime_candidates = _relay_runtime_candidates(
         cfg,
         normalized_relay_device_states,
@@ -1092,22 +927,12 @@ def compute_net_zero_engine_outputs(
 
     surplus_active = net_zero_surplus_policy_active(profiles, eff_fc, haeo_nz_plan_active=haeo_nz_plan_active)
 
-    previous_force_on_fallbacks = _relay_compat_fallbacks(
-        cfg,
-        relay1=prev_relay1_force_on,
-        relay2=prev_relay2_force_on,
-    )
-    previous_force_on_fallback_device_ids = []
-    for device_id, force_on in previous_force_on_fallbacks.items():
-        if bool(force_on):
-            previous_force_on_fallback_device_ids.append(device_id)
     effective_freeze_until_ts, current_force_on_device_ids = _apply_force_rising_edge_freeze_for_devices(
         now_ts=now_ts,
         freeze_until_ts=freeze_until_ts,
         freeze_s=cfg.surplus_freeze_s,
         relay_candidates=relay_runtime_candidates,
-        previous_force_on_device_ids=previous_force_on_device_ids
-        or tuple(previous_force_on_fallback_device_ids),
+        previous_force_on_device_ids=previous_force_on_device_ids or (),
     )
 
     surplus_device_inp = SurplusDispatchInput(
@@ -1411,7 +1236,7 @@ def compute_net_zero_engine_outputs(
             'ev_power_step_w': int(ev_power_step_w(selected_ev_cfg)),
             'ev_target_w': int(round(ev_target_w)),
             'primary_power_envelope_w': primary_envelope_w,
-            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.ev_priority)),
+            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.home_battery.policy.priority)),
             'adjustable_surplus_load': adjustable_surplus_load,
             'adjustable_surplus_activation': configured_activation_w,
             'adjustable_primary_load': adjustable_primary_load,
@@ -1435,8 +1260,6 @@ def compute_net_zero_engine_outputs(
             'haeo_nz_battery_limit_w': int(getattr(haeo_nz_plan, 'battery_limit_w', 0)),
             'haeo_nz_ev_limit_w': int(getattr(haeo_nz_plan, 'ev_limit_w', 0)),
             'haeo_nz_combo_reason': getattr(haeo_nz_plan, 'reason', ''),
-            'prev_relay1_force_on': bool(relay1_force_on),
-            'prev_relay2_force_on': bool(relay2_force_on),
             'prev_force_on_device_ids': current_force_on_device_ids,
         },
     )

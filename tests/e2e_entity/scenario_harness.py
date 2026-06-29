@@ -105,6 +105,10 @@ class QuarterScenarioHarness:
     def _optional_entity_id(self, key):
         return self.ent.get(key)
 
+    def _optional_device_entity_id(self, device_id, field):
+        device = (self.ent.get('devices') or {}).get(device_id) or {}
+        return device.get(field)
+
     def device_entity(self, device_id, field):
         device = (self.ent.get('devices') or {}).get(device_id) or {}
         entity_id = device.get(field)
@@ -217,11 +221,6 @@ class QuarterScenarioHarness:
             ('ev_hard_off_low_pv_cycles', 2),
             ('ev_hard_off_release_cycles', 2),
             ('haeo_stale_timeout_s', 300),
-            ('relay1_power_kw', 2.5),
-            ('relay2_power_kw', 5.0),
-            ('relay1_priority', 3),
-            ('relay2_priority', 1),
-            ('ev_priority', 2),
             ('soc', 50.0),
             ('min_cell_voltage_v', 3.20),
             ('battery_heartbeat', 0.0),
@@ -236,10 +235,6 @@ class QuarterScenarioHarness:
             ('rpnz_w', 500.0),
             ('pv_power_kw', 3.5),
             ('surplus_freeze_until', None),
-            ('relay1_surplus_allowed', True),
-            ('relay2_surplus_allowed', True),
-            ('relay1_force_on', False),
-            ('relay2_force_on', False),
             ('actuator_battery_setpoint_w', 0.0),
             ('actuator_ev_current_a', 6),
             ('actuator_ev_enabled', False),
@@ -266,11 +261,7 @@ class QuarterScenarioHarness:
             'ev_hard_off_low_pv_cycles',
             'ev_hard_off_release_cycles',
             'haeo_stale_timeout_s',
-            'relay1_power_kw',
-            'relay2_power_kw',
             'surplus_freeze_s',
-            'relay1_priority',
-            'relay2_priority',
             'ev_priority',
         )
         cfg_entities = {
@@ -285,6 +276,22 @@ class QuarterScenarioHarness:
         for k, v in defaults.items():
             self.store.set_value(k, v)
             self._sync_grouped_config_entities(k, v)
+
+        for device_id, field, value in (
+            ('EV_CHARGER', 'priority', 2),
+            ('RELAY1', 'max_absorb_w', 2500),
+            ('RELAY1', 'priority', 3),
+            ('RELAY1', 'surplus_allowed', True),
+            ('RELAY1', 'force_on', False),
+            ('RELAY2', 'max_absorb_w', 5000),
+            ('RELAY2', 'priority', 1),
+            ('RELAY2', 'surplus_allowed', True),
+            ('RELAY2', 'force_on', False),
+        ):
+            entity_id = self._optional_device_entity_id(device_id, field)
+            if entity_id:
+                self.store.set_value(entity_id, value)
+                self._sync_grouped_config_entities(entity_id, value)
 
         if self.ent:
             seed_active_surplus_devices(self, active_device_ids=())
@@ -311,12 +318,17 @@ class QuarterScenarioHarness:
         self.store.set_value('sensor.ems_device_policies_pyscript', '')
         self._sync_grouped_config_entities('input_number.ems_ev_voltage_v', 230)
         for key, default in (
-            ('relay1_power_kw', 2.5),
-            ('relay2_power_kw', 5.0),
             ('ev_current_step_a', 4),
             ('ev_charger_phases', 1),
         ):
             entity_id = self._optional_entity_id(key)
+            if entity_id:
+                self._sync_grouped_config_entities(entity_id, self.store.get_value(entity_id, default))
+        for device_id, field, default in (
+            ('RELAY1', 'max_absorb_w', 2500),
+            ('RELAY2', 'max_absorb_w', 5000),
+        ):
+            entity_id = self._optional_device_entity_id(device_id, field)
             if entity_id:
                 self._sync_grouped_config_entities(entity_id, self.store.get_value(entity_id, default))
 
@@ -324,8 +336,8 @@ class QuarterScenarioHarness:
         voltage_v = self.store.get_value('input_number.ems_ev_voltage_v', 230) or 230
         ev_charger_phases = self._optional_entity_id('ev_charger_phases')
         ev_current_step_a = self._optional_entity_id('ev_current_step_a')
-        relay1_power_kw = self._optional_entity_id('relay1_power_kw')
-        relay2_power_kw = self._optional_entity_id('relay2_power_kw')
+        relay1_power_w = self._optional_device_entity_id('RELAY1', 'max_absorb_w')
+        relay2_power_w = self._optional_device_entity_id('RELAY2', 'max_absorb_w')
         phases = self.store.get_value(ev_charger_phases, 1) or 1 if ev_charger_phases else 1
 
         if entity_id == 'input_number.ems_ev_voltage_v':
@@ -350,12 +362,12 @@ class QuarterScenarioHarness:
             self.store.set_value('input_number.ems_ev_power_step_w', int(round(float(value) * float(phases) * float(voltage_v))))
             return
 
-        if entity_id == relay1_power_kw:
-            self.store.set_value('input_number.ems_relay1_nominal_absorb_w', int(round(float(value) * 1000.0)))
+        if entity_id == relay1_power_w:
+            self.store.set_value('input_number.ems_relay1_nominal_absorb_w', int(round(float(value))))
             return
 
-        if entity_id == relay2_power_kw:
-            self.store.set_value('input_number.ems_relay2_nominal_absorb_w', int(round(float(value) * 1000.0)))
+        if entity_id == relay2_power_w:
+            self.store.set_value('input_number.ems_relay2_nominal_absorb_w', int(round(float(value))))
             return
 
     def _load_module(self, file_path: Path, kind: str):

@@ -4,8 +4,6 @@ import yaml
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_config,
     build_core_config_from_grouped_reader,
-    build_ems_config_from_grouped_config,
-    build_ems_config_from_grouped_reader,
     load_grouped_ems_config,
     validate_grouped_ems_config,
 )
@@ -121,12 +119,12 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
             ENT['adjustable_surplus_activation']: 650,
             ENT['haeo_stale_timeout_s']: 240,
-            ENT['relay1_power_kw']: 2.3,
-            ENT['relay2_power_kw']: 4.8,
+            ENT['devices']['RELAY1']['max_absorb_w']: 2300,
+            ENT['devices']['RELAY2']['max_absorb_w']: 4800,
             ENT['surplus_freeze_s']: 45,
-            ENT['ev_priority']: 5,
-            ENT['relay1_priority']: 3,
-            ENT['relay2_priority']: 1,
+            ENT['devices']['EV_CHARGER']['priority']: 5,
+            ENT['devices']['RELAY1']['priority']: 3,
+            ENT['devices']['RELAY2']['priority']: 1,
         }
     )
 
@@ -141,7 +139,7 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
 
 
 @pytest.mark.unit
-def test_grouped_config_runtime_reader_matches_dict_scalar_view(project_root):
+def test_grouped_config_runtime_reader_matches_dict_core_view(project_root):
     grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     validation = validate_grouped_ems_config(grouped_config)
     assert validation.ok is True
@@ -173,17 +171,17 @@ def test_grouped_config_runtime_reader_matches_dict_scalar_view(project_root):
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
             ENT['adjustable_surplus_activation']: 550,
             ENT['haeo_stale_timeout_s']: 180,
-            ENT['relay1_power_kw']: 2.1,
-            ENT['relay2_power_kw']: 4.4,
+            ENT['devices']['RELAY1']['max_absorb_w']: 2100,
+            ENT['devices']['RELAY2']['max_absorb_w']: 4400,
             ENT['surplus_freeze_s']: 60,
-            ENT['ev_priority']: 4,
-            ENT['relay1_priority']: 2,
-            ENT['relay2_priority']: 1,
+            ENT['devices']['EV_CHARGER']['priority']: 4,
+            ENT['devices']['RELAY1']['priority']: 2,
+            ENT['devices']['RELAY2']['priority']: 1,
         }
     )
 
-    dict_view = build_ems_config_from_grouped_config(grouped_config, harness.store.values)
-    reader_view = build_ems_config_from_grouped_reader(
+    dict_view = build_core_config_from_grouped_config(grouped_config, harness.store.values)
+    reader_view = build_core_config_from_grouped_reader(
         grouped_config,
         lambda entity_id, default: harness.store.get_value(entity_id, default),
     )
@@ -229,16 +227,15 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
             ENT['adjustable_surplus_activation']: 700,
             ENT['haeo_stale_timeout_s']: 210,
-            ENT['relay1_power_kw']: 2.2,
-            ENT['relay2_power_kw']: 4.6,
+            ENT['devices']['RELAY1']['max_absorb_w']: 2200,
+            ENT['devices']['RELAY2']['max_absorb_w']: 4600,
             ENT['surplus_freeze_s']: 55,
-            ENT['ev_priority']: 5,
-            ENT['relay1_priority']: 3,
-            ENT['relay2_priority']: 1,
+            ENT['devices']['EV_CHARGER']['priority']: 5,
+            ENT['devices']['RELAY1']['priority']: 3,
+            ENT['devices']['RELAY2']['priority']: 1,
         }
     )
 
-    scalar_config = harness.policy_mod['_read_scalar_config_view']()
     returned_config = harness.policy_mod['read_config']()
     status = harness.policy_mod['_GROUPED_CONFIG_DUAL_READ_STATUS']
 
@@ -248,7 +245,6 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
     )
     assert set(returned_config.devices) == set(expected_core_config.devices)
     assert build_device_configs(returned_config) == build_device_configs(expected_core_config)
-    assert scalar_config == build_ems_config_from_grouped_config(grouped_config, harness.store.values)
     assert status['enabled'] is True
     assert status['ok'] is True
     assert status['source'] == 'grouped_config'
@@ -453,9 +449,9 @@ def test_seed_active_surplus_devices_uses_harness_registry_for_scenario_only_rel
     harness = QuarterScenarioHarness(project_root, scenario_dir=scenario_dir)
 
     harness.set_entities({
-        harness.ent['relay1_priority']: 4,
-        harness.ent['ev_priority']: 3,
-        harness.ent['relay2_priority']: 2,
+        harness.ent['devices']['RELAY1']['priority']: 4,
+        harness.ent['devices']['EV_CHARGER']['priority']: 3,
+        harness.ent['devices']['RELAY2']['priority']: 2,
         harness.dev('RELAY3', 'priority'): 1,
     })
 

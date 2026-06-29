@@ -48,7 +48,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_values': {
-                E['relay1']: False,
+                E['actuator_relay1']: False,
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 8,
             },
@@ -79,7 +79,7 @@ def test_05_recovery_and_reactivation(project_root):
                 },
             },
             'expect_values': {
-                E['relay1']: True,
+                E['actuator_relay1']: True,
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 8,
             },

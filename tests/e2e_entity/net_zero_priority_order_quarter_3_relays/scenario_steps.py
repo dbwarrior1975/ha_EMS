@@ -18,15 +18,15 @@ def build_harness(project_root):
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,
         E['ev_max_absorb_w']: 6440,
-        E['relay1_priority']: 4,
-        E['relay2_priority']: 2,
+        E['devices']['RELAY1']['priority']: 4,
+        E['devices']['RELAY2']['priority']: 2,
         relay3['priority']: 1,
-        E['relay1_surplus_allowed']: True,
-        E['relay2_surplus_allowed']: True,
+        E['devices']['RELAY1']['surplus_allowed']: True,
+        E['devices']['RELAY2']['surplus_allowed']: True,
         relay3['surplus_allowed']: True,
         relay3['force_on']: False,
         relay3['enabled']: False,
-        relay3['max_absorb_w']: 7.5,
+        relay3['max_absorb_w']: 7500,
     })
     seed_active_surplus_devices(h, active_device_ids=(), relay_states={'RELAY3': False})
 

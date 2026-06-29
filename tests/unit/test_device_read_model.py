@@ -89,7 +89,7 @@ def test_ev_device_mapping_converts_current_to_power():
 
 @pytest.mark.unit
 def test_relay1_device_mapping_is_constant_power_when_active():
-    cfg = make_cfg(relay1_power_kw=2.5, relay1_priority=2)
+    cfg = make_cfg()
     m = make_m(relay1_on=True)
 
     relay_cfg = _config_by_id(cfg)['RELAY1']
@@ -112,7 +112,7 @@ def test_relay1_device_mapping_is_constant_power_when_active():
 
 @pytest.mark.unit
 def test_relay2_device_mapping_is_zero_when_inactive():
-    cfg = make_cfg(relay2_power_kw=5.0, relay2_priority=1)
+    cfg = make_cfg()
     m = make_m(relay2_on=False)
 
     relay_cfg = _config_by_id(cfg)['RELAY2']

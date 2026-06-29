@@ -6,6 +6,34 @@ from ems_adapter.config_loader import build_core_config_from_grouped_reader, loa
 from tests.helpers import cfg_ev_min_a, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
+def _relay_runtime_args(
+    *,
+    surplus_allowed=True,
+    active_device_ids=(),
+    forced_device_ids=(),
+    previous_force_on_device_ids=(),
+    relay_device_states=None,
+):
+    states = {
+        'RELAY1': {
+            'surplus_allowed': bool(surplus_allowed),
+            'force_on': 'RELAY1' in forced_device_ids,
+            'active': 'RELAY1' in active_device_ids,
+        },
+        'RELAY2': {
+            'surplus_allowed': bool(surplus_allowed),
+            'force_on': 'RELAY2' in forced_device_ids,
+            'active': 'RELAY2' in active_device_ids,
+        },
+    }
+    for device_id, state_overrides in (relay_device_states or {}).items():
+        states.setdefault(str(device_id), {}).update(state_overrides or {})
+    return {
+        'relay_device_states': states,
+        'previous_force_on_device_ids': tuple(previous_force_on_device_ids),
+    }
+
+
 def _core_cfg_with_capability_overrides(project_root, value_overrides=None, **device_capability_overrides):
     grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     for device_id, overrides in device_capability_overrides.items():
@@ -200,12 +228,7 @@ def test_engine_manual_disables_battery_write_and_keeps_current_battery_setpoint
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == 650
     assert out.battery_write_enabled is False
@@ -221,12 +244,7 @@ def test_engine_manual_safe_without_guard_clamp_keeps_current_and_write_disabled
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == 444
     assert out.battery_write_enabled is False
@@ -241,12 +259,7 @@ def test_engine_manual_safe_clamps_in_battery_protect():
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == 0
     assert out.battery_write_enabled is True
@@ -263,12 +276,7 @@ def test_engine_battery_protect_applies_configured_charge_floor():
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     assert out.battery_target_w == 100
@@ -285,12 +293,7 @@ def test_engine_respects_max_solar_charge_limit_in_net_zero():
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w <= 500
     assert out.battery_write_enabled is True
@@ -307,12 +310,7 @@ def test_engine_normal_limits_caps_discharge_with_max_battery_discharge_w():
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     assert out.battery_target_w == -4600
@@ -330,12 +328,7 @@ def test_engine_normal_limits_caps_discharge_with_negative_canonical_limit():
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     assert out.battery_target_w == -4600
@@ -352,12 +345,7 @@ def test_engine_trace_attrs_contain_authority_flag():
         profiles, cfg, m, make_haeo(), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.attrs['battery_write_enabled'] is False
 
@@ -378,12 +366,7 @@ def test_engine_trace_attrs_contain_ev_power_normalization():
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
         freeze_until_ts=None,
         ev_burn_active=True,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=True,
     )
 
@@ -409,12 +392,7 @@ def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
         freeze_until_ts=None,
         ev_burn_active=True,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=True,
     )
 
@@ -429,8 +407,6 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
         ev_min_absorb_w=ev_w(6, phases=3),
         ev_max_absorb_w=ev_w(16, phases=3),
         ev_charger_phases=3,
-        relay1_power_kw=2.5,
-        relay2_power_kw=5.0,
     )
     m = make_m(charger_on=True, charger_current_a=10)
 
@@ -438,12 +414,7 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
         freeze_until_ts=None,
         ev_burn_active=True,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=True,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(active_device_ids=('RELAY1',)),
         adjustable_surplus_active=True,
     )
 
@@ -502,17 +473,12 @@ def test_engine_relay_policies_include_registry_relays_without_scalar_dependency
         profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=100.0, required_power_consumption_kw=0.0), 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
-        relay_device_states={
-            'RELAY1': {'surplus_allowed': False, 'force_on': False, 'active': False},
-            'RELAY2': {'surplus_allowed': False, 'force_on': False, 'active': False},
-            'RELAY3': {'surplus_allowed': True, 'force_on': False, 'active': True},
-        },
+        **_relay_runtime_args(
+            surplus_allowed=False,
+            relay_device_states={
+                'RELAY3': {'surplus_allowed': True, 'force_on': False, 'active': True},
+            },
+        ),
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -546,12 +512,7 @@ def test_engine_surplus_device_trace_matches_current_activation_mapping():
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500, required_power_consumption_kw=2.0), 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -577,12 +538,7 @@ def test_engine_cheap_grid_charge_local_battery_target_and_explanation():
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == 100
     assert out.explanation == 'Local cheap-charge policy'
@@ -603,12 +559,7 @@ def test_engine_cheap_grid_charge_haeo_battery_target_and_explanation():
         profiles, cfg, m, haeo, make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == 1234
     assert out.explanation == 'Cheap charge policy with HAEO forecast assistance'
@@ -623,12 +574,7 @@ def test_engine_max_export_local_battery_target_and_explanation():
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == -4000
     assert out.explanation == 'Local export-oriented policy'
@@ -650,12 +596,7 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -681,12 +622,7 @@ def test_engine_force_on_uses_ev_capability_max_w_not_compat_current(project_roo
         profiles, cfg, make_m(charger_on=False, charger_current_a=0), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -709,12 +645,7 @@ def test_engine_max_export_haeo_battery_target_and_explanation():
         profiles, cfg, m, haeo, make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
     assert out.battery_target_w == -2500
     assert out.explanation == 'Export-oriented policy with HAEO forecast assistance'
@@ -729,12 +660,7 @@ def test_engine_blocks_max_export_when_battery_cannot_produce(project_root):
         profiles, cfg, make_m(), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -754,12 +680,7 @@ def test_engine_disables_ev_adjustable_when_ev_cannot_absorb(project_root):
         profiles, cfg, make_m(), make_haeo(), nz, 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -779,14 +700,7 @@ def test_engine_force_rising_edge_sets_freeze_and_blocks_immediate_activation():
         profiles, cfg, m, make_haeo(), nz, 100.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=True,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
-        prev_relay1_force_on=False,
-        prev_relay2_force_on=False,
+        **_relay_runtime_args(forced_device_ids=('RELAY1',)),
     )
 
     assert out.attrs['surplus_freeze_until_ts'] == 130.0
@@ -804,14 +718,10 @@ def test_engine_force_without_rising_edge_allows_activation_without_new_freeze()
         profiles, cfg, m, make_haeo(), nz, 100.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=True,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
-        prev_relay1_force_on=True,
-        prev_relay2_force_on=False,
+        **_relay_runtime_args(
+            forced_device_ids=('RELAY1',),
+            previous_force_on_device_ids=('RELAY1',),
+        ),
     )
 
     assert out.attrs['surplus_freeze_until_ts'] == 130.0
@@ -829,12 +739,7 @@ def test_engine_home_battery_adjustable_uses_rpnz_controller_when_not_primary_ev
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=True,
     )
 
@@ -857,12 +762,7 @@ def test_engine_net_zero_uses_configurable_default_battery_floor():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=True,
     )
 
@@ -880,12 +780,7 @@ def test_engine_home_battery_adjustable_release_stops_max_hold():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=True,
     )
 
@@ -913,12 +808,7 @@ def test_engine_adjustable_surplus_activation_overrides_threshold_source():
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500, required_power_consumption_kw=1.9), 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -926,12 +816,7 @@ def test_engine_adjustable_surplus_activation_overrides_threshold_source():
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500, required_power_consumption_kw=2.0), 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -955,12 +840,7 @@ def test_engine_same_target_combo_emits_fallback_warning_attrs():
         profiles, cfg, m, make_haeo(), nz, 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
     )
 
@@ -988,12 +868,7 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
         profiles, cfg_step_2, m, make_haeo(), nz, 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -1009,12 +884,7 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
         profiles, cfg_step_4, m, make_haeo(), nz, 30.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
     )
 
@@ -1040,12 +910,7 @@ def test_engine_primary_ev_low_pv_and_battery_discharge_triggers_hard_off():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
         pv_power_kw=0.0,
         ev_low_pv_cycles=2,
@@ -1076,12 +941,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
         pv_power_kw=1.5,
         ev_low_pv_cycles=0,
@@ -1111,12 +971,7 @@ def test_engine_primary_ev_force_on_does_not_override_low_pv_battery_safety():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
         pv_power_kw=0.0,
         ev_low_pv_cycles=2,
@@ -1145,12 +1000,7 @@ def test_engine_ev_primary_home_battery_small_positive_rpnz_does_not_release_har
         profiles, cfg, m, make_haeo(), nz, 270.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=0.0,
         ev_hard_off_active=True,
@@ -1181,12 +1031,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         profiles, cfg, m, make_haeo(), nz, 275.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.6,
         ev_hard_off_active=True,
@@ -1202,12 +1047,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         profiles, cfg, m, make_haeo(), nz, 305.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.6,
         ev_hard_off_active=True,
@@ -1238,12 +1078,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         profiles, cfg, m, make_haeo(), nz, 335.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.6,
         ev_hard_off_active=True,
@@ -1258,12 +1093,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         profiles, cfg, m, make_haeo(), nz, 365.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.5,
         ev_hard_off_active=True,
@@ -1304,12 +1134,7 @@ def test_engine_preserves_previous_ev_state_per_device_when_selected_ev_changes(
         profiles, cfg_garage, m, make_haeo(), make_nz(rpnz_w=500.0, required_power_consumption_kw=2.0), 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
         previous_ev_device_states=previous_ev_device_states,
     )
@@ -1328,12 +1153,7 @@ def test_engine_preserves_previous_ev_state_per_device_when_selected_ev_changes(
         profiles, cfg_main, m, make_haeo(), make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0), 90.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=False,
         previous_ev_device_states=out_garage.attrs['previous_ev_device_states'],
         pv_power_kw=0.0,
@@ -1357,12 +1177,7 @@ def test_engine_targets_selected_second_ev_and_marks_other_evs_inactive(project_
         profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=3000.0, required_power_consumption_kw=3.0), 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=False,
-        relay2_surplus_allowed=False,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
         adjustable_surplus_active=True,
         previous_ev_device_states={
             'EV_CHARGER': {
@@ -1399,12 +1214,7 @@ def test_engine_without_ev_devices_skips_ev_policy_and_keeps_battery_relay_outpu
         profiles, cfg, make_m(grid_power_w=-2500.0), make_haeo(), make_nz(rpnz_w=2500.0, required_power_consumption_kw=2.5), 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=3.5,
         previous_ev_device_states={
@@ -1452,12 +1262,7 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.7,
         ev_hard_off_active=False,
@@ -1489,12 +1294,7 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
         ev_burn_active=False,
-        relay1_surplus_allowed=True,
-        relay2_surplus_allowed=True,
-        relay1_force_on=False,
-        relay2_force_on=False,
-        relay1_net_zero_active=False,
-        relay2_net_zero_active=False,
+        **_relay_runtime_args(),
         adjustable_surplus_active=False,
         pv_power_kw=1.7,
         ev_hard_off_active=False,

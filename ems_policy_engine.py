@@ -1,11 +1,10 @@
-from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, EmsConfig, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
+from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.balance import compute_rpnz_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs, configured_forecast, effective_forecast
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.decision_trace import net_zero_attrs
-from ems_adapter.config_loader import build_ems_config_from_core_config
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
@@ -33,11 +32,6 @@ def read_core_config():
 
 def read_config():
     return read_core_config()
-
-
-def _read_scalar_config_view():
-    # Helper exposes the current grouped-config-backed scalar config view.
-    return build_ems_config_from_core_config(read_core_config())
     
 def read_profiles(entities):
     return Profiles(
@@ -72,21 +66,6 @@ def _compat_device_id(cfg, kind, index=0, default=''):
     if device is None:
         return str(default or '')
     return str(getattr(device, 'device_id', '') or default or '')
-
-
-def _device_entity_ref(runtime_entry, key, entities, legacy_key):
-    if isinstance(runtime_entry, dict):
-        value = runtime_entry.get(key)
-        if value not in (None, ''):
-            return value
-    return entities.get(legacy_key, '')
-
-
-def _relay_state_flag(relay_states, device_id, field, fallback=False):
-    relay_state = relay_states.get(device_id, {})
-    if isinstance(relay_state, dict) and field in relay_state:
-        return bool(relay_state.get(field))
-    return bool(fallback)
 
 
 def read_measurements(now_ts, cfg, entities):
@@ -127,10 +106,10 @@ def read_measurements(now_ts, cfg, entities):
         grid_power_w=get_float(entities['grid_power_w'], 0),
         current_battery_setpoint_w=get_float(entities['current_battery_sp'], 100),
         hourly_energy_balance_kwh=get_float(entities['hourly_energy_balance'], 0),
-        charger_on=get_bool(_device_entity_ref(ev_runtime, 'enabled', entities, 'charger_control')),
-        charger_current_a=get_int(_device_entity_ref(ev_runtime, 'current_a', entities, 'charger_current'), 4),
-        relay1_on=get_bool(_device_entity_ref(relay1_runtime, 'enabled', entities, 'relay1')),
-        relay2_on=get_bool(_device_entity_ref(relay2_runtime, 'enabled', entities, 'relay2')),
+        charger_on=get_bool(ev_runtime.get('enabled', '')),
+        charger_current_a=get_int(ev_runtime.get('current_a', ''), 4),
+        relay1_on=get_bool(relay1_runtime.get('enabled', '')),
+        relay2_on=get_bool(relay2_runtime.get('enabled', '')),
         relay_states=relay_states,
         ev_states=ev_states,
     )
@@ -314,8 +293,6 @@ def ems_policy_engine_loop():
     active_surplus_device_ids = _read_active_surplus_device_ids(entities)
     previous_device_state = _read_previous_device_state(entities)
     previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-    relay1_device_id = _compat_device_id(cfg, 'RELAY', index=0, default='RELAY1')
-    relay2_device_id = _compat_device_id(cfg, 'RELAY', index=1, default='RELAY2')
     nz = NetZeroState(
         rpnz_w=get_float(entities['rpnz_w'], compute_rpnz_w(m.hourly_energy_balance_kwh, remaining_s)),
         required_power_consumption_kw=get_float(entities['required_power_consumption_kw'], 0),
@@ -324,45 +301,11 @@ def ems_policy_engine_loop():
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=parse_input_datetime_ts(entities['surplus_freeze_until']),
         ev_burn_active=_read_adjustable_surplus_active(entities),
-        relay1_surplus_allowed=_relay_state_flag(
-            m.relay_states,
-            relay1_device_id,
-            'surplus_allowed',
-            fallback=get_bool(entities.get('relay1_surplus_allowed', '')),
-        ),
-        relay2_surplus_allowed=_relay_state_flag(
-            m.relay_states,
-            relay2_device_id,
-            'surplus_allowed',
-            fallback=get_bool(entities.get('relay2_surplus_allowed', '')),
-        ),
-        relay1_force_on=_relay_state_flag(
-            m.relay_states,
-            relay1_device_id,
-            'force_on',
-            fallback=get_bool(entities.get('relay1_force_on', '')),
-        ),
-        relay2_force_on=_relay_state_flag(
-            m.relay_states,
-            relay2_device_id,
-            'force_on',
-            fallback=get_bool(entities.get('relay2_force_on', '')),
-        ),
-        relay1_net_zero_active=relay1_device_id in active_surplus_device_ids,
-        relay2_net_zero_active=relay2_device_id in active_surplus_device_ids,
         adjustable_surplus_active=_read_adjustable_surplus_active(entities),
         pv_power_kw=get_float(entities['pv_power_kw'], None),
         ev_hard_off_active=bool(previous_device_state['hard_off_active']),
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
         ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
-        prev_relay1_force_on=(
-            relay1_device_id in previous_force_on_device_ids
-            or get_attr(entities['policy_decision_trace'], 'prev_relay1_force_on', False)
-        ),
-        prev_relay2_force_on=(
-            relay2_device_id in previous_force_on_device_ids
-            or get_attr(entities['policy_decision_trace'], 'prev_relay2_force_on', False)
-        ),
         relay_device_states=getattr(m, 'relay_states', {}),
         previous_ev_device_states=_read_previous_ev_device_states(entities),
         previous_force_on_device_ids=previous_force_on_device_ids,

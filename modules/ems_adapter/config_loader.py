@@ -24,7 +24,6 @@ from ems_core.domain.models import (
     CoreRoleConstraintsConfig,
     CoreRuntimeConfig,
     CoreStateConfig,
-    EmsConfig,
 )
 from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
@@ -311,7 +310,6 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
             _alias('ev_hard_off_pv_threshold_kw', f'ems.devices.{ev_id}.policy.low_pv_threshold_w', ev_policy.get('low_pv_threshold_w'), unit_transform='W_TO_KW'),
             _alias('ev_hard_off_low_pv_cycles', f'ems.devices.{ev_id}.policy.hard_off_low_pv_cycles', ev_policy.get('hard_off_low_pv_cycles')),
             _alias('ev_hard_off_release_cycles', f'ems.devices.{ev_id}.policy.hard_off_release_cycles', ev_policy.get('hard_off_release_cycles')),
-            _alias('ev_priority', f'ems.devices.{ev_id}.policy.priority', ev_policy.get('priority')),
             _alias('charger_control', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
             _alias('actuator_ev_enabled', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
             _alias('charger_current', f'ems.devices.{ev_id}.adapter.current_a', ev_adapter.get('current_a')),
@@ -332,11 +330,6 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
     relay1_id = _device_id_of(relay1, 'RELAY1')
     aliases.extend(
         [
-            _alias('relay1_power_kw', f'ems.devices.{relay1_id}.capabilities.max_absorb_w', relay1_capabilities.get('max_absorb_w')),
-            _alias('relay1_priority', f'ems.devices.{relay1_id}.policy.priority', relay1_policy.get('priority')),
-            _alias('relay1_surplus_allowed', f'ems.devices.{relay1_id}.policy.surplus_allowed', relay1_policy.get('surplus_allowed')),
-            _alias('relay1_force_on', f'ems.devices.{relay1_id}.policy.force_on', relay1_policy.get('force_on')),
-            _alias('relay1', f'ems.devices.{relay1_id}.adapter.enabled', relay1_adapter.get('enabled')),
             _alias('actuator_relay1', f'ems.devices.{relay1_id}.adapter.enabled', relay1_adapter.get('enabled')),
         ]
     )
@@ -348,11 +341,6 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
     relay2_id = _device_id_of(relay2, 'RELAY2')
     aliases.extend(
         [
-            _alias('relay2_power_kw', f'ems.devices.{relay2_id}.capabilities.max_absorb_w', relay2_capabilities.get('max_absorb_w')),
-            _alias('relay2_priority', f'ems.devices.{relay2_id}.policy.priority', relay2_policy.get('priority')),
-            _alias('relay2_surplus_allowed', f'ems.devices.{relay2_id}.policy.surplus_allowed', relay2_policy.get('surplus_allowed')),
-            _alias('relay2_force_on', f'ems.devices.{relay2_id}.policy.force_on', relay2_policy.get('force_on')),
-            _alias('relay2', f'ems.devices.{relay2_id}.adapter.enabled', relay2_adapter.get('enabled')),
             _alias('actuator_relay2', f'ems.devices.{relay2_id}.adapter.enabled', relay2_adapter.get('enabled')),
         ]
     )
@@ -416,13 +404,6 @@ def _entity_values_reader(entity_values: dict[str, object]):
         return entity_values.get(entity_id, default)
 
     return read_entity
-
-
-def build_ems_config_from_grouped_config(config: dict, entity_values: dict[str, object]) -> EmsConfig:
-    return build_ems_config_from_grouped_reader(
-        config,
-        _entity_values_reader(entity_values),
-    )
 
 
 def build_core_config_from_grouped_config(config: dict, entity_values: Optional[dict[str, object]] = None) -> CoreConfig:
@@ -568,14 +549,6 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
     if core_config.adjustable_surplus_load_priority is None:
         core_config.adjustable_surplus_load_priority = core_config.home_battery.policy.priority
-    if core_config.relay1_power_kw is None and core_config.relay1 is not None:
-        core_config.relay1_power_kw = core_config.relay1.capabilities.max_absorb_w
-    if core_config.relay2_power_kw is None and core_config.relay2 is not None:
-        core_config.relay2_power_kw = core_config.relay2.capabilities.max_absorb_w
-    if core_config.relay1_priority is None and core_config.relay1 is not None:
-        core_config.relay1_priority = core_config.relay1.policy.priority
-    if core_config.relay2_priority is None and core_config.relay2 is not None:
-        core_config.relay2_priority = core_config.relay2.policy.priority
     if core_config.ev_priority is None and core_config.ev_charger is not None:
         core_config.ev_priority = core_config.ev_charger.policy.priority
     return core_config
@@ -586,307 +559,6 @@ def _first_ev_priority(core_devices: dict[str, object]) -> object:
         if str(getattr(device, 'kind', '')) == 'EV_CHARGER':
             return getattr(getattr(device, 'policy', None), 'priority', 3)
     return 3
-
-
-def build_ems_config_from_grouped_reader(
-    config: dict,
-    read_entity: Callable[[str, object], object],
-) -> EmsConfig:
-    core_config = build_core_config_from_grouped_reader(config, read_entity)
-    ev_device = core_config.ev_charger
-    ev_capabilities = ev_device.capabilities if ev_device is not None else None
-    ev_adapter = ev_device.adapter if ev_device is not None else None
-
-    def read_float(value: object, default: float) -> float:
-        return float(value if value not in (None, '') else default)
-
-    def read_int(value: object, default: int) -> int:
-        return int(float(value if value not in (None, '') else default))
-
-    def read_str(value: object, default: str) -> str:
-        resolved = value if value not in (None, '') else default
-        if resolved in (None, 'unknown', 'unavailable', 'none', ''):
-            return default
-        return str(resolved)
-
-    def read_bool(value: object, default: bool) -> bool:
-        resolved = value if value not in (None, '') else default
-        if isinstance(resolved, bool):
-            return resolved
-        if isinstance(resolved, (int, float)):
-            return bool(resolved)
-        text = str(resolved).strip().lower()
-        if text in ('true', 'on', '1', 'yes'):
-            return True
-        if text in ('false', 'off', '0', 'no', ''):
-            return False
-        return bool(default)
-
-    derived_ev_power_step_w = None
-    if ev_adapter is not None:
-        try:
-            derived_ev_power_step_w = ev_current_a_to_power_w(
-                ev_adapter.current_step_a,
-                ev_adapter.phases,
-                ev_adapter.voltage_v,
-            )
-        except (TypeError, ValueError):
-            derived_ev_power_step_w = None
-
-    return EmsConfig(
-        deadband_w=read_float(core_config.global_config.deadband_w, 50),
-        ramp_max_w=read_float(core_config.global_config.ramp_w, 1000),
-        strict_limits_max_w=read_float(core_config.global_config.strict_limit_w, 4600),
-        max_battery_discharge_w=read_float(core_config.max_battery_discharge_w, 4600),
-        max_solar_charge_w=read_float(core_config.max_solar_charge_w, 3700),
-        battery_protect_soc=read_float(core_config.battery_protect_soc, 2),
-        battery_protect_soc_recovery_margin=read_float(core_config.battery_protect_soc_recovery_margin, 1),
-        battery_protect_min_cell_voltage_v=read_float(core_config.battery_protect_min_cell_voltage_v, 3.030),
-        battery_protect_charge_floor_w=read_float(core_config.battery_protect_charge_floor_w, 0.0),
-        ev_min_absorb_w=read_float(getattr(ev_capabilities, 'min_absorb_w', None), 1380.0),
-        ev_max_absorb_w=read_float(getattr(ev_capabilities, 'max_absorb_w', None), 6440.0),
-        ev_charger_phases=read_int(core_config.ev_charger_phases, 1),
-        ev_voltage_v=read_float(core_config.ev_voltage_v, 230.0),
-        ev_force_on=read_bool(core_config.ev_force_on, False),
-        ev_hard_off_pv_threshold_kw=read_float(core_config.ev_hard_off_pv_threshold_kw, 1.6),
-        ev_hard_off_low_pv_cycles=read_int(core_config.ev_hard_off_low_pv_cycles, 2),
-        ev_hard_off_release_cycles=read_int(core_config.ev_hard_off_release_cycles, 2),
-        ev_current_step_a=read_int(core_config.ev_current_step_a, 4),
-        ev_power_step_w=read_float(getattr(ev_capabilities, 'step_w', None), read_float(derived_ev_power_step_w, 920.0)),
-        nz_battery_floor_default_w=read_float(core_config.global_config.nz_battery_floor_default_w, 100.0),
-        nz_battery_floor_ev_active_w=read_float(core_config.global_config.nz_battery_floor_ev_active_w, 0.0),
-        adjustable_surplus_load=read_str(core_config.global_config.adjustable_surplus_load, 'HOME_BATTERY'),
-        adjustable_primary_load=read_str(core_config.global_config.adjustable_primary_load, ''),
-        adjustable_surplus_activation=read_float(core_config.global_config.adjustable_surplus_activation_w, 0.0),
-        adjustable_surplus_load_priority=read_int(core_config.adjustable_surplus_load_priority, 3),
-        haeo_stale_timeout_s=read_float(core_config.global_config.haeo_stale_timeout_s, 300),
-        relay1_power_kw=read_float(core_config.relay1_power_kw, 2.5),
-        relay2_power_kw=read_float(core_config.relay2_power_kw, 5.0),
-        surplus_freeze_s=read_int(core_config.global_config.surplus_freeze_s, 30),
-        ev_priority=read_int(core_config.ev_priority, 3),
-        relay1_priority=read_int(core_config.relay1_priority, 2),
-        relay2_priority=read_int(core_config.relay2_priority, 1),
-    )
-
-
-def build_core_config_from_legacy_config(cfg: EmsConfig) -> CoreConfig:
-    home_battery = CoreBatteryDeviceConfig(
-        device_id='HOME_BATTERY',
-        kind='BATTERY',
-        capabilities=CoreDeviceCapabilitiesConfig(
-            can_absorb_w=True,
-            can_produce_w=True,
-            min_absorb_w=0,
-            max_absorb_w=cfg.max_solar_charge_w,
-            step_w=cfg.deadband_w,
-            max_produce_w=cfg.max_battery_discharge_w,
-        ),
-        policy=CoreBatteryPolicyConfig(
-            priority=cfg.adjustable_surplus_load_priority,
-            default_min_absorb_w=None,
-        ),
-        guard=CoreBatteryGuardConfig(
-            soc='',
-            min_cell_voltage_v='',
-            heartbeat='',
-            protect_soc=cfg.battery_protect_soc,
-            protect_soc_recovery_margin=cfg.battery_protect_soc_recovery_margin,
-            protect_min_cell_voltage_v=cfg.battery_protect_min_cell_voltage_v,
-            protect_min_absorb_w=cfg.battery_protect_charge_floor_w,
-        ),
-        adapter=CoreBatteryAdapterConfig(
-            target_w='',
-            measured_power_w='',
-        ),
-    )
-    ev_charger = CoreEvChargerDeviceConfig(
-        device_id='EV_CHARGER',
-        kind='EV_CHARGER',
-        capabilities=CoreDeviceCapabilitiesConfig(
-            can_absorb_w=True,
-            can_produce_w=False,
-            min_absorb_w=ev_min_power_w(cfg),
-            max_absorb_w=ev_max_power_w(cfg),
-            step_w=ev_power_step_w(cfg),
-            max_produce_w=None,
-        ),
-        policy=CoreEvPolicyConfig(
-            priority=cfg.ev_priority,
-            surplus_allowed='',
-            force_on='',
-            low_pv_threshold_w=cfg.ev_hard_off_pv_threshold_kw,
-            hard_off_low_pv_cycles=cfg.ev_hard_off_low_pv_cycles,
-            hard_off_release_cycles=cfg.ev_hard_off_release_cycles,
-        ),
-        adapter=CoreEvAdapterConfig(
-            enabled='',
-            current_a='',
-            current_step_a=cfg.ev_current_step_a,
-            phases=cfg.ev_charger_phases,
-            voltage_v=cfg.ev_voltage_v,
-        ),
-    )
-    relay1 = CoreRelayDeviceConfig(
-        device_id='RELAY1',
-        kind='RELAY',
-        capabilities=CoreDeviceCapabilitiesConfig(
-            can_absorb_w=True,
-            can_produce_w=False,
-            min_absorb_w=cfg.relay1_power_kw,
-            max_absorb_w=cfg.relay1_power_kw,
-            step_w=cfg.relay1_power_kw,
-            max_produce_w=None,
-        ),
-        policy=CoreRelayPolicyConfig(
-            priority=cfg.relay1_priority,
-            surplus_allowed='',
-            force_on='',
-        ),
-        adapter=CoreRelayAdapterConfig(enabled=''),
-    )
-    relay2 = CoreRelayDeviceConfig(
-        device_id='RELAY2',
-        kind='RELAY',
-        capabilities=CoreDeviceCapabilitiesConfig(
-            can_absorb_w=True,
-            can_produce_w=False,
-            min_absorb_w=cfg.relay2_power_kw,
-            max_absorb_w=cfg.relay2_power_kw,
-            step_w=cfg.relay2_power_kw,
-            max_produce_w=None,
-        ),
-        policy=CoreRelayPolicyConfig(
-            priority=cfg.relay2_priority,
-            surplus_allowed='',
-            force_on='',
-        ),
-        adapter=CoreRelayAdapterConfig(enabled=''),
-    )
-    core_config = CoreConfig(
-        profiles=CoreProfilesConfig(
-            control='AUTOMATIC',
-            goal='NET_ZERO',
-            forecast='NONE',
-            guard='NORMAL_LIMITS',
-        ),
-        global_config=CoreGlobalConfig(
-            deadband_w=cfg.deadband_w,
-            ramp_w=cfg.ramp_max_w,
-            strict_limit_w=cfg.strict_limits_max_w,
-            default_sp_w=cfg.default_sp_w,
-            surplus_freeze_s=cfg.surplus_freeze_s,
-            battery_heartbeat_timeout_s=cfg.battery_heartbeat_timeout_s,
-            haeo_stale_timeout_s=cfg.haeo_stale_timeout_s,
-            nz_battery_floor_default_w=cfg.nz_battery_floor_default_w,
-            nz_battery_floor_ev_active_w=cfg.nz_battery_floor_ev_active_w,
-            adjustable_surplus_load=cfg.adjustable_surplus_load,
-            adjustable_primary_load=cfg.adjustable_primary_load,
-            adjustable_surplus_activation_w=cfg.adjustable_surplus_activation,
-        ),
-        home_battery=home_battery,
-        ev_charger=ev_charger,
-        relay1=relay1,
-        relay2=relay2,
-        runtime=CoreRuntimeConfig(
-            grid_power_w='',
-            hourly_energy_balance_kwh='',
-            required_power_w='',
-            rpnz_w='',
-            pv_power_w='',
-        ),
-        state=CoreStateConfig(
-            surplus_freeze_until='',
-            active_surplus_devices='',
-        ),
-        policy_outputs=CorePolicyOutputsConfig(
-            decision_trace='',
-            device_policies='',
-            surplus_policy_active='',
-            surplus_dispatch_decision='',
-        ),
-        haeo=None,
-        devices={
-            'HOME_BATTERY': home_battery,
-            'EV_CHARGER': ev_charger,
-            'RELAY1': relay1,
-            'RELAY2': relay2,
-        },
-    )
-    return _populate_core_config_derived_fields(core_config)
-
-
-def build_ems_config_from_core_config(core_config: CoreConfig) -> EmsConfig:
-    def read_float_value(value: object, default: float) -> float:
-        return float(value if value not in (None, '') else default)
-
-    def read_int_value(value: object, default: int) -> int:
-        return int(float(value if value not in (None, '') else default))
-
-    def read_bool(value: object, default: bool) -> bool:
-        if isinstance(value, bool):
-            return value
-        if value in (None, ''):
-            return default
-        if isinstance(value, (int, float)):
-            return bool(value)
-        text = str(value).strip().lower()
-        if text in ('true', 'on', '1', 'yes'):
-            return True
-        if text in ('false', 'off', '0', 'no', ''):
-            return False
-        return bool(default)
-
-    ev_device = core_config.ev_charger
-    ev_capabilities = ev_device.capabilities if ev_device is not None else None
-    ev_adapter = ev_device.adapter if ev_device is not None else None
-    derived_ev_power_step_w = 920.0
-    if ev_adapter is not None:
-        try:
-            derived_ev_power_step_w = float(
-                ev_current_a_to_power_w(
-                    ev_adapter.current_step_a,
-                    ev_adapter.phases,
-                    ev_adapter.voltage_v,
-                )
-            )
-        except (TypeError, ValueError):
-            derived_ev_power_step_w = 920.0
-
-    return EmsConfig(
-        deadband_w=float(core_config.deadband_w),
-        ramp_max_w=float(core_config.ramp_max_w),
-        strict_limits_max_w=float(core_config.strict_limits_max_w),
-        max_battery_discharge_w=float(core_config.max_battery_discharge_w),
-        max_solar_charge_w=float(core_config.max_solar_charge_w),
-        battery_protect_soc=float(core_config.battery_protect_soc),
-        battery_protect_soc_recovery_margin=float(core_config.battery_protect_soc_recovery_margin),
-        battery_protect_min_cell_voltage_v=float(core_config.battery_protect_min_cell_voltage_v),
-        battery_protect_charge_floor_w=float(core_config.battery_protect_charge_floor_w),
-        battery_heartbeat_timeout_s=float(core_config.battery_heartbeat_timeout_s),
-        haeo_stale_timeout_s=float(core_config.haeo_stale_timeout_s),
-        ev_min_absorb_w=float(getattr(ev_capabilities, 'min_absorb_w', 1380.0)),
-        ev_max_absorb_w=float(getattr(ev_capabilities, 'max_absorb_w', 6440.0)),
-        ev_charger_phases=read_int_value(core_config.ev_charger_phases, 1),
-        ev_voltage_v=read_float_value(core_config.ev_voltage_v, 230.0),
-        ev_force_on=read_bool(core_config.ev_force_on, False),
-        ev_hard_off_pv_threshold_kw=read_float_value(core_config.ev_hard_off_pv_threshold_kw, 1.6),
-        ev_hard_off_low_pv_cycles=read_int_value(core_config.ev_hard_off_low_pv_cycles, 2),
-        ev_hard_off_release_cycles=read_int_value(core_config.ev_hard_off_release_cycles, 2),
-        ev_current_step_a=read_int_value(core_config.ev_current_step_a, 4),
-        ev_power_step_w=float(getattr(ev_capabilities, 'step_w', derived_ev_power_step_w)),
-        nz_battery_floor_default_w=float(core_config.nz_battery_floor_default_w),
-        nz_battery_floor_ev_active_w=float(core_config.nz_battery_floor_ev_active_w),
-        adjustable_surplus_load=str(core_config.adjustable_surplus_load),
-        adjustable_primary_load=str(core_config.adjustable_primary_load),
-        adjustable_surplus_activation=float(core_config.adjustable_surplus_activation),
-        adjustable_surplus_load_priority=int(core_config.adjustable_surplus_load_priority),
-        relay1_power_kw=float(core_config.relay1_power_kw),
-        relay2_power_kw=float(core_config.relay2_power_kw),
-        surplus_freeze_s=int(core_config.surplus_freeze_s),
-        ev_priority=int(core_config.ev_priority),
-        relay1_priority=int(core_config.relay1_priority),
-        relay2_priority=int(core_config.relay2_priority),
-    )
 
 
 def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> None:
@@ -965,7 +637,6 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.current_step_a', 'current_step_a', issues, min_value=1)
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.phases', 'phases', issues, min_value=1)
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.voltage_v', 'voltage_v', issues, min_value=1)
-        _validate_deprecated_ev_adapter_fields(device_id, device_path, device['adapter'], issues)
         _validate_ev_numeric_current_compatibility(device_path, device, issues)
 
     if kind == 'RELAY':
@@ -1020,28 +691,6 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
     max_produce = capabilities.get('max_produce_w')
     if capabilities.get('can_produce_w') is False and 'max_produce_w' in capabilities:
         issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_WARNING, 'max_produce_w is ignored when can_produce_w=false'))
-
-
-def _validate_deprecated_ev_adapter_fields(
-    device_id: str,
-    device_path: str,
-    adapter: dict,
-    issues: list[ConfigValidationIssue],
-) -> None:
-    deprecated_fields = (
-        ('current_min_a', 'capabilities.min_absorb_w'),
-        ('current_max_a', 'capabilities.max_absorb_w'),
-        ('force_current_a', 'policy.force_on. When force_on is true, EV charges at capabilities.max_absorb_w.'),
-    )
-    for field, replacement in deprecated_fields:
-        if field in adapter:
-            issues.append(
-                _issue(
-                    f'{device_path}.adapter.{field}',
-                    SEVERITY_ERROR,
-                    f'{device_id} adapter.{field} is no longer supported. Use {replacement}',
-                )
-            )
 
 
 def _validate_ev_numeric_current_compatibility(device_path: str, device: dict, issues: list[ConfigValidationIssue]) -> None:

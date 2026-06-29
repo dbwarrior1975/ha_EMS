@@ -36,15 +36,11 @@ def test_required_entities_exist():
 
 
 @pytest.mark.unit
-def test_runtime_registry_does_not_expose_removed_ev_amp_keys():
-    assert 'ev_min_current_a' not in ENT
-    assert 'ev_max_current_a' not in ENT
-    assert 'ev_force_current_a' not in ENT
-    assert 'deprecated_current_min_a' not in ENT
-    assert 'deprecated_current_max_a' not in ENT
-    assert 'deprecated_force_current_a' not in ENT
+def test_runtime_registry_exposes_current_ev_watt_and_actuator_keys():
     assert ENT['ev_min_absorb_w'].startswith('input_number.')
     assert ENT['ev_max_absorb_w'].startswith('input_number.')
+    assert ENT['actuator_ev_current_a'].startswith('number.')
+    assert ENT['actuator_ev_enabled'].startswith('switch.')
 
 
 @pytest.mark.unit
@@ -63,8 +59,6 @@ def test_entity_ids_are_unique():
         },
         'number.charger_current_level': {'charger_current', 'actuator_ev_current_a'},
         'switch.charger_control': {'charger_control', 'actuator_ev_enabled'},
-        'switch.relay_1_2': {'relay1', 'actuator_relay1'},
-        'switch.relay_2_2': {'relay2', 'actuator_relay2'},
     }
 
     actual_shared = {

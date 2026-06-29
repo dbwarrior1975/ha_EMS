@@ -20,7 +20,7 @@ def build_harness(project_root):
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['adjustable_surplus_activation']: 2500,
         E['adjustable_surplus_load_priority']: 4,
-        E['ev_priority']: 3,
+        E['devices']['EV_CHARGER']['priority']: 3,
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,
         E['ev_current_step_a']: 1,

@@ -21,12 +21,11 @@ def test_02_relay1_on_then_release_under_force(project_root):
         actuator_ev_current_a=6,
     )
     h.set_entities({
-        E['relay2_force_on']: True,
+        E['devices']['RELAY2']['force_on']: True,
         E['surplus_freeze_until']: 105.0,
     })
     seed_previous_policy_trace(h, **{
-        'prev_relay1_force_on': False,
-        'prev_relay2_force_on': True,
+        'prev_force_on_device_ids': ('RELAY2',),
     })
 
     steps = [
@@ -41,8 +40,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'surplus_next_target': 'ADJUSTABLE',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -74,8 +72,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'surplus_next_target': 'ADJUSTABLE',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -97,8 +94,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
                 'surplus_next_target': 'ADJUSTABLE',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -130,8 +126,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'surplus_next_target': 'RELAY1',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': True,
+                'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},

@@ -51,44 +51,6 @@ class Profiles:
 
 
 @dataclass
-class EmsConfig:
-    deadband_w: float = 50.0
-    ramp_max_w: float = 1000.0
-    strict_limits_max_w: float = 4600.0
-    max_battery_discharge_w: float = 4600.0
-    default_sp_w: float = 100.0
-    max_solar_charge_w: float = 3700.0
-    battery_protect_soc: float = 2.0
-    battery_protect_soc_recovery_margin: float = 1.0
-    battery_protect_min_cell_voltage_v: float = 3.030
-    battery_protect_charge_floor_w: float = 0.0
-    battery_heartbeat_timeout_s: float = 360.0
-    haeo_stale_timeout_s: float = 300.0
-    ev_min_absorb_w: float = 1380.0
-    ev_max_absorb_w: float = 6440.0
-    ev_charger_phases: int = 1
-    ev_voltage_v: float = 230.0
-    ev_force_on: bool = False
-    ev_hard_off_pv_threshold_kw: float = 1.6
-    ev_hard_off_low_pv_cycles: int = 2
-    ev_hard_off_release_cycles: int = 2
-    ev_current_step_a: int = 4
-    ev_power_step_w: Optional[float] = None
-    nz_battery_floor_default_w: float = 100.0
-    nz_battery_floor_ev_active_w: float = 0.0
-    adjustable_surplus_load: str = 'HOME_BATTERY'
-    adjustable_primary_load: str = ''
-    adjustable_surplus_activation: float = 0.0
-    adjustable_surplus_load_priority: int = 3
-    relay1_power_kw: float = 2.5
-    relay2_power_kw: float = 5.0
-    relay1_priority: int = 2
-    relay2_priority: int = 1
-    ev_priority: int = 3
-    surplus_freeze_s: int = 30
-
-
-@dataclass
 class CoreProfilesConfig:
     control: EntityRef
     goal: EntityRef
@@ -266,8 +228,6 @@ class CoreConfig:
     role_constraints: Optional[CoreRoleConstraintsConfig] = None
     devices: Optional[dict[str, CoreDeviceConfig]] = None
     ev_charger: Optional[CoreEvChargerDeviceConfig] = None
-    relay1: Optional[CoreRelayDeviceConfig] = None
-    relay2: Optional[CoreRelayDeviceConfig] = None
     deadband_w: Optional[ScalarRef] = None
     ramp_max_w: Optional[ScalarRef] = None
     strict_limits_max_w: Optional[ScalarRef] = None
@@ -294,10 +254,6 @@ class CoreConfig:
     adjustable_surplus_activation: Optional[ScalarRef] = None
     surplus_freeze_s: Optional[ScalarRef] = None
     adjustable_surplus_load_priority: Optional[ScalarRef] = None
-    relay1_power_kw: Optional[ScalarRef] = None
-    relay2_power_kw: Optional[ScalarRef] = None
-    relay1_priority: Optional[ScalarRef] = None
-    relay2_priority: Optional[ScalarRef] = None
     ev_priority: Optional[ScalarRef] = None
 
     def __post_init__(self):
@@ -309,8 +265,6 @@ class CoreConfig:
             self.devices['HOME_BATTERY'] = self.home_battery
         self.home_battery = self._resolve_home_battery_device()
         self.ev_charger = self._resolve_ev_compat_device()
-        self.relay1 = self._resolve_relay_compat_device(0)
-        self.relay2 = self._resolve_relay_compat_device(1)
         if self.deadband_w is None:
             self.deadband_w = self.global_config.deadband_w
         if self.ramp_max_w is None:
@@ -363,14 +317,6 @@ class CoreConfig:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
         if self.adjustable_surplus_load_priority is None:
             self.adjustable_surplus_load_priority = self.home_battery.policy.priority
-        if self.relay1_power_kw is None and self.relay1 is not None:
-            self.relay1_power_kw = self.relay1.capabilities.max_absorb_w
-        if self.relay2_power_kw is None and self.relay2 is not None:
-            self.relay2_power_kw = self.relay2.capabilities.max_absorb_w
-        if self.relay1_priority is None and self.relay1 is not None:
-            self.relay1_priority = self.relay1.policy.priority
-        if self.relay2_priority is None and self.relay2 is not None:
-            self.relay2_priority = self.relay2.policy.priority
         if self.ev_priority is None and self.ev_charger is not None:
             self.ev_priority = self.ev_charger.policy.priority
 
@@ -402,13 +348,6 @@ class CoreConfig:
         if device is not None and str(device.kind) == 'EV_CHARGER':
             return device
         return self.first_device_by_kind('EV_CHARGER')
-
-    def _resolve_relay_compat_device(self, index: int) -> Optional[CoreRelayDeviceConfig]:
-        preferred_id = f'RELAY{index + 1}'
-        device = self.device_by_id(preferred_id)
-        if device is not None and str(device.kind) == 'RELAY':
-            return device
-        return self.nth_device_by_kind('RELAY', index)
 
     def devices_by_kind(self, kind: str) -> tuple[CoreDeviceConfig, ...]:
         if self.devices is None:

@@ -29,8 +29,7 @@ Tama release ei toteuta:
 1. multi-EV simultaneous power splitia
 2. round-robinia usealle EV:lle
 3. useaa `HOME_BATTERY`-akkua
-4. legacy scalar trace -kenttien poistamista kaikista compatibility-polkuista
-5. kaikkien core API legacy-parametrien poistoa
+4. kaikkien core API legacy-parametrien poistoa
 
 HAEO NET_ZERO custom EV -polku tukee selected EV device-id:ta unit-tasolla.
 EMS-internal HAEO combo -semantiikan laajemmat muutokset ovat jatkotyota siltä
@@ -52,8 +51,9 @@ Seuraavat Home Assistant -entityt poistuvat eivatka paivity enaa:
 Jos Home Assistant -automaatiot, dashboardit tai template-sensorit ovat
 nojaaneet naihin entityihin, ne on paivitettava.
 
-Lisaksi legacy scalar -view on rajattu deprecated adapter -polkuun. Tuotantokoodi
-ei enaa nojaa `EmsConfig`-parityyn runtime-polussa.
+Lisaksi erillinen legacy scalar -view ja `EmsConfig`-parity on poistettu
+aktiivisesta runtime-polusta. Tuotantokoodi nojaa `CoreConfig`-malliin ja
+device-registryyn.
 
 ## Canonical replacements
 

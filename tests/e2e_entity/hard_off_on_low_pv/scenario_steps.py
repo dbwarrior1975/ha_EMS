@@ -25,8 +25,8 @@ def build_harness(project_root):
         E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['adjustable_surplus_load_priority']: 2,
-        E['relay1_priority']: 3,
-        E['relay2_priority']: 1,
+        E['devices']['RELAY1']['priority']: 3,
+        E['devices']['RELAY2']['priority']: 1,
     })
     return h
 

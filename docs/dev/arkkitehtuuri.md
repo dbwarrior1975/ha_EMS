@@ -97,7 +97,8 @@ Vastuut:
 6. laskee net zero -moottorin ulostulot `compute_net_zero_engine_outputs()`-funktion kautta
 7. julkaisee kanoniset `device_policies`, `policy_decision_trace`,
    `active_surplus_devices` ja `previous_device_state` -ulostulot
-8. legacy scalar-diagnostiikka kuuluu vain deprecated adapter -polkuun
+8. erillisia legacy scalar -diagnostiikkapeileja ei julkaista aktiivisessa
+   runtime-polussa
 
 Koodin triggerit:
 
@@ -163,14 +164,13 @@ Projektin keskeiset mallit:
 
 1. `Profiles`
 2. `CoreConfig`
-3. `EmsConfig` (deprecated adapter-view)
-4. `RuntimeMeasurements`
-5. `HaeoTargets`
-6. `NetZeroState`
-7. `SurplusDeviceTarget`
-8. `SurplusDispatchInput`
-9. `SurplusDispatchDecision`
-10. `NetZeroOutputs`
+3. `RuntimeMeasurements`
+4. `HaeoTargets`
+5. `NetZeroState`
+6. `SurplusDeviceTarget`
+7. `SurplusDispatchInput`
+8. `SurplusDispatchDecision`
+9. `NetZeroOutputs`
 
 ### Profiilit
 
@@ -208,14 +208,17 @@ Keskeiset tiedostot:
 Nykyinen tuotantopolku lukee entity-id:t ensisijaisesti `runtime_context`-
 kerroksen kautta grouped `EMS_config.yaml` -rakenteesta.
 
-`read_config()` palauttaa nykyisin `CoreConfig`-instanssin. `EmsConfig`-view
-on rajattu erilliseen deprecated adapter -polkuun, jota ei pidetä release-
-contractina.
+`read_config()` palauttaa nykyisin vain `CoreConfig`-instanssin. Erillinen
+`EmsConfig`-view ja legacy scalar -parity on poistettu aktiivisesta runtime-
+polusta.
 
 Keskeiset entity-ryhmat ovat edelleen:
 
 1. profiilit: `control_profile`, `goal_profile`, `forecast_profile`, `guard_profile`
-2. konfiguraatio: `deadband_w`, `ramp_max_w`, `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`, `ev_*`, `relay*_power_kw`, `*_priority`
+2. konfiguraatio: yhteiset scalarit (`deadband_w`, `ramp_max_w`,
+   `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`,
+   `ev_*`) seka device-registryyn sidotut laitekohtaiset kentat kuten
+   `capabilities.max_absorb_w` ja `policy.priority`
 3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`, `pv_power_kw`
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_decision_trace`, `device_policies`, `previous_device_state`
@@ -261,12 +264,11 @@ Tiedosto: `modules/ems_core/net_zero/engine.py`
 
 Moottori yhdistaa profiilit, guard-tilan, HAEO:n, akun setpoint-laskennan, EV-strategian ja surplus-allokaation yhdeksi `NetZeroOutputs`-tulokseksi.
 
-Huomio legacy-signature-velasta: `compute_net_zero_engine_outputs(...)`
-kantaa viela `relay1_*` / `relay2_*` compatibility-parametreja seka niihin
-liittyvia force-state-parametreja. Tuotantopolun canonical runtime state on
-silti device-id-pohjainen `CoreConfig`, `device_policies`,
-`surplus_device_targets`, `active_surplus_devices` ja writer trace `devices`.
-Legacy signature on P2-tekninen velka, ei uusi integraatiosopimus.
+`compute_net_zero_engine_outputs(...)` lukee releiden runtime-tilan
+device-id-pohjaisesta `relay_device_states`-mapista ja edellisen force-tilan
+`previous_force_on_device_ids`-joukosta. Tuotantopolun canonical runtime state
+on `CoreConfig`, `device_policies`, `surplus_device_targets`,
+`active_surplus_devices` ja writer trace `devices`.
 
 ### Ennusteen roolit
 
@@ -515,10 +517,12 @@ Keskeisia attribuutteja:
 Tulkinta:
 
 1. `device_policies` on kanoninen writer-sopimus
-2. legacy scalar-peilit eivat kuulu release-contractiin
+2. legacy scalar-peilit on poistettu aktiivisesta runtime-polusta eivatka
+   kuulu release-contractiin
 3. EV:n kanoninen writer-sopimus kulkee vain `device_policies[*].target_w`-arvona
 4. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
-5. writer ei lue ohjauspaatoksia legacy scalar -peileista
+5. writer ei lue ohjauspaatoksia scalar-peileista, vaan vain kanonisesta
+   `device_policies`-payloadista
 
 ### `actuator_writer_trace`
 

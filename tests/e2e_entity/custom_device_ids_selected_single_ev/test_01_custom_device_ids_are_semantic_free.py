@@ -80,7 +80,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         },
         {
             'at_s': 90,
-            'note': 't90 writer uses custom EV ids directly and no RELAY1 or EV_CHARGER branches exist.',
+            'note': 't90 writer uses custom EV ids directly and the next dispatch edge advances to RELAY_BOILER without any RELAY1 or EV_CHARGER dependency.',
             'set': {
                 E['required_power_consumption_kw']: 3.2,
                 E['rpnz_w']: 3200.0,
@@ -89,12 +89,14 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             },
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
-                'surplus_device_dispatch_decision': 'NOOP',
+                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY_BOILER',
+                'surplus_device_dispatch_device_id': 'RELAY_BOILER',
             },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': True, 'target_w': 3680},
                 'RELAY_SAUNA': {'enabled': True},
+                'RELAY_BOILER': {'enabled': False},
             },
             'expect_values': {
                 'switch.ev_garage_enabled': True,

@@ -80,8 +80,8 @@ Tarkeä rajaus:
 
 1. grouped `EMS_config.yaml` on nykyinen kanoninen konfiguraatio
 2. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
-3. `read_config()` palauttaa `CoreConfig`-instanssin; legacy scalar-view on vain
-   deprecated adapter -polussa
+3. `read_config()` palauttaa `CoreConfig`-instanssin; erillista `EmsConfig`-
+   tai legacy scalar -viewta ei enaa ole aktiivisessa runtime-polussa
 4. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
 5. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
@@ -288,7 +288,9 @@ Keskeiset releiden override- ja sallinta-avaimet (EMS):
 
 1. canonical grouped configissa releilla on device-id-kohtaiset `policy.surplus_allowed` -entityt
 2. canonical grouped configissa releilla on device-id-kohtaiset `policy.force_on` -entityt
-3. legacy adapter -polussa voi yha nakya `relay1_surplus_allowed`, `relay2_surplus_allowed`, `relay1_force_on` ja `relay2_force_on`
+3. top-level `relay1_*`- ja `relay2_*`-business-aliakset eivat kuulu enaa
+   runtime-sopimukseen; override- ja sallintatieto luetaan laitteen omista
+   `policy.*`-entityista
 
 Keskeiset HAEO-avaimet (EMS):
 
@@ -314,8 +316,8 @@ Keskeiset policy-ulostuloavaimet (EMS):
 Oleellinen tulkinta:
 
 1. `device_policies` on writerin kanoninen ohjausrajapinta
-2. `policy_decision_trace` on canonical decision trace; legacy scalar-diagnostiikka
-   elaa vain erillisessa deprecated adapter -polussa, ei tuotantosopimuksena
+2. `policy_decision_trace` on canonical decision trace; erilliset scalar-peilit
+   on poistettu aktiivisesta runtime-polusta eivatka kuulu tuotantosopimukseen
 3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
    actuator-rajan `target_current_a`-kenttiin
 4. `policy_decision_trace`-kentista tehdyt scalar-peilit eivat ole release-contractin

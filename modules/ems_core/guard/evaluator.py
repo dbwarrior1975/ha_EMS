@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from ems_core.domain.models import GuardProfile, RuntimeMeasurements, EmsConfig
+
+from ems_core.domain.models import CoreConfig, GuardProfile, RuntimeMeasurements
 
 @dataclass
 class GuardDecision:
@@ -9,7 +10,7 @@ class GuardDecision:
     soc_valid: bool
     reason: str
 
-def evaluate_guard(current_guard: str, m: RuntimeMeasurements, cfg: EmsConfig) -> GuardDecision:
+def evaluate_guard(current_guard: str, m: RuntimeMeasurements, cfg: CoreConfig) -> GuardDecision:
     transport_ok = m.battery_heartbeat_age_s <= cfg.battery_heartbeat_timeout_s
     soc_valid = m.soc is not None and 0 <= m.soc <= 100
     soc_stale = (not transport_ok) or (not soc_valid)

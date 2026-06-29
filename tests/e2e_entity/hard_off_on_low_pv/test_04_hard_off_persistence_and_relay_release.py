@@ -53,7 +53,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 }
             },
             'expect_values': {
-                E['relay1']: True,
+                E['actuator_relay1']: True,
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 8,
             },
@@ -83,7 +83,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 }
             },
             'expect_values': {
-                E['relay1']: False,
+                E['actuator_relay1']: False,
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 8,
             },

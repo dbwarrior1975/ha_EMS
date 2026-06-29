@@ -15,5 +15,5 @@
 
 ## Implementation notes
 1. Each phase seeds its own initial state and does not rely on warmup chains.
-2. Phase 2 seeds policy attrs (`prev_relay2_force_on=True`) to avoid synthetic force rising-edge freeze.
+2. Phase 2 seeds policy attrs (`prev_force_on_device_ids=('RELAY2',)`) to avoid synthetic force rising-edge freeze.
 3. Shared helper keeps only build_harness and run_steps.

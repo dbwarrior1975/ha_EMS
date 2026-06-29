@@ -79,13 +79,10 @@ Kaikki eivat aina viivasty yhdella stepilla.
 
 Nopea actuator-muutos voi tapahtua jo samassa stepissa, jos policy command perustuu suoraan stepin inputtiin eika juuri saman stepin aikana muuttuneeseen dispatch state-tilaan.
 
-Hyva esimerkki:
-
-- `relay_force_on`
-
-Jos `relay2_force_on=True` stepin alussa, policy voi tuottaa heti relay2:lle
-paalle-kaskyn `device_policies`-payloadissa, ja writer voi kytkea relay2:n
-paalle samassa stepissa.
+Hyva esimerkki on relelaite, jonka oma `policy.force_on` -entity on `True`
+stepin alussa. Tassa tilanteessa policy voi tuottaa heti kyseiselle
+device-id:lle paalle-kaskyn `device_policies`-payloadissa, ja writer voi
+kytkea releen paalle samassa stepissa.
 
 ## Kaytannon saanto testeihin
 

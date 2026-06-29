@@ -5,10 +5,7 @@ from tests.helpers import ev_w, make_cfg
 
 
 def _cfg_with_voltage(**overrides):
-    ev_voltage_v = overrides.pop('ev_voltage_v', 230)
-    cfg = make_cfg(**overrides)
-    cfg.ev_voltage_v = ev_voltage_v
-    return cfg
+    return make_cfg(**overrides)
 
 
 @pytest.mark.unit

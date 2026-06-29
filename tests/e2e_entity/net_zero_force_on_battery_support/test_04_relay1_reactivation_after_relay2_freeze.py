@@ -20,7 +20,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
         actuator_ev_current_a=6,
     )
     h.set_entities({
-        E['relay2_force_on']: False,
+        E['devices']['RELAY2']['force_on']: False,
         E['surplus_freeze_until']: 285.0,
     })
 
@@ -37,8 +37,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_target': 'RELAY1',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': False,
+                'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},
@@ -75,8 +74,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_target': 'ADJUSTABLE',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': False,
+                'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -108,8 +106,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'surplus_next_target': 'ADJUSTABLE',
-                'prev_relay1_force_on': False,
-                'prev_relay2_force_on': False,
+                'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},

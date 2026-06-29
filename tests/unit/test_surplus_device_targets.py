@@ -6,31 +6,27 @@ from tests.helpers import ev_w, make_cfg
 
 def _relay_candidates(
     *,
-    relay1_enabled=True,
-    relay1_force_on=False,
-    relay1_active=False,
-    relay1_capable=True,
-    relay2_enabled=True,
-    relay2_force_on=False,
-    relay2_active=False,
-    relay2_capable=True,
+    states=None,
 ):
+    states = dict(states or {})
+    first = dict(states.get('RELAY1') or {})
+    second = dict(states.get('RELAY2') or {})
     return (
         {
             'device_id': 'RELAY1',
             'priority': 2,
             'threshold_w': 2500,
-            'enabled': bool(relay1_enabled and relay1_capable),
-            'force_on': bool(relay1_force_on),
-            'active': bool(relay1_active),
+            'enabled': bool(first.get('enabled', True) and first.get('capable', True)),
+            'force_on': bool(first.get('force_on', False)),
+            'active': bool(first.get('active', False)),
         },
         {
             'device_id': 'RELAY2',
             'priority': 1,
             'threshold_w': 5000,
-            'enabled': bool(relay2_enabled and relay2_capable),
-            'force_on': bool(relay2_force_on),
-            'active': bool(relay2_active),
+            'enabled': bool(second.get('enabled', True) and second.get('capable', True)),
+            'force_on': bool(second.get('force_on', False)),
+            'active': bool(second.get('active', False)),
         },
     )
 
@@ -136,7 +132,7 @@ def test_adjustable_target_is_disabled_when_device_cannot_absorb():
 
 @pytest.mark.unit
 def test_relay_target_is_disabled_when_device_cannot_absorb():
-    cfg = make_cfg(relay1_power_kw=2.5)
+    cfg = make_cfg()
 
     targets = build_surplus_device_targets(
         cfg,
@@ -144,13 +140,16 @@ def test_relay_target_is_disabled_when_device_cannot_absorb():
         adjustable_priority=3,
         adjustable_active=False,
         relay_candidates=_relay_candidates(
-            relay1_enabled=True,
-            relay1_force_on=True,
-            relay1_active=False,
-            relay1_capable=False,
+            states={
+                'RELAY1': {
+                    'enabled': True,
+                    'force_on': True,
+                    'active': False,
+                    'capable': False,
+                },
+            },
         ),
     )
 
     assert targets[1].device_id == 'RELAY1'
     assert targets[1].enabled is False
-

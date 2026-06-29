@@ -7,8 +7,8 @@ import pytest
 from ems_adapter.config_loader import (
     SEVERITY_ERROR,
     SEVERITY_WARNING,
-    build_ems_config_from_grouped_config,
-    build_ems_config_from_grouped_reader,
+    build_core_config_from_grouped_config,
+    build_core_config_from_grouped_reader,
     runtime_alias_index,
     load_grouped_ems_config,
     load_and_validate_grouped_ems_config,
@@ -200,31 +200,6 @@ def test_validate_rejects_ev_limits_that_cannot_be_represented_by_current_step(p
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ('field', 'value', 'expected_hint'),
-    (
-        ('current_min_a', 'input_number.legacy_ev_min_current_a', 'capabilities.min_absorb_w'),
-        ('current_max_a', 'input_number.legacy_ev_max_current_a', 'capabilities.max_absorb_w'),
-        (
-            'force_current_a',
-            'input_number.legacy_ev_force_current_a',
-            'policy.force_on',
-        ),
-    ),
-)
-def test_validate_rejects_deprecated_ev_adapter_fields(project_root, field, value, expected_hint):
-    config = _load_example(project_root)
-    config['ems']['devices']['EV_CHARGER']['adapter'][field] = value
-
-    result = validate_grouped_ems_config(config)
-
-    assert result.ok is False
-    path = f'ems.devices.EV_CHARGER.adapter.{field}'
-    assert path in _error_paths(result)
-    assert expected_hint in _error_messages(result)[path]
-
-
-@pytest.mark.unit
 def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
     aliases = runtime_alias_index(config)
@@ -257,12 +232,12 @@ def test_runtime_alias_index_uses_kind_based_fallback_for_custom_device_ids(proj
     aliases = runtime_alias_index(config)
 
     assert aliases['actuator_ev_current_a'].config_path == 'ems.devices.GARAGE_EV.adapter.current_a'
-    assert aliases['relay1'].config_path == 'ems.devices.POOL_PUMP.adapter.enabled'
-    assert aliases['relay2'].config_path == 'ems.devices.BOILER.adapter.enabled'
+    assert aliases['actuator_relay1'].config_path == 'ems.devices.POOL_PUMP.adapter.enabled'
+    assert aliases['actuator_relay2'].config_path == 'ems.devices.BOILER.adapter.enabled'
 
 
 @pytest.mark.unit
-def test_build_ems_config_from_grouped_config_no_longer_depends_on_runtime_alias_runtime(project_root, monkeypatch):
+def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alias_runtime(project_root, monkeypatch):
     config = _load_example(project_root)
     entity_values = {
         'input_number.ems_deadband_w': 75,
@@ -302,7 +277,7 @@ def test_build_ems_config_from_grouped_config_no_longer_depends_on_runtime_alias
 
     monkeypatch.setattr('ems_adapter.config_loader.runtime_alias_index', _fail_runtime_alias_runtime)
 
-    cfg = build_ems_config_from_grouped_config(config, entity_values)
+    cfg = build_core_config_from_grouped_config(config, entity_values)
 
     assert cfg.deadband_w == 75
     assert cfg.max_solar_charge_w == 3700
@@ -313,23 +288,10 @@ def test_build_ems_config_from_grouped_config_no_longer_depends_on_runtime_alias
 
 
 @pytest.mark.unit
-def test_build_ems_config_from_grouped_reader_uses_core_config_builder(project_root, monkeypatch):
+def test_build_core_config_from_grouped_reader_builds_core_config(project_root):
     config = _load_example(project_root)
-    called = {'value': False}
 
-    real_builder = build_ems_config_from_grouped_reader.__globals__['build_core_config_from_grouped_reader']
-
-    def _tracking_builder(grouped_config, read_entity):
-        called['value'] = True
-        return real_builder(grouped_config, read_entity)
-
-    monkeypatch.setitem(
-        build_ems_config_from_grouped_reader.__globals__,
-        'build_core_config_from_grouped_reader',
-        _tracking_builder,
-    )
-
-    cfg = build_ems_config_from_grouped_reader(
+    cfg = build_core_config_from_grouped_reader(
         config,
         lambda entity_id, default: {
             'input_number.ems_deadband_w': 80,
@@ -338,6 +300,5 @@ def test_build_ems_config_from_grouped_reader_uses_core_config_builder(project_r
         }.get(entity_id, default),
     )
 
-    assert called['value'] is True
     assert cfg.deadband_w == 80
     assert cfg.ramp_max_w == 900

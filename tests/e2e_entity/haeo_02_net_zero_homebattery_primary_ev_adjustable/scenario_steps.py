@@ -28,8 +28,8 @@ def build_harness(project_root):
         E['actuator_battery_setpoint_w']: 2500.0,
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,
-        E['relay1_surplus_allowed']: False,
-        E['relay2_surplus_allowed']: False,
+        E['devices']['RELAY1']['surplus_allowed']: False,
+        E['devices']['RELAY2']['surplus_allowed']: False,
         E['pv_power_kw']: 3.5,
     })
     seed_active_surplus_devices(h, active_device_ids=())
