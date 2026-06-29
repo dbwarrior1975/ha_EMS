@@ -176,3 +176,22 @@ def test_build_core_config_from_grouped_config_maps_optional_sections(project_ro
     assert core.role_constraints.default['activation_threshold_w'] == 0
     assert core.role_constraints.by_role['EV_PRIMARY']['HOME_BATTERY']['min_absorb_w'] == 0
     assert core.role_constraints.by_role['HOME_BATTERY_PRIMARY']['EV_CHARGER']['activation_threshold_w'] == 0
+
+
+@pytest.mark.unit
+def test_build_core_config_from_grouped_config_does_not_expose_ev_scalar_mirrors(project_root):
+    config = _load_example(project_root)
+
+    core = build_core_config_from_grouped_config(config, _core_entity_values())
+
+    for attr_name in (
+        'ev_charger_phases',
+        'ev_voltage_v',
+        'ev_force_on',
+        'ev_hard_off_pv_threshold_kw',
+        'ev_hard_off_low_pv_cycles',
+        'ev_hard_off_release_cycles',
+        'ev_current_step_a',
+        'ev_priority',
+    ):
+        assert not hasattr(core, attr_name)

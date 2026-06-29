@@ -217,8 +217,8 @@ def _selected_ev_context(cfg, device_id):
             force_on = False
         else:
             # Grouped-config entity refs must not coerce truthy just because they
-            # are non-empty strings. Prefer the already-resolved scalar fallback.
-            force_on = bool(getattr(cfg, 'ev_force_on', False))
+            # are non-empty strings.
+            force_on = False
     else:
         force_on = bool(raw_force_on)
 
@@ -915,7 +915,7 @@ def compute_net_zero_engine_outputs(
         if not requested_primary_load:
             adjustable_primary_load = adjustable_surplus_load
             primary_surplus_combo_valid = True
-            primary_surplus_combo_reason = 'implicit_legacy_default'
+            primary_surplus_combo_reason = 'implicit_primary_equals_surplus'
         else:
             adjustable_primary_load = requested_primary_load
             primary_surplus_combo_valid = adjustable_primary_load != adjustable_surplus_load

@@ -321,7 +321,7 @@ def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alia
     assert cfg.deadband_w == 75
     assert cfg.max_solar_charge_w == 3700
     assert cfg.max_battery_discharge_w == 4600
-    assert cfg.ev_hard_off_pv_threshold_kw == 1.8
+    assert cfg.device_by_id('EV_CHARGER').policy.low_pv_threshold_w == 1.8
     assert cfg.adjustable_surplus_load == 'EV_CHARGER'
     assert cfg.adjustable_primary_load == 'HOME_BATTERY'
 

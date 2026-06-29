@@ -358,8 +358,8 @@ Tuetut kombinaatiot:
 
 Nykyinen runtime-yhteensopivuus:
 
-1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa oletusta (`implicit_legacy_default`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
-2. trace raportoi taman syylla `primary_surplus_combo_reason = implicit_legacy_default`
+1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa oletusta (`implicit_primary_equals_surplus`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
+2. trace raportoi taman syylla `primary_surplus_combo_reason = implicit_primary_equals_surplus`
 3. tata ei suositella uudessa kayttoonotossa
 
 ### NET_ZERO floor-semanttiikka

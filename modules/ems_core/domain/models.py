@@ -239,13 +239,6 @@ class CoreConfig:
     battery_protect_soc_recovery_margin: Optional[ScalarRef] = None
     battery_protect_min_cell_voltage_v: Optional[ScalarRef] = None
     battery_protect_charge_floor_w: Optional[ScalarRef] = None
-    ev_charger_phases: Optional[ScalarRef] = None
-    ev_voltage_v: Optional[ScalarRef] = None
-    ev_force_on: Optional[ScalarRef] = None
-    ev_hard_off_pv_threshold_kw: Optional[ScalarRef] = None
-    ev_hard_off_low_pv_cycles: Optional[ScalarRef] = None
-    ev_hard_off_release_cycles: Optional[ScalarRef] = None
-    ev_current_step_a: Optional[ScalarRef] = None
     nz_battery_floor_default_w: Optional[ScalarRef] = None
     nz_battery_floor_ev_active_w: Optional[ScalarRef] = None
     adjustable_surplus_load: Optional[EntityRef] = None
@@ -253,7 +246,6 @@ class CoreConfig:
     adjustable_surplus_activation: Optional[ScalarRef] = None
     surplus_freeze_s: Optional[ScalarRef] = None
     adjustable_surplus_load_priority: Optional[ScalarRef] = None
-    ev_priority: Optional[ScalarRef] = None
 
     def __post_init__(self):
         if self.role_constraints is None:
@@ -288,20 +280,6 @@ class CoreConfig:
             self.battery_protect_min_cell_voltage_v = self.home_battery.guard.protect_min_cell_voltage_v
         if self.battery_protect_charge_floor_w is None:
             self.battery_protect_charge_floor_w = self.home_battery.guard.protect_min_absorb_w
-        if self.ev_charger_phases is None and self.ev_charger is not None:
-            self.ev_charger_phases = self.ev_charger.adapter.phases
-        if self.ev_voltage_v is None and self.ev_charger is not None:
-            self.ev_voltage_v = self.ev_charger.adapter.voltage_v
-        if self.ev_force_on is None and self.ev_charger is not None:
-            self.ev_force_on = self.ev_charger.policy.force_on
-        if self.ev_hard_off_pv_threshold_kw is None and self.ev_charger is not None:
-            self.ev_hard_off_pv_threshold_kw = self.ev_charger.policy.low_pv_threshold_w
-        if self.ev_hard_off_low_pv_cycles is None and self.ev_charger is not None:
-            self.ev_hard_off_low_pv_cycles = self.ev_charger.policy.hard_off_low_pv_cycles
-        if self.ev_hard_off_release_cycles is None and self.ev_charger is not None:
-            self.ev_hard_off_release_cycles = self.ev_charger.policy.hard_off_release_cycles
-        if self.ev_current_step_a is None and self.ev_charger is not None:
-            self.ev_current_step_a = self.ev_charger.adapter.current_step_a
         if self.nz_battery_floor_default_w is None:
             self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
         if self.nz_battery_floor_ev_active_w is None:
@@ -316,9 +294,6 @@ class CoreConfig:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
         if self.adjustable_surplus_load_priority is None:
             self.adjustable_surplus_load_priority = self.home_battery.policy.priority
-        if self.ev_priority is None and self.ev_charger is not None:
-            self.ev_priority = self.ev_charger.policy.priority
-
     def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
         if self.devices is None:
             return None

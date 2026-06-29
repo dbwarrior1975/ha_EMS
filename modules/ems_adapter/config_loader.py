@@ -577,20 +577,6 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.battery_protect_min_cell_voltage_v = core_config.home_battery.guard.protect_min_cell_voltage_v
     if core_config.battery_protect_charge_floor_w is None:
         core_config.battery_protect_charge_floor_w = core_config.home_battery.guard.protect_min_absorb_w
-    if core_config.ev_charger_phases is None and core_config.ev_charger is not None:
-        core_config.ev_charger_phases = core_config.ev_charger.adapter.phases
-    if core_config.ev_voltage_v is None and core_config.ev_charger is not None:
-        core_config.ev_voltage_v = core_config.ev_charger.adapter.voltage_v
-    if core_config.ev_force_on is None and core_config.ev_charger is not None:
-        core_config.ev_force_on = core_config.ev_charger.policy.force_on
-    if core_config.ev_hard_off_pv_threshold_kw is None and core_config.ev_charger is not None:
-        core_config.ev_hard_off_pv_threshold_kw = core_config.ev_charger.policy.low_pv_threshold_w
-    if core_config.ev_hard_off_low_pv_cycles is None and core_config.ev_charger is not None:
-        core_config.ev_hard_off_low_pv_cycles = core_config.ev_charger.policy.hard_off_low_pv_cycles
-    if core_config.ev_hard_off_release_cycles is None and core_config.ev_charger is not None:
-        core_config.ev_hard_off_release_cycles = core_config.ev_charger.policy.hard_off_release_cycles
-    if core_config.ev_current_step_a is None and core_config.ev_charger is not None:
-        core_config.ev_current_step_a = core_config.ev_charger.adapter.current_step_a
     if core_config.nz_battery_floor_default_w is None:
         core_config.nz_battery_floor_default_w = core_config.global_config.nz_battery_floor_default_w
     if core_config.nz_battery_floor_ev_active_w is None:
@@ -605,8 +591,6 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
     if core_config.adjustable_surplus_load_priority is None:
         core_config.adjustable_surplus_load_priority = core_config.home_battery.policy.priority
-    if core_config.ev_priority is None and core_config.ev_charger is not None:
-        core_config.ev_priority = core_config.ev_charger.policy.priority
     return core_config
 
 
@@ -726,7 +710,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.current_step_a', 'current_step_a', issues, min_value=1)
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.phases', 'phases', issues, min_value=1)
         _validate_entity_or_number(device['adapter'], f'{device_path}.adapter.voltage_v', 'voltage_v', issues, min_value=1)
-        _validate_ev_numeric_current_compatibility(device_path, device, issues)
+        _validate_ev_watt_limits_match_adapter_resolution(device_path, device, issues)
 
     if kind == 'RELAY':
         if isinstance(device.get('policy'), dict):
@@ -800,7 +784,11 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
         issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_WARNING, 'max_produce_w is ignored when can_produce_w=false'))
 
 
-def _validate_ev_numeric_current_compatibility(device_path: str, device: dict, issues: list[ConfigValidationIssue]) -> None:
+def _validate_ev_watt_limits_match_adapter_resolution(
+    device_path: str,
+    device: dict,
+    issues: list[ConfigValidationIssue],
+) -> None:
     capabilities = device.get('capabilities')
     adapter = device.get('adapter')
     if not isinstance(capabilities, dict) or not isinstance(adapter, dict):

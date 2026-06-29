@@ -229,16 +229,12 @@ def make_cfg(**overrides):
             'RELAY2': relay2,
         },
     )
-    cfg.ev_charger_phases = int(data['ev_charger_phases'])
-    cfg.ev_current_step_a = int(data['ev_current_step_a'])
-    cfg.ev_voltage_v = float(data['ev_voltage_v'])
     cfg.ev_min_absorb_w = float(data['ev_min_absorb_w'])
     cfg.ev_max_absorb_w = float(data['ev_max_absorb_w'])
-    cfg.ev_power_step_w = float(_ev_power.ev_power_step_w(cfg))
+    cfg.ev_power_step_w = float(_ev_power.ev_power_step_w(ev_charger))
     cfg.min_absorb_w = float(data['ev_min_absorb_w'])
     cfg.max_absorb_w = float(data['ev_max_absorb_w'])
     cfg.step_w = float(cfg.ev_power_step_w)
-    cfg.ev_force_on = bool(data['ev_force_on'])
     return cfg
 
 
@@ -247,20 +243,22 @@ def ev_w(current_a, phases=1, voltage_v=230):
 
 
 def cfg_ev_min_a(cfg):
+    ev_adapter = cfg.device_by_id('EV_CHARGER').adapter
     return getattr(_ev_power, 'ev_min_' 'current_a_from_min_absorb_w')(
         cfg.ev_min_absorb_w,
-        phases=cfg.ev_charger_phases,
-        voltage_v=cfg.ev_voltage_v,
-        current_step_a=cfg.ev_current_step_a,
+        phases=ev_adapter.phases,
+        voltage_v=ev_adapter.voltage_v,
+        current_step_a=ev_adapter.current_step_a,
     )
 
 
 def cfg_ev_max_a(cfg):
+    ev_adapter = cfg.device_by_id('EV_CHARGER').adapter
     return getattr(_ev_power, 'ev_max_' 'current_a_from_max_absorb_w')(
         cfg.ev_max_absorb_w,
-        phases=cfg.ev_charger_phases,
-        voltage_v=cfg.ev_voltage_v,
-        current_step_a=cfg.ev_current_step_a,
+        phases=ev_adapter.phases,
+        voltage_v=ev_adapter.voltage_v,
+        current_step_a=ev_adapter.current_step_a,
     )
 
 

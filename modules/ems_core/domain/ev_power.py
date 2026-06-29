@@ -38,10 +38,6 @@ def _normalize_current_value(current_a):
     return rounded
 
 
-def _cfg_ev_voltage_v(cfg):
-    return getattr(cfg, 'ev_voltage_v', DEFAULT_EV_VOLTAGE_V)
-
-
 def _cfg_capability_power_w(cfg, *names):
     for name in names:
         if hasattr(cfg, name):
@@ -137,8 +133,14 @@ def ev_max_power_w(cfg):
 
 
 def ev_power_step_w(cfg):
-    configured_step_w = _cfg_capability_power_w(cfg, 'ev_power_step_w', 'step_w')
+    configured_step_w = _cfg_capability_power_w(cfg, 'ev_power_step_w', 'power_step_w', 'step_w')
     if configured_step_w is not None:
         return configured_step_w
-    step_a = getattr(cfg, 'ev_current_step_a', 1) or 1
-    return ev_current_a_to_power_w(step_a, cfg.ev_charger_phases, _cfg_ev_voltage_v(cfg))
+    adapter = getattr(cfg, 'adapter', None)
+    if adapter is None:
+        raise AttributeError('ev_power_step_w requires step_w/power_step_w or an EV adapter')
+
+    step_a = getattr(adapter, 'current_step_a', 1) or 1
+    phases = getattr(adapter, 'phases', 1) or 1
+    voltage_v = getattr(adapter, 'voltage_v', DEFAULT_EV_VOLTAGE_V) or DEFAULT_EV_VOLTAGE_V
+    return ev_current_a_to_power_w(step_a, phases, voltage_v)
