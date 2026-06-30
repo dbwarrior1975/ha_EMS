@@ -1338,3 +1338,42 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
     assert out.attrs['ev_target_w'] == ev_min_power_w(cfg)
     assert out.attrs['ev_hard_off_active'] is False
     assert out.battery_target_w == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('rpnz_w', 'expected_floor_hold'),
+    [
+        (4.0, True),
+        (10.0, True),
+        (11.0, False),
+        (0.0, True),
+        (-1.0, True),
+    ],
+)
+def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_battery_authority(rpnz_w, expected_floor_hold):
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+    )
+    m = make_m(
+        current_battery_setpoint_w=-1000,
+        grid_power_w=2900.0,
+        ev_states={'EV_CHARGER': ev_state(enabled=True, current_a=cfg_ev_min_a(cfg))},
+    )
+    nz = make_nz(rpnz_w=rpnz_w, required_power_consumption_kw=0.5)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(),
+        adjustable_surplus_active=True,
+        pv_power_kw=1.7,
+        ev_hard_off_active=False,
+        ev_low_pv_cycles=0,
+    )
+
+    assert out.battery_target_w == 0
+    assert out.attrs['surplus_adjustable_active'] is (not expected_floor_hold)

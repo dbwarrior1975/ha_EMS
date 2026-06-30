@@ -14,6 +14,7 @@ from ems_core.domain.ev_power import (
 from ems_core.net_zero.battery_controller import candidate_sp_net_zero
 from ems_core.net_zero.load_projection import ev_strategy_target_w, relay_strategy_command
 from ems_core.net_zero.surplus_allocator import (
+    RPNZ_PRACTICAL_ZERO_W,
     active_device_stack,
     compute_surplus_device_dispatch,
     next_device_target,
@@ -598,7 +599,12 @@ def _battery_target_and_authority(
     if profiles.goal == GoalProfile.NET_ZERO:
         effective_rpnz_w = nz.rpnz_w
         min_charge_floor_w = float(cfg.nz_battery_floor_default_w)
-        ev_primary_positive_rpnz = bool(use_ev_primary_mode) and float(nz.rpnz_w) > 0.0
+        ev_primary_practical_zero_active = bool(use_ev_primary_mode) and (
+            bool(ev_burn_active) or bool(adjustable_surplus_active)
+        )
+        ev_primary_material_positive_rpnz = bool(use_ev_primary_mode) and float(nz.rpnz_w) > (
+            RPNZ_PRACTICAL_ZERO_W if ev_primary_practical_zero_active else 0.0
+        )
         adjustable_is_home_battery = _normalized_adjustable_surplus_load(cfg) == 'HOME_BATTERY'
         configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
 
@@ -613,7 +619,7 @@ def _battery_target_and_authority(
             ev_max_w = float(ev_max_power_w(ev_context))
             if (
                 ev_burn_active
-                and (not ev_primary_positive_rpnz)
+                and (not ev_primary_material_positive_rpnz)
                 and float(nz.rpnz_w) >= 0.0
                 and float(nz.required_power_consumption_kw) * 1000.0 <= ev_max_w
             ):
@@ -632,13 +638,13 @@ def _battery_target_and_authority(
         if battery_min_floor_w is None:
             battery_min_floor_w = float(min_charge_floor_w)
 
-        if ev_primary_positive_rpnz:
+        if ev_primary_material_positive_rpnz:
             raw = int(round(min_charge_floor_w))
         else:
             if (
                 use_ev_primary_mode
                 and ev_burn_active
-                and float(nz.rpnz_w) <= 0.0
+                and float(nz.rpnz_w) <= RPNZ_PRACTICAL_ZERO_W
                 and (not ev_release_pending)
             ):
                 adjustable_surplus_active_next = False

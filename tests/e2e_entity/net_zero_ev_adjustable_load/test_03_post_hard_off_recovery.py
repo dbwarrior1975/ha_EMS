@@ -137,6 +137,7 @@ def test_03_post_hard_off_recovery(project_root):
             },
             'expect_values': {
                 E['actuator_battery_setpoint_w']: 0,
+                E['actuator_ev_enabled']: True,                
                 E['actuator_ev_current_a']: 6,
             },
         },   
@@ -163,7 +164,31 @@ def test_03_post_hard_off_recovery(project_root):
                 E['actuator_battery_setpoint_w']: 0,
                 E['actuator_ev_current_a']: 10,
             },
-        },              
+        }, 
+
+        {
+            'at_s': 300,
+            'note': 't300 PV 5.5 kW',
+            'set': {
+                E['required_power_consumption_kw']: 2.65,
+                E['rpnz_w']: 45,
+                E['grid_power_w']: -2900.0,
+                E['pv_power_kw']: 3.7,
+            },
+            'expect_device_policies': {
+                'HOME_BATTERY': {'target_w': 0},
+                'EV_CHARGER': {'enabled': True},
+            },
+            'expect_policy': {
+                'ev_hard_off_active': False,
+                'battery_min_floor_reason': 'ev_active_floor_override',
+                'primary_power_envelope_w': 3300,
+            },
+            'expect_values': {
+                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_ev_current_a']: 14,
+            },
+        },         
     ]
 
     run_steps(h, steps)

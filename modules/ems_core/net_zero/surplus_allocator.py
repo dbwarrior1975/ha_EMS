@@ -1,6 +1,7 @@
 from ems_core.domain.models import SurplusDispatchDecision
 
-SURPLUS_RELEASE_DEADBAND_W = 10.0
+RPNZ_PRACTICAL_ZERO_W = 10.0
+SURPLUS_RELEASE_DEADBAND_W = RPNZ_PRACTICAL_ZERO_W
 
 
 def _is_higher_priority_candidate(candidate, current):

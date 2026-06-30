@@ -346,6 +346,7 @@ EV-primary poikkeus:
 1. jos `adjustable_primary_load = EV_CHARGER`, akun minimi-floor ei tule `nz_battery_floor_default_w`-arvosta
 2. silloin floor tulee erillisesta arvosta `nz_battery_floor_ev_active_w`
 3. kaytannossa EV-primary-polku siis yliajaa default-floorin
+4. EV-primary battery-authority kayttaa samaa `RPNZ_PRACTICAL_ZERO_W = 10 W` kaytannon nollaa erottaakseen pienen positiivisen RPNZ:n aidosta lisakulutustarpeesta
 
 ### `MAX_EXPORT`
 
@@ -461,7 +462,7 @@ Peruskayttaytyminen:
 
 1. jos policy ei ole aktiivinen -> `CLEAR_ALL`
 2. jos aktiivinen kohde ei ole enaa kelvollinen -> vapauta se
-3. jos `rpnz_w <= 0` ja aktiivisia kohteita on -> vapauta alin prioriteetti ensin
+3. jos `rpnz_w <= SURPLUS_RELEASE_DEADBAND_W` ja aktiivisia kohteita on -> vapauta alin prioriteetti ensin
 4. jos freeze on aktiivinen -> ei uusia aktivointeja
 5. muuten aktivoi seuraava kohde, jos `rpc_kw >= threshold_kw`
 
