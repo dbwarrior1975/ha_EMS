@@ -33,7 +33,7 @@ def test_05_recovery_and_reactivation(project_root):
             'note': 't224 recovered PV and moderate RPC reactivate RELAY1 while EV remains hard-off',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
                 pv_ent: 1.9,
             },
             'expect_policy': {
@@ -58,7 +58,7 @@ def test_05_recovery_and_reactivation(project_root):
             'note': 't238 RELAY1 activation is now visible at actuator level while EV remains hard-off',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
                 pv_ent: 1.9,
             },
             'expect_policy': {
@@ -89,7 +89,7 @@ def test_05_recovery_and_reactivation(project_root):
             'note': 't240 recovered PV and RPC remain below the ADJUSTABLE activation threshold',
             'set': {
                 E['required_power_consumption_kw']: 4.0,
-                E['rpnz_w']: 0.15,
+                E['rpnz_w']: 15.0,
                 pv_ent: 5.9,
             },
             'expect_policy': {
@@ -112,7 +112,7 @@ def test_05_recovery_and_reactivation(project_root):
             'note': 't270 recovered PV and RPC cross the ADJUSTABLE threshold so normal EV activation resumes',
             'set': {
                 E['required_power_consumption_kw']: 5.8,
-                E['rpnz_w']: 0.19,
+                E['rpnz_w']: 19.0,
                 pv_ent: 5.9,
             },
             'expect_policy': {

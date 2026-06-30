@@ -1,0 +1,69 @@
+import pytest
+
+from ems_core.domain.models import SurplusDeviceTarget, SurplusDispatchInput
+from ems_core.net_zero.surplus_allocator import (
+    SURPLUS_RELEASE_DEADBAND_W,
+    compute_surplus_device_dispatch,
+)
+
+
+def _target(device_id, *, priority, active):
+    return SurplusDeviceTarget(
+        device_id=device_id,
+        decision_name=device_id,
+        priority=priority,
+        rank=1,
+        threshold_w=1000,
+        active=active,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('rpnz_w', 'expected_release'),
+    (
+        (4.0, 'RELAY1'),
+        (10.0, 'RELAY1'),
+        (0.0, 'RELAY1'),
+        (-1.0, 'RELAY1'),
+        (11.0, None),
+    ),
+)
+def test_surplus_release_deadband_releases_only_at_or_below_threshold(rpnz_w, expected_release):
+    inp = SurplusDispatchInput(
+        policy_active=True,
+        freeze_until_ts=None,
+        rpc_kw=0.0,
+        rpnz_w=rpnz_w,
+        targets=(
+            _target('EV_CHARGER', priority=3, active=True),
+            _target('RELAY1', priority=2, active=True),
+        ),
+    )
+
+    decision = compute_surplus_device_dispatch(inp, now_ts=0.0)
+
+    assert decision.release == expected_release
+    if expected_release is None:
+        assert decision.explanation != 'RPNZ <= 10 W release deadband -> release lowest-priority active target'
+    else:
+        assert decision.explanation == 'RPNZ <= 10 W release deadband -> release lowest-priority active target'
+
+
+@pytest.mark.unit
+def test_surplus_release_deadband_applies_to_single_active_ev_target():
+    inp = SurplusDispatchInput(
+        policy_active=True,
+        freeze_until_ts=None,
+        rpc_kw=0.0,
+        rpnz_w=SURPLUS_RELEASE_DEADBAND_W,
+        targets=(
+            _target('EV_CHARGER', priority=3, active=True),
+            _target('RELAY1', priority=2, active=False),
+        ),
+    )
+
+    decision = compute_surplus_device_dispatch(inp, now_ts=0.0)
+
+    assert decision.release == 'EV_CHARGER'
+    assert decision.explanation == 'RPNZ <= 10 W release deadband -> release lowest-priority active target'

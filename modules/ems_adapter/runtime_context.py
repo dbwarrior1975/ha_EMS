@@ -210,7 +210,7 @@ def build_runtime_entities_from_grouped_config(config):
     devices = ems.get('devices', {})
     if isinstance(runtime, dict):
         ent['grid_power_w'] = runtime.get('grid_power_w')
-        ent['hourly_energy_balance'] = runtime.get('hourly_energy_balance_kwh')
+        ent['quarter_energy_balance'] = runtime.get('quarter_energy_balance_kwh')
     if isinstance(state, dict):
         ent['surplus_freeze_until'] = state.get('surplus_freeze_until')
         ent['active_surplus_devices'] = state.get('active_surplus_devices')

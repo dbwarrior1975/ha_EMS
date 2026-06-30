@@ -230,7 +230,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         _validate_required_entities(
             ems['runtime'],
             'ems.runtime',
-            ('grid_power_w', 'hourly_energy_balance_kwh', 'required_power_w', 'rpnz_w', 'pv_power_w'),
+            ('grid_power_w', 'quarter_energy_balance_kwh', 'required_power_w', 'rpnz_w', 'pv_power_w'),
             issues,
         )
 
@@ -529,7 +529,7 @@ def build_core_config_from_grouped_reader(
         home_battery=home_battery,
         runtime=CoreRuntimeConfig(
             grid_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), read_entity, 0),
-            hourly_energy_balance_kwh=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'hourly_energy_balance_kwh'), read_entity, 0),
+            quarter_energy_balance_kwh=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'quarter_energy_balance_kwh'), read_entity, 0),
             required_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'required_power_w'), read_entity, 0),
             rpnz_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'rpnz_w'), read_entity, 0),
             pv_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'pv_power_w'), read_entity, 0),

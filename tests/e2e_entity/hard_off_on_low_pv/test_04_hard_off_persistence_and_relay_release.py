@@ -37,7 +37,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
                 pv_ent: 1.1,
             },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_low_pv_cycles': 3,
                 'ev_hard_off_active': True,

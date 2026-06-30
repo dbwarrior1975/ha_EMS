@@ -29,7 +29,7 @@ def test_03_release_relay1_then_restart(project_root):
                 E['rpnz_w']: 0.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -50,7 +50,7 @@ def test_03_release_relay1_then_restart(project_root):
             'note': 't121 release visibility clears and policy idles below RELAY1 threshold',
             'set': {
                 E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
             },
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
@@ -73,7 +73,7 @@ def test_03_release_relay1_then_restart(project_root):
             'note': 't150 next cycle starts and RELAY1 is activated again',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 165.0,

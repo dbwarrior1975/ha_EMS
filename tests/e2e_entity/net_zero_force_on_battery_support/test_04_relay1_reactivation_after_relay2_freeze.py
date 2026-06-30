@@ -30,7 +30,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'note': 't300 RELAY2 is on and RELAY1 activation has already reached dispatch state state',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.215,
+                E['rpnz_w']: 15.0,
                 E['grid_power_w']: -500.0,
             },
             'expect_policy': {
@@ -67,7 +67,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'note': 't301 RELAY1 command is already visible while freeze still blocks further surplus activation',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.215,
+                E['rpnz_w']: 15.0,
                 E['grid_power_w']: -500.0,
             },
             'expect_policy': {
@@ -100,7 +100,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'note': 't330 RELAY1 activation is now visible and both relays are stably on',
             'set': {
                 E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.115,
+                E['rpnz_w']: 15.0,
                 E['grid_power_w']: 1500.0,
             },
             'expect_policy': {

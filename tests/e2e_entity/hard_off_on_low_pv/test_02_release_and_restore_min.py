@@ -37,7 +37,7 @@ def test_02_release_and_restore_min(project_root):
                 pv_ent: 1.4,
             },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
                 'surplus_next_target': 'RELAY2',
                 'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': False,
@@ -60,7 +60,7 @@ def test_02_release_and_restore_min(project_root):
             'note': 't95 first low-PV cycle after release -> restore min, no hard-off yet',
             'set': {
                 E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
                 pv_ent: 1.3,
             },
             'expect_policy': {

@@ -88,6 +88,14 @@ Tulos:
 1. Kuormat kayttaytyvat ennustettavammin.
 2. Ohjaus on vakaampaa mittauskohinassa.
 
+Quarter-release kaytanto:
+
+1. EMS ei vapauta aktiivista surplus-kuormaa vain siksi, etta vartti vaihtui.
+2. Vapautus perustuu edelleen policy-ehtoihin, erityisesti `rpnz_w`:aan.
+3. Pieni positiivinen `rpnz_w`, valilla `+1 ... +10 W`, kasitellaan kaytannollisena nollana aktiivisen release-paattelyn kannalta.
+4. Jos aktiivinen EV tai rele on paalla ja `rpnz_w <= 10 W`, EMS vapauttaa alimman prioriteetin aktiivisen surplus-kohteen.
+5. Tama auttaa tilanteessa, jossa vartin alussa pieni negatiivinen kvartaalitase tuottaa esimerkiksi vain `+4 W` RPNZ:n.
+
 ## 5) Ennusteiden rooli kayttajan nakokulmasta
 
 Ennusteet auttavat vain, jos ne ovat tuoreita ja sallittuja profiileissa.

@@ -80,7 +80,7 @@ def read_measurements(now_ts, cfg, entities):
         battery_heartbeat_age_s=age_seconds(entities['battery_heartbeat'], now_ts),
         grid_power_w=get_float(entities['grid_power_w'], 0),
         current_battery_setpoint_w=get_float(entities['current_battery_sp'], 100),
-        hourly_energy_balance_kwh=get_float(entities['hourly_energy_balance'], 0),
+        quarter_energy_balance_kwh=get_float(entities['quarter_energy_balance'], 0),
         relay_states=relay_states,
         ev_states=ev_states,
     )
@@ -265,7 +265,7 @@ def ems_policy_engine_loop():
     previous_device_state = _read_previous_device_state(entities)
     previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
     nz = NetZeroState(
-        rpnz_w=get_float(entities['rpnz_w'], compute_rpnz_w(m.hourly_energy_balance_kwh, remaining_s)),
+        rpnz_w=get_float(entities['rpnz_w'], compute_rpnz_w(m.quarter_energy_balance_kwh, remaining_s)),
         required_power_consumption_kw=get_float(entities['required_power_consumption_kw'], 0),
     )
     outputs = compute_net_zero_engine_outputs(

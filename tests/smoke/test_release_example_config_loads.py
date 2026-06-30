@@ -22,7 +22,7 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     snap = harness.step(
         {
             ENT['grid_power_w']: -2600,
-            ENT['hourly_energy_balance']: -0.6,
+            ENT['quarter_energy_balance']: -0.6,
             ENT['rpnz_w']: 1800,
             ENT['required_power_consumption_kw']: 1.8,
             ENT['soc']: 55,

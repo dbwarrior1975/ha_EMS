@@ -34,7 +34,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
                 E['grid_power_w']: 2500.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
                 'surplus_next_target': 'RELAY1',
                 'prev_force_on_device_ids': (),
             },
@@ -62,7 +62,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'note': 't270 RPC now triggers RELAY2 through ordinary surplus logic, but actuator state remains unchanged this step',
             'set': {
                 E['required_power_consumption_kw']: 8.0,
-                E['rpnz_w']: 0.015,
+                E['rpnz_w']: 15.0,
                 E['grid_power_w']: -2500.0,
             },
             'expect_policy': {
@@ -99,7 +99,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'note': 't284 RELAY2 freeze is still active and prevents RELAY1 activation',
             'set': {
                 E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 0.115,
+                E['rpnz_w']: 15.0,
                 E['grid_power_w']: -500.0,
             },
             'expect_policy': {

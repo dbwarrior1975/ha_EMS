@@ -345,6 +345,7 @@ Selvennys activation-parametriin (tarkea):
 - Akun target seuraa jatkuvaa RPNZ-saatoa ensisijaisesti.
 - EV aktivoituu dispatchin kautta vasta activation-ehdolla.
 - Release tapahtuu deterministisesti aktiivisten kohteiden prioriteettijarjestyksessa.
+- Pieni positiivinen `rpnz_w`, valilla `+1 ... +10 W`, ei enaa lukitse aktiivista surplus-kuormaa paalle vartin vaihteessa.
 
 ### 4.4 Ongelma -> toimenpide
 
@@ -355,6 +356,11 @@ Selvennys activation-parametriin (tarkea):
 - EV aktivoituu liian herkästi:
   - Nosta ems_adjustable_surplus_activation_w arvoa.
   - Laske ems_adjustable_surplus_load_priority, jos releiden halutaan aktivoituvan ensin.
+
+- Akku jaa alle maksimin vaikka HOME_BATTERY on primary:
+  - Tarkista `quarter_energy_balance_kwh` ja `rpnz_w` traceista.
+  - Jos `rpnz_w` on `+1 ... +10 W`, release-deadbandin pitaisi vapauttaa aktiivinen surplus-kohde.
+  - Jos `rpnz_w` on yli `10 W`, release ei tapahdu taman saannon perusteella.
 
 ## 5. Kaytannon viritysjärjestys
 
@@ -379,6 +385,14 @@ Vahintaan seuraa näitä kenttia ongelmanrajausta varten:
 - primary_power_envelope_w
 - adjustable_surplus_load
 - adjustable_primary_load
+
+## 6.1 Quarter balance ja RPNZ
+
+- EMS:n kanoninen runtime-avain on `quarter_energy_balance_kwh`.
+- Se voi edelleen osoittaa ulkoiseen HA-entityyn `sensor.hourly_energy_balance`.
+- `rpnz_w` kuvaa vartin tasapainotusta ja voidaan johtaa kvartaalitaseesta ja jaljella olevasta varttiajasta.
+- Esimerkkireuna: `quarter_energy_balance_kwh = -0.001 kWh` vartin alussa tuottaa noin `+4 W` RPNZ:n.
+- Tassa tilanteessa `10 W` release-deadband vapauttaa aktiivisen kW-luokan EV:n tai releen, vaikka kynnys on vain `10 W`.
 
 ## 7. Esimerkkiprofiilit
 

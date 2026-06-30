@@ -33,7 +33,7 @@ def test_03_low_pv_to_hard_off(project_root):
             'note': 't120 second consecutive low-PV cycle below threshold -> hard-off expected',
             'set': {
                 E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.1,
+                E['rpnz_w']: 11.0,
                 pv_ent: 1.3,
             },
             'expect_policy': {

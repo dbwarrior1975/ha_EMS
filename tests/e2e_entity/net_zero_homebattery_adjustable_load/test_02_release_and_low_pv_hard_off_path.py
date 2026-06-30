@@ -30,7 +30,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             'note': 't120 weak PV cannot cover the deficit, so EV stays pinned at burn current while battery support is held at the minimum floor.',
             'set': {
                 E['required_power_consumption_kw']: -6.4,
-                E['rpnz_w']: 10.0,
+                E['rpnz_w']: 11.0,
                 E['grid_power_w']: 6290.0,
                 E['pv_power_kw']: 1.4,
             },

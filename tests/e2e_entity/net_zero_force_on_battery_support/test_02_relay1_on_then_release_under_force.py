@@ -92,7 +92,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
                 E['grid_power_w']: 2500.0,
             },
             'expect_policy': {
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
                 'surplus_next_target': 'ADJUSTABLE',
                 'prev_force_on_device_ids': ('RELAY2',),
             },

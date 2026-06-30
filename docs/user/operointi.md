@@ -98,6 +98,16 @@ Kaikki kolme komponenttia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamu
 
 Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
+## Troubleshooting
+
+### Battery stays below max even though HOME_BATTERY is primary
+
+1. Tarkista `sensor.ems_active_surplus_devices`.
+2. Tarkista `quarter_energy_balance_kwh`-lahde ja `rpnz_w`.
+3. Jos `rpnz_w` on `+1 ... +10 W`, aktiivisen surplus-kuorman pitaisi vapautua deadbandin perusteella.
+4. Jos `rpnz_w` on yli `10 W`, release ei tapahdu taman saannon perusteella.
+5. Tarkista `sensor.ems_policy_decision_trace_pyscript` ja `sensor.ems_actuator_writer_trace`.
+
 ## Tarkeimmat seurattavat entiteetit
 
 ### Mittaukset
@@ -107,12 +117,19 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 3. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_power`
 4. `sensor.average_active_power_2`
 5. `number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point`
-6. `sensor.hourly_energy_balance`
+6. `sensor.hourly_energy_balance` (ulkoinen HA-entity, jota EMS lukee avaimella `quarter_energy_balance_kwh`)
 7. `switch.charger_control`
 8. `number.charger_current_level`
 9. `sensor.required_power_consumption`
 10. `sensor.ems_calculated_required_power_for_net_zero`
 11. `sensor.pv_instant_power_2`
+
+Quarter-balance tulkinta:
+
+1. EMS:n kanoninen runtime-nimi on `quarter_energy_balance_kwh`.
+2. Se kuvaa nykyisen vartin energiataseen, ei tuntitaseen semantiikkaa.
+3. `rpnz_w` voi olla vartin alussa pieni positiivinen arvo, esimerkiksi `+4 W`, vaikka aktiivinen surplus-kuorma pitaisi kaytannossa vapauttaa.
+4. Taman vuoksi aktiivisen surplus-release kayttaa `10 W` deadbandia.
 
 ### Releiden override- ja sallintaentiteetit
 

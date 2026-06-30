@@ -165,6 +165,13 @@ runtime-parityssa.
 5. `freeze`-estologikan
 6. aktiivisen mutta ei-enää-kelvollisen kohteen vapautuksen
 
+`tests/unit/test_surplus_allocator.py` kattaa lisaksi:
+
+1. `rpnz_w = 4 W` -> release deadbandin sisalla
+2. `rpnz_w = 10 W` -> release deadbandin rajalla
+3. `rpnz_w = 11 W` -> ei releasea taman saannon perusteella
+4. `rpnz_w = 0 W` ja `-1 W` -> release edelleen tapahtuu
+
 ### Decision trace
 
 `tests/unit/test_decision_trace.py` tarkistaa, etta keskeiset kentat ja `battery_write_enabled` valittyvat trace-attribuutteihin.

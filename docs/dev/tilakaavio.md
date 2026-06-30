@@ -57,6 +57,7 @@ Tulkitse kaavio nain:
 2. `RELEASE` ja `CLEAR_ALL` pudottavat aktiivisuuden.
 3. `FROZEN` estaa uusia aktivointeja freeze-ikkunan ajan.
 4. Freeze voi syntya force- tai aktivointireunasta.
+5. `RELEASE` voi syntya practical-zero -ehdolla, kun `rpnz_w <= 10 W`.
 
 ## 3) EV policy anti-flap / hard_off -kaavio
 

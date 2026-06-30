@@ -208,7 +208,7 @@ def make_cfg(**overrides):
         home_battery=home_battery,
         runtime=CoreRuntimeConfig(
             grid_power_w='sensor.grid_power_w',
-            hourly_energy_balance_kwh='sensor.hourly_energy_balance_kwh',
+            quarter_energy_balance_kwh='sensor.hourly_energy_balance',
             required_power_w='sensor.required_power_w',
             rpnz_w='sensor.rpnz_w',
             pv_power_w='sensor.pv_power_w',
@@ -303,7 +303,7 @@ def make_m(**overrides):
         battery_heartbeat_age_s=0.0,
         grid_power_w=0.0,
         current_battery_setpoint_w=100.0,
-        hourly_energy_balance_kwh=0.0,
+        quarter_energy_balance_kwh=0.0,
         ev_states=ev_states,
         relay_states=relay_states,
     )

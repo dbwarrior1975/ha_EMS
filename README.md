@@ -144,6 +144,14 @@ Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
 3. `guard_profile = NORMAL_LIMITS`
 4. effective forecast on `NONE`
 
+Quarter-balance semantiikka:
+
+1. EMS:n kanoninen runtime-termi on `quarter_energy_balance_kwh`
+2. se kuvaa nykyisen vartin energiataseen, vaikka ulkoinen HA-entity voi edelleen olla `sensor.hourly_energy_balance`
+3. `rpnz_w` voidaan johtaa kvartaalitaseesta ja jaljella olevasta varttiajasta
+4. aktiivisen surplus-kuorman release kayttaa `10 W` practical-zero deadbandia
+5. jos `rpnz_w <= 10 W`, alin prioriteetti aktiivisista surplus-kohteista voidaan vapauttaa
+
 ### `MAX_EXPORT`
 
 Export-first -tila.
@@ -238,7 +246,7 @@ Keskeiset mittausavaimet (EMS):
 3. `battery_heartbeat`
 4. `grid_power_w`
 5. `current_battery_sp`
-6. `hourly_energy_balance`
+6. `quarter_energy_balance`
 7. `charger_control`
 8. `charger_current`
 9. `required_power_consumption_kw`

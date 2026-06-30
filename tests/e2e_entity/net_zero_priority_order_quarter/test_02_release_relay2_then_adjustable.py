@@ -65,7 +65,7 @@ def test_02_release_relay2_then_adjustable(project_root):
                 'surplus_device_dispatch_decision': 'RELEASE_RELAY2',
                 'surplus_device_release_candidate': 'RELAY2',
                 'surplus_device_release_device_id': 'RELAY2',
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -92,7 +92,7 @@ def test_02_release_relay2_then_adjustable(project_root):
                 'surplus_device_dispatch_decision': 'RELEASE_ADJUSTABLE',
                 'surplus_device_release_candidate': 'ADJUSTABLE',
                 'surplus_device_release_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},
@@ -120,7 +120,7 @@ def test_02_release_relay2_then_adjustable(project_root):
                 'surplus_device_dispatch_decision': 'RELEASE_RELAY1',
                 'surplus_device_release_candidate': 'RELAY1',
                 'surplus_device_release_device_id': 'RELAY1',
-                'surplus_explanation': 'RPNZ <= 0 -> release lowest-priority active target',
+                'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': True, 'mode': 'relay'},

@@ -226,7 +226,7 @@ class QuarterScenarioHarness:
             ('battery_heartbeat', 0.0),
             ('grid_power_w', 0.0),
             ('current_battery_sp', 100.0),
-            ('hourly_energy_balance', 0.0),
+            ('quarter_energy_balance', 0.0),
             ('charger_control', False),
             ('charger_current', 6),
             ('relay1', False),

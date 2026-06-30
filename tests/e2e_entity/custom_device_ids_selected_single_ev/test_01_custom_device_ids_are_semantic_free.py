@@ -38,7 +38,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
                 E['required_power_consumption_kw']: 3.2,
                 E['rpnz_w']: 3200.0,
                 E['grid_power_w']: -3200.0,
-                E['hourly_energy_balance']: -0.8,
+                E['quarter_energy_balance']: -0.8,
             },
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
@@ -58,7 +58,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
                 E['required_power_consumption_kw']: 3.2,
                 E['rpnz_w']: 3200.0,
                 E['grid_power_w']: -3200.0,
-                E['hourly_energy_balance']: -0.8,
+                E['quarter_energy_balance']: -0.8,
             },
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
@@ -85,7 +85,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
                 E['required_power_consumption_kw']: 3.2,
                 E['rpnz_w']: 3200.0,
                 E['grid_power_w']: -3200.0,
-                E['hourly_energy_balance']: -0.8,
+                E['quarter_energy_balance']: -0.8,
             },
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',

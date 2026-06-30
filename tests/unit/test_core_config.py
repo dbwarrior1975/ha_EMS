@@ -86,6 +86,7 @@ def test_build_core_config_from_grouped_config_maps_top_level_sections(project_r
     assert core.profiles.control == 'AUTOMATIC'
     assert core.global_config.deadband_w == 50
     assert core.runtime.grid_power_w == 'sensor.average_active_power_2'
+    assert core.runtime.quarter_energy_balance_kwh == 'sensor.hourly_energy_balance'
     assert core.state.surplus_freeze_until == 'input_datetime.ems_surplus_freeze_until'
     assert core.policy_outputs.decision_trace == 'sensor.ems_policy_decision_trace_pyscript'
 

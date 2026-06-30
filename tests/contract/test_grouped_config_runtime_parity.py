@@ -519,7 +519,7 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
     snap = harness.step(
         {
             ENT['grid_power_w']: -2600,
-            ENT['hourly_energy_balance']: -0.6,
+            ENT['quarter_energy_balance']: -0.6,
             ENT['rpnz_w']: 1800,
             ENT['required_power_consumption_kw']: 1.8,
             ENT['soc']: 55,
@@ -561,7 +561,7 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
             ENT['adjustable_surplus_activation']: 2000,
             ENT['grid_power_w']: -3200,
-            ENT['hourly_energy_balance']: -0.8,
+            ENT['quarter_energy_balance']: -0.8,
             ENT['rpnz_w']: 3200,
             ENT['required_power_consumption_kw']: 3.2,
             ENT['soc']: 55,
@@ -622,7 +622,7 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
             ENT['adjustable_primary_load']: '',
             ENT['adjustable_surplus_activation']: 2000,
             ENT['grid_power_w']: -2400,
-            ENT['hourly_energy_balance']: -0.5,
+            ENT['quarter_energy_balance']: -0.5,
             ENT['rpnz_w']: 2400,
             ENT['required_power_consumption_kw']: 2.4,
             ENT['pv_power_kw']: 3.5,

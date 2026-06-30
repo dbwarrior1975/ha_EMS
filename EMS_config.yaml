@@ -123,7 +123,7 @@ ems:
         
   runtime:
     grid_power_w: sensor.average_active_power_2
-    hourly_energy_balance_kwh: sensor.hourly_energy_balance
+    quarter_energy_balance_kwh: sensor.hourly_energy_balance
     required_power_w: sensor.required_power_consumption
     rpnz_w: sensor.ems_calculated_required_power_for_net_zero
     pv_power_w: sensor.pv_instant_power_2

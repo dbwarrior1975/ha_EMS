@@ -1,5 +1,7 @@
 from ems_core.domain.models import SurplusDispatchDecision
 
+SURPLUS_RELEASE_DEADBAND_W = 10.0
+
 
 def _is_higher_priority_candidate(candidate, current):
     if current is None:
@@ -85,9 +87,12 @@ def compute_surplus_device_dispatch(inp, now_ts, freeze_s=30):
     for target in inp.targets:
         if target.active and target.priority > 0:
             active.append(target)
-    if inp.rpnz_w <= 0 and active:
+    if inp.rpnz_w <= SURPLUS_RELEASE_DEADBAND_W and active:
         release = release_device_target(inp.targets)
-        return SurplusDispatchDecision(release=release.device_id, explanation='RPNZ <= 0 -> release lowest-priority active target')
+        return SurplusDispatchDecision(
+            release=release.device_id,
+            explanation='RPNZ <= 10 W release deadband -> release lowest-priority active target',
+        )
     if inp.freeze_until_ts is not None and inp.freeze_until_ts > now_ts:
         return SurplusDispatchDecision(explanation='Freeze active -> wait for measurements to settle')
     nxt = next_device_target(inp.targets)

@@ -169,7 +169,7 @@ class CoreRelayDeviceConfig:
 @dataclass
 class CoreRuntimeConfig:
     grid_power_w: EntityRef
-    hourly_energy_balance_kwh: EntityRef
+    quarter_energy_balance_kwh: EntityRef
     required_power_w: EntityRef
     rpnz_w: EntityRef
     pv_power_w: EntityRef
@@ -352,7 +352,7 @@ class RuntimeMeasurements:
     battery_heartbeat_age_s: float
     grid_power_w: float
     current_battery_setpoint_w: float
-    hourly_energy_balance_kwh: float
+    quarter_energy_balance_kwh: float
     relay_states: Optional[dict[str, dict]] = None
     ev_states: Optional[dict[str, dict]] = None
 

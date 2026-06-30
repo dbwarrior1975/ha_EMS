@@ -217,7 +217,7 @@ Keskeiset entity-ryhmat ovat edelleen:
    `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`,
    `ev_*`) seka device-registryyn sidotut laitekohtaiset kentat kuten
    `capabilities.max_absorb_w` ja `policy.priority`
-3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `hourly_energy_balance`, `pv_power_kw`
+3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `quarter_energy_balance`, `pv_power_kw`
 4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
 5. policy-ulostulot: `policy_decision_trace`, `device_policies`, `previous_device_state`
 6. surplus-tilat: `surplus_freeze_until`, `active_surplus_devices`
@@ -334,6 +334,12 @@ Tarkemmat guard-vaikutukset:
 5. ramppirajaa
 6. `max_solar_charge_w`-ylakattoa
 7. konfiguroitavaa minimi-flooria `nz_battery_floor_default_w`
+
+Surplus-release poikkeus:
+
+1. aktiivisen surplus-kuorman release ei kayta enaa raakaa ehtoa `rpnz_w <= 0`
+2. surplus allocator kasittelee `rpnz_w <= 10 W` practical-zero deadbandina
+3. jos aktiivisia surplus-kohteita on, alin prioriteetti vapautetaan taman deadbandin sisalla
 
 EV-primary poikkeus:
 
