@@ -79,25 +79,26 @@ def test_02_release_and_hard_off_hold(project_root):
             'set': {
                 E['required_power_consumption_kw']: 0.5,
                 E['rpnz_w']: -80.0,
-                E['grid_power_w']: -2020.0,
+                E['grid_power_w']: 2020.0,
                 E['pv_power_kw']: 0.0,
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': -500},
             },
             'expect_policy': {
+                'ev_hard_off_active': True,
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'activation_gate_hold',
+                'battery_min_floor_reason': 'ev_active_floor_override',
                 'battery_to_ev_loop_risk': False,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: -500,
             },
         },
         {
             'at_s': 180,
-            'note': 't180 PV 1.0 kW: hold state with EV disabled and battery setpoint held by gate logic.',
+            'note': 't180 PV 1.0 kW: hold state with EV disabled and battery setpoint allow to discharge battery',
             'set': {
                 E['required_power_consumption_kw']: 0.9,
                 E['rpnz_w']: -50.0,
@@ -106,16 +107,16 @@ def test_02_release_and_hard_off_hold(project_root):
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'activation_gate_hold',
+                'battery_min_floor_reason': 'ev_active_floor_override',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: 0,
             },
         },
         {
@@ -129,7 +130,7 @@ def test_02_release_and_hard_off_hold(project_root):
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'surplus_explanation': 'Waiting for HOME_BATTERY; raw RPC below threshold',
@@ -139,7 +140,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: 0,
             },
         },
         {
@@ -153,7 +154,7 @@ def test_02_release_and_hard_off_hold(project_root):
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'surplus_explanation': 'Waiting for HOME_BATTERY; raw RPC below threshold',
@@ -163,7 +164,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: 0,
             },
         },
         {
@@ -177,7 +178,7 @@ def test_02_release_and_hard_off_hold(project_root):
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'ev_hard_off_active': True,
@@ -187,7 +188,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: 0,
             },
         },
     ]
