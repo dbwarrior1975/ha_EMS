@@ -34,7 +34,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'active_surplus_device_ids': ('RELAY1',),
             },
             'expect_values': {
-                E['actuator_ev_enabled']: False,
+                E['actuator_ev_enabled']: True,
                 E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 200,
             },
@@ -66,7 +66,7 @@ def test_activation_and_ev_burn_window(project_root):
             },
             'expect_values': {
                 E['actuator_relay1']: True,
-                E['actuator_ev_enabled']: False,
+                E['actuator_ev_enabled']: True,
                 E['actuator_ev_current_a']: 8,
                 E['actuator_battery_setpoint_w']: 400,
             },

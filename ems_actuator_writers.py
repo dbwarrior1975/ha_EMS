@@ -285,6 +285,23 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
             'policy_source': policy_source,
         }
 
+    if ev_policy_mode == 'restore_min':
+        current_changed = False
+        if current_level != derived_min_a:
+            set_number(current_entity, derived_min_a)
+            current_changed = True
+        return {
+            'target': 'ev',
+            'action': 'restore_min_current',
+            'reason': capability_reason or 'restore_min',
+            'written': current_changed,
+            'policy_target_w': target_w,
+            'target_current_a': derived_min_a,
+            'enabled_changed': False,
+            'current_changed': current_changed,
+            'policy_source': policy_source,
+        }
+
     enabled_changed = False
     current_changed = False
     if current_on:

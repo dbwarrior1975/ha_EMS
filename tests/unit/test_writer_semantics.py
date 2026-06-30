@@ -772,6 +772,70 @@ def test_writer_loop_disables_ev_and_restores_min_current_when_target_w_is_zero(
 
 
 @pytest.mark.unit
+def test_writer_restore_min_keeps_enabled_charger_alive(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'restore_min',
+            }
+        ],
+    )
+
+    state[ENT['actuator_ev_enabled']] = True
+    state[ENT['actuator_ev_current_a']] = 16
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['reason'] in {'restore_min', 'restore_min_current'}
+    assert result['target_current_a'] == 6
+    assert result['enabled_changed'] is False
+    assert result['current_changed'] is True
+    assert state[ENT['actuator_ev_enabled']] is True
+    assert state[ENT['actuator_ev_current_a']] == 6
+
+
+@pytest.mark.unit
+def test_writer_restore_min_does_not_start_disabled_charger(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'EV_CHARGER',
+                'target_w': 0,
+                'enabled': True,
+                'mode': 'restore_min',
+            }
+        ],
+    )
+
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 16
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
+
+    result = mod['_write_ev_actuator']()
+
+    assert result['reason'] in {'restore_min', 'restore_min_current'}
+    assert result['target_current_a'] == 6
+    assert result['enabled_changed'] is False
+    assert result['current_changed'] is True
+    assert state[ENT['actuator_ev_enabled']] is False
+    assert state[ENT['actuator_ev_current_a']] == 6
+
+
+@pytest.mark.unit
 def test_writer_hard_off_disables_ev_and_sets_current_to_derived_min(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 

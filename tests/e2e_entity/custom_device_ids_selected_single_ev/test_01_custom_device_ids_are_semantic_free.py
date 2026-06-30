@@ -106,7 +106,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
                 'switch.relay_sauna_enabled': True,
             },
             'expect_writer_trace': {
-                'EV_MAIN': {'action': 'skip', 'current_a': 6},
+                'EV_MAIN': {'action': 'restore_min_current', 'target_current_a': 6},
                 'EV_GARAGE': {'action': 'enable_and_set_current', 'target_current_a': 16},
             },
         },

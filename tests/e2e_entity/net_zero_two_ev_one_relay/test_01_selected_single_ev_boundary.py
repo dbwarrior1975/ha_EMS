@@ -98,7 +98,7 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
                 E['actuator_relay1']: True,
             },
             'expect_writer_trace': {
-                'EV_CHARGER': {'action': 'skip', 'current_a': 8},
+                'EV_CHARGER': {'action': 'restore_min_current', 'target_current_a': 8},
                 'EV_GARAGE': {'action': 'enable_and_set_current', 'target_current_a': 16},
             },
         },

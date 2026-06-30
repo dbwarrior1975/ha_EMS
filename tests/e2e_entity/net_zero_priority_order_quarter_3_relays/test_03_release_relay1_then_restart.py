@@ -91,7 +91,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_values': {
                 E['actuator_relay1']: False,
                 E['actuator_relay2']: False,
-                E['actuator_ev_enabled']: False,
+                E['actuator_ev_enabled']: True,
             },
         },
     ]

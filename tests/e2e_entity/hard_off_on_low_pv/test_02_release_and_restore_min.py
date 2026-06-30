@@ -71,17 +71,17 @@ def test_02_release_and_restore_min(project_root):
                 'pv_power_kw': 1.3,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False},
+                'EV_CHARGER': {'mode': 'restore_min'},
             },
             'expect_writer_trace': {
                 'EV_CHARGER': {
-                    'reason': 'target_zero_disable',
+                    'reason': 'restore_min',
                     'written': True,
                     'target_current_a': 8,
                 },
             },
             'expect_values': {
-                E['actuator_ev_enabled']: False,
+                E['actuator_ev_enabled']: True,
                 E['actuator_ev_current_a']: 8,
             },
         },

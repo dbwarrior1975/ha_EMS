@@ -549,10 +549,11 @@ EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 
 ## Nykyinen EV 0 A -semantiikka
 
-Nykytilassa EV:n `0 A` policy jakautuu kahteen eri writer-polkuun:
+Nykytilassa EV:n `0 A` policy jakautuu kolmeen eri writer-polkuun:
 
-1. `ev_policy_mode=hard_off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
-2. ilman `hard_off`-attribuuttia -> writer tulkitsee tilanteen surplus release -polkuna ja palauttaa currentin minimiin vain jos laturi on jo paalla
+1. `ev_policy_mode=restore_min` -> jo paalla oleva laturi pidetaan paalla ja current-selector palautetaan minimiin; pois paalla olevaa laturia ei kaynnisteta
+2. `ev_policy_mode=hard_off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
+3. `release` / eksplisiittinen `off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
 
 Tama semantiikka on nyt linjassa nykyisten e2e-skenaarioiden kanssa.
 
