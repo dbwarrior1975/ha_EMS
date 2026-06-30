@@ -11,6 +11,7 @@ Tama release lanceeraa EMS:n, jossa:
 3. device model on tuotantopolun ensisijainen malli
 4. writerien kanoninen ohjausrajapinta on `device_policies`
 5. EV writerin kanoninen input on `target_w`
+6. `sensor.ems_device_policies_pyscript` state on nyt muuttuva versionumero, payload on attribuuteissa
 
 ## N-device support
 

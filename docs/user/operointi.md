@@ -359,9 +359,10 @@ Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-att
 Tulkitse policy trace oikein:
 
 1. `device_policies` on writerin kanoninen ohjauspyynto
-2. yksittaiset peilikentat eivat kuulu release-sopimukseen
-3. writerin ampeeritotuus loytyy `actuator_writer_trace.devices.<device_id>.target_current_a`-kentasta valitulle EV:lle
-4. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
+2. `sensor.ems_device_policies_pyscript` state on versionumero, ei policyjen maara
+3. yksittaiset peilikentat eivat kuulu release-sopimukseen
+4. writerin ampeeritotuus loytyy `actuator_writer_trace.devices.<device_id>.target_current_a`-kentasta valitulle EV:lle
+5. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
    toteutuneeseen actuator-traceen ja nykyiseen actuator-stateen
 
 Sen jalkeen tarkasta:

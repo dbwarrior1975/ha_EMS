@@ -8,6 +8,7 @@ from ems_core.diagnostics.decision_trace import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
+_DEVICE_POLICIES_VERSION = 0
 
 
 def _enum(allowed_cls, value, default):
@@ -23,6 +24,12 @@ def _policy_output_contract_attrs():
         'policy_engine_build': _POLICY_ENGINE_BUILD,
         'policy_output_contract': 'device_policy_primary',
     }
+
+
+def _next_device_policies_version():
+    global _DEVICE_POLICIES_VERSION
+    _DEVICE_POLICIES_VERSION += 1
+    return str(_DEVICE_POLICIES_VERSION)
 
 
 def read_core_config():
@@ -285,12 +292,14 @@ def ems_policy_engine_loop():
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     attrs.update(config_trace_attrs())
     attrs.update(_policy_output_contract_attrs())
+    device_policies_version = _next_device_policies_version()
+    attrs['device_policies_version'] = device_policies_version
     publish_sensor(
         entities['previous_device_state'],
         _selected_previous_device_state_for_outputs(outputs)['mode'],
         _previous_device_state_attrs_from_outputs(outputs),
     )
-    publish_sensor(entities['device_policies'], len(attrs.get('device_policies', ())), attrs)
+    publish_sensor(entities['device_policies'], device_policies_version, attrs)
     publish_sensor(entities['policy_decision_trace'], _trace_state(profiles, outputs), attrs)
     publish_sensor(entities['surplus_policy_active_pys'], 'on' if outputs.surplus_policy_active else 'off', attrs)
     publish_sensor(entities['surplus_next_target_pys'], outputs.surplus_next_target, attrs)

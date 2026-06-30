@@ -145,6 +145,8 @@ Vastuut:
 4. julkaisee `sensor.ems_actuator_writer_trace`-diagnostiikan
 
 Actuator writer loop toimii kanonisesti `device_policies`-ulostulon perusteella.
+`sensor.ems_device_policies_pyscript` state on monotonisesti kasvava versionumero;
+varsinainen payload luetaan sensorin `device_policies`-attribuutista.
 Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on edelleen
 olennainen, mutta writer ei hae paatoksia vanhoista `policy_*`-attribuuttifallbackeista.
 

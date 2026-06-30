@@ -52,22 +52,27 @@ def _quantize_50w(value):
 
 
 def _device_policy_by_id(device_id, entities=None):
+    policy, _source_entity, _source_reason = _device_policy_source_for_id(device_id, entities)
+    return policy
+
+
+def _device_policy_source_for_id(device_id, entities=None):
     get_attr_fn = globals().get('get_attr')
     if get_attr_fn is None:
-        return None
+        return None, '', 'missing_get_attr'
 
     source_entities = (
-        _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities),
-        _ent('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities),
+        (_ent('device_policies', 'sensor.ems_device_policies_pyscript', entities), 'canonical'),
+        (_ent('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities), 'fallback_device_policies_missing'),
     )
-    for source_entity in source_entities:
+    for source_entity, source_reason in source_entities:
         policies = get_attr_fn(source_entity, 'device_policies', None)
         if not policies:
             continue
         for policy in policies:
             if isinstance(policy, dict) and policy.get('device_id') == device_id:
-                return policy
-    return None
+                return policy, source_entity, source_reason
+    return None, '', 'missing_device_policy'
 
 
 def _device_policy_enabled(policy, default=False):
@@ -444,9 +449,13 @@ def _publish_writer_trace(victron, device_traces, entities=None):
         return
 
     trace_ent = _ent('actuator_writer_trace', 'sensor.ems_actuator_writer_trace', entities)
+    device_policies_entity = _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities)
     attrs = {
         'writer_policy_contract': 'device_policy_primary',
         'writer_trace_canonical_contract': 'devices',
+        'policy_source_entity': device_policies_entity,
+        'policy_source_reason': 'canonical',
+        'device_policies_version': get_str(device_policies_entity, ''),
         'victron': victron,
         'devices': device_traces,
     }
@@ -455,7 +464,7 @@ def _publish_writer_trace(victron, device_traces, entities=None):
 
 @time_trigger('period(now, 30s)')
 @state_trigger(
-    'sensor.ems_policy_decision_trace_pyscript or '
+    'sensor.ems_device_policies_pyscript or '
     'input_select.ems_control_profile'
 )
 def ems_actuator_writers_loop():

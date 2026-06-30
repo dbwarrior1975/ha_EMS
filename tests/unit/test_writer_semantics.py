@@ -15,13 +15,17 @@ def _load_writer_module(project_root):
     src = '\n'.join(filtered)
 
     state = {}
+    trigger_calls = []
+    calls = []
 
     def _time_trigger(*args, **kwargs):
+        trigger_calls.append(('time', args, kwargs))
         def deco(fn):
             return fn
         return deco
 
     def _state_trigger(*args, **kwargs):
+        trigger_calls.append(('state', args, kwargs))
         def deco(fn):
             return fn
         return deco
@@ -39,9 +43,11 @@ def _load_writer_module(project_root):
         return str(state.get(entity_id, default))
 
     def set_boolean(entity_id, on):
+        calls.append(('set_boolean', entity_id, bool(on)))
         state[entity_id] = bool(on)
 
     def set_number(entity_id, value):
+        calls.append(('set_number', entity_id, value))
         state[entity_id] = value
 
     def publish_sensor(entity_id, value, attrs=None):
@@ -53,6 +59,8 @@ def _load_writer_module(project_root):
         'actuator_ev_current_a': 'input_number.test_actuator_ev_current_a',
         'actuator_relay1': 'input_boolean.actuator_relay1',
         'actuator_relay2': 'input_boolean.actuator_relay2',
+        'device_policies': 'sensor.ems_device_policies_pyscript',
+        'policy_decision_trace': 'sensor.ems_policy_decision_trace_pyscript',
     }
 
     ns = {
@@ -69,6 +77,8 @@ def _load_writer_module(project_root):
         'publish_sensor': publish_sensor,
         'ENT': ENT,
         'read_runtime_entities': lambda *args, **kwargs: {},
+        '_TEST_TRIGGER_CALLS': trigger_calls,
+        '_TEST_CALLS': calls,
     }
     _install_core_capabilities(ns)
 
@@ -78,9 +88,20 @@ def _load_writer_module(project_root):
 
 
 def _install_device_policies(mod, policies):
+    ent = mod.get('ENT', {})
+    _install_device_policies_by_entity(
+        mod,
+        {
+            ent.get('device_policies', 'sensor.ems_device_policies_pyscript'): tuple(policies),
+            ent.get('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript'): tuple(policies),
+        },
+    )
+
+
+def _install_device_policies_by_entity(mod, mapping):
     def get_attr(entity_id, attr, default=None):
         if attr == 'device_policies':
-            return tuple(policies)
+            return tuple(mapping.get(entity_id, ()))
         return default
 
     mod['get_attr'] = get_attr
@@ -862,3 +883,132 @@ def test_writer_hard_off_disables_ev_and_sets_current_to_derived_min(project_roo
     assert result['reason'] == 'hard_off'
     assert state[ENT['actuator_ev_enabled']] is False
     assert state[ENT['actuator_ev_current_a']] == 6
+
+
+@pytest.mark.unit
+def test_writer_state_trigger_uses_device_policies_not_policy_trace(project_root):
+    mod, _state, _ENT = _load_writer_module(project_root)
+
+    state_triggers = [
+        args[0]
+        for kind, args, _kwargs in mod['_TEST_TRIGGER_CALLS']
+        if kind == 'state' and args
+    ]
+
+    assert any('sensor.ems_device_policies_pyscript' in trigger for trigger in state_triggers)
+    assert all('sensor.ems_policy_decision_trace_pyscript' not in trigger for trigger in state_triggers)
+    assert any('input_select.ems_control_profile' in trigger for trigger in state_triggers)
+
+
+@pytest.mark.unit
+def test_writer_uses_canonical_device_policies_before_trace_fallback(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies_by_entity(
+        mod,
+        {
+            ENT['device_policies']: (
+                {'device_id': 'RELAY1', 'target_w': 2500, 'enabled': True, 'mode': 'relay'},
+            ),
+            ENT['policy_decision_trace']: (
+                {'device_id': 'RELAY1', 'target_w': 0, 'enabled': False, 'mode': 'relay'},
+            ),
+        },
+    )
+
+    state[ENT['actuator_relay1']] = False
+
+    result = mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+
+    assert result['written'] is True
+    assert state[ENT['actuator_relay1']] is True
+
+
+@pytest.mark.unit
+def test_writer_can_still_use_trace_fallback_when_canonical_missing(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies_by_entity(
+        mod,
+        {
+            ENT['policy_decision_trace']: (
+                {'device_id': 'RELAY1', 'target_w': 2500, 'enabled': True, 'mode': 'relay'},
+            ),
+        },
+    )
+
+    state[ENT['actuator_relay1']] = False
+
+    result = mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+
+    assert result['written'] is True
+    assert state[ENT['actuator_relay1']] is True
+
+
+@pytest.mark.unit
+def test_writer_repeated_identical_relay_policy_does_not_repeat_service_call(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {'device_id': 'RELAY1', 'target_w': 2500, 'enabled': True, 'mode': 'relay'},
+        ],
+    )
+
+    state[ENT['actuator_relay1']] = False
+
+    mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+    mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+
+    assert mod['_TEST_CALLS'] == [('set_boolean', ENT['actuator_relay1'], True)]
+
+
+@pytest.mark.unit
+def test_writer_repeated_identical_ev_current_policy_does_not_repeat_service_call(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {'device_id': 'EV_CHARGER', 'target_w': 3680, 'enabled': True, 'mode': 'burn'},
+        ],
+    )
+
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    state['input_number.ems_ev_current_step_a'] = 1
+    state['input_number.ems_ev_charger_phases'] = 1
+    state['input_number.ems_ev_voltage_v'] = 230
+
+    mod['_write_ev_actuator']()
+    mod['_write_ev_actuator']()
+
+    assert mod['_TEST_CALLS'] == [
+        ('set_boolean', ENT['actuator_ev_enabled'], True),
+        ('set_number', ENT['actuator_ev_current_a'], 16),
+    ]
+
+
+@pytest.mark.unit
+def test_writer_repeated_identical_battery_policy_respects_deadband_without_repeat_write(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    _install_device_policies(
+        mod,
+        [
+            {'device_id': 'HOME_BATTERY', 'target_w': 500, 'enabled': True, 'mode': 'power'},
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 50
+    state['input_number.ems_ramp_max_w'] = 1000
+    state[ENT['actuator_battery_setpoint_w']] = 0
+
+    mod['_write_battery_actuator']()
+    mod['_write_battery_actuator']()
+
+    assert mod['_TEST_CALLS'] == [
+        ('set_number', ENT['actuator_battery_setpoint_w'], 500),
+    ]

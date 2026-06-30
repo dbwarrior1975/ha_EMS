@@ -656,3 +656,43 @@ def test_policy_outputs_publish_device_policy_contract_and_payloads(project_root
     attrs = harness.getattrs(ENT['policy_decision_trace'])
     assert attrs['policy_output_contract'] == 'device_policy_primary'
     assert attrs['device_policies']
+
+
+@pytest.mark.unit
+def test_device_policies_sensor_state_is_version_not_policy_count(project_root):
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    device_policies_entity = ENT['device_policies']
+
+    harness.set_entities(
+        {
+            ENT['grid_power_w']: -2200,
+            ENT['quarter_energy_balance']: -0.4,
+            ENT['rpnz_w']: 2200,
+            ENT['required_power_consumption_kw']: 2.2,
+            ENT['soc']: 55,
+            ENT['min_cell_voltage_v']: 3.2,
+            ENT['haeo_battery_active_power_fresh_source']: 0,
+            ENT['haeo_ev_active_power_fresh_source']: 0,
+        }
+    )
+    harness.step(note='device policies version first')
+    first_state = harness.get(device_policies_entity)
+    first_attrs = harness.getattrs(device_policies_entity)
+
+    harness.step(
+        set_values={
+            ENT['grid_power_w']: -3000,
+            ENT['quarter_energy_balance']: -0.7,
+            ENT['rpnz_w']: 3000,
+            ENT['required_power_consumption_kw']: 3.0,
+        },
+        note='device policies version second',
+    )
+    second_state = harness.get(device_policies_entity)
+    second_attrs = harness.getattrs(device_policies_entity)
+
+    assert first_state == first_attrs['device_policies_version']
+    assert second_state == second_attrs['device_policies_version']
+    assert first_state != second_state
+    assert len(first_attrs['device_policies']) == len(second_attrs['device_policies'])
+    assert second_state != len(second_attrs['device_policies'])
