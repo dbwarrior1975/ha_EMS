@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.haeo_01_cheap_grid_charge_fresh_forecast.scenario_steps import build_harness, run_steps
 
 @pytest.mark.scenario
@@ -15,10 +17,17 @@ def test_haeo_cheap_grid_charge_fresh_forecast_active(project_root):
         {
             'at_s': 0,
             'note': 'fresh HAEO forecast drives cheap-grid-charge targets',
-            'set': {
-                E['required_power_consumption_kw']: 1500.0,
-                E['rpnz_w']: 100.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=100.0,
+                required_power_consumption_kw=1.5,
+                at_s=0,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=100.0,
+                required_power_consumption_kw=1.5,
+                at_s=0,
+            ),
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
                 'goal': 'CHEAP_GRID_CHARGE',

@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
@@ -24,10 +26,10 @@ def test_goal_switch_to_max_export_clears_surplus(project_root):
             'at_s': 90,
             'note': 't90 goal changes to MAX_EXPORT; surplus states clear and EV target remains max current this cycle',
             'set': {
+                **runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=6.0, at_s=90),
                 E['goal_profile']: 'MAX_EXPORT',
-                E['required_power_consumption_kw']: 6.0,
-                E['rpnz_w']: 500,
             },
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=6.0, at_s=90),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
                 'surplus_device_dispatch_decision': 'CLEAR_ALL',

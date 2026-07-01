@@ -28,7 +28,7 @@ def build_harness(project_root):
         E['max_solar_charge_w']: 2500,
         E['current_battery_sp']: 0.0,
         E['devices']['RELAY1']['max_absorb_w']: 2300,
-        E['pv_power_kw']: 1.3,
+        E['pv_power_w']: 1300.0,
     })
 
     return h

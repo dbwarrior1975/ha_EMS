@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.custom_device_ids_selected_single_ev.scenario_steps import build_harness
 from tests.e2e_entity.custom_device_ids_selected_single_ev.scenario_steps import run_steps
 
@@ -13,11 +15,8 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 0,
             'note': 't0 custom EV and relay ids load without any fixed device-id dependency.',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: -10.0,
-                E['grid_power_w']: -20.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'ev_device_ids': ('EV_MAIN', 'EV_GARAGE'),
                 'relay_device_ids': ('RELAY_SAUNA', 'RELAY_BOILER'),
@@ -34,12 +33,8 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 30,
             'note': 't30 custom selected EV_GARAGE is chosen immediately while EV_MAIN stays inactive.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
@@ -54,12 +49,8 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 60,
             'note': 't60 custom selected EV gets the target and the next dispatch edge advances to RELAY_SAUNA.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'ACTIVATE_RELAY_SAUNA',
@@ -81,12 +72,8 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 90,
             'note': 't90 writer uses custom EV ids directly and the next dispatch edge advances to RELAY_BOILER without any RELAY1 or EV_CHARGER dependency.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'ACTIVATE_RELAY_BOILER',

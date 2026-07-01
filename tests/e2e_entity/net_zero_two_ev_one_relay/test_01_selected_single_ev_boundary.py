@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_two_ev_one_relay.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_two_ev_one_relay.scenario_steps import run_steps
 
@@ -13,11 +15,8 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
         {
             'at_s': 0,
             'note': 't0 selected EV is EV_GARAGE and the non-selected EV stays inactive.',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: -10.0,
-                E['grid_power_w']: -20.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'ev_device_ids': ('EV_CHARGER', 'EV_GARAGE'),
                 'selected_ev_device_id': 'EV_GARAGE',
@@ -31,12 +30,8 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
         {
             'at_s': 30,
             'note': 't30 first adjustable activation already selects EV_GARAGE and keeps EV_CHARGER inactive.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
@@ -51,12 +46,8 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
         {
             'at_s': 60,
             'note': 't60 selected EV_GARAGE is active and the next dispatch edge advances to RELAY1.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
@@ -75,12 +66,8 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
         {
             'at_s': 90,
             'note': 't90 writer keeps EV_GARAGE active at its max current while RELAY1 joins the active stack.',
-            'set': {
-                E['required_power_consumption_kw']: 3.2,
-                E['rpnz_w']: 3200.0,
-                E['grid_power_w']: -3200.0,
-                E['quarter_energy_balance']: -0.8,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
             'expect_policy': {
                 'selected_ev_device_id': 'EV_GARAGE',
                 'surplus_device_dispatch_decision': 'NOOP',

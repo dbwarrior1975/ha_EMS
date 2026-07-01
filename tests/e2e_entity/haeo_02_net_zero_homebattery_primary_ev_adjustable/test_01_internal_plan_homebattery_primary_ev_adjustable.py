@@ -4,6 +4,8 @@ from tests.e2e_entity.haeo_02_net_zero_homebattery_primary_ev_adjustable.scenari
     build_harness,
     run_steps,
 )
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 
 @pytest.mark.xfail(reason='Future EMS-internal HAEO combo semantics are not implemented yet')
 @pytest.mark.scenario
@@ -20,11 +22,17 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
         {
             'at_s': 0,
             'note': 'quarter start: internal HAEO plan selects HOME_BATTERY primary and EV adjustable',
-            'set': {
-                E['required_power_consumption_kw']: 4.5,
-                E['rpnz_w']: 6000.0,
-                E['grid_power_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=6000.0,
+                required_power_consumption_kw=4.5,
+                at_s=0,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=6000.0,
+                required_power_consumption_kw=4.5,
+                at_s=0,
+            ),
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
                 'goal': 'NET_ZERO',
@@ -69,11 +77,17 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
         {
             'at_s': 30,
             'note': 'next policy cycle: EV adjustable state is active and EV current is capped by HAEO limit',
-            'set': {
-                E['required_power_consumption_kw']: 4.5,
-                E['rpnz_w']: 6000.0,
-                E['grid_power_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=6000.0,
+                required_power_consumption_kw=4.5,
+                at_s=30,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=6000.0,
+                required_power_consumption_kw=4.5,
+                at_s=30,
+            ),
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
                 'goal': 'NET_ZERO',
@@ -120,13 +134,21 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
             'at_s': 900,
             'note': 'new quarter: HAEO flips priority to EV primary and old adjustable state must be cleared',
             'set': {
-                E['required_power_consumption_kw']: 6.0,
-                E['rpnz_w']: 7000.0,
-                E['grid_power_w']: 0.0,
+                **runtime_inputs_for_net_zero_intent(
+                    E,
+                    rpnz_w=7000.0,
+                    required_power_consumption_kw=6.0,
+                    at_s=900,
+                ),
                 E['battery_heartbeat']: 0.0,
                 E['haeo_battery_active_power_fresh_source']: 2.0,
                 E['haeo_ev_active_power_fresh_source']: 2.0,
             },
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=7000.0,
+                required_power_consumption_kw=6.0,
+                at_s=900,
+            ),
             'expect_policy': {
                 'control': 'HORIZON_BY_HAEO',
                 'goal': 'NET_ZERO',

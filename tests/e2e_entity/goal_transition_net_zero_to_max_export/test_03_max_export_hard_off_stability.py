@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.goal_transition_net_zero_to_max_export.scenario_steps import build_harness, run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
@@ -23,10 +25,8 @@ def test_max_export_hard_off_stability(project_root):
         {
             'at_s': 120,
             'note': 't120 MAX_EXPORT keeps surplus clear and transitions EV policy to hard_off',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=120),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=120),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
                 'surplus_device_dispatch_decision': 'CLEAR_ALL',
@@ -72,10 +72,8 @@ def test_max_export_hard_off_stability(project_root):
         {
             'at_s': 150,
             'note': 't150 MAX_EXPORT remains stable with EV hard_off and clear dispatch state',
-            'set': {
-                E['required_power_consumption_kw']: 7.0,
-                E['rpnz_w']: 1000.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=1000.0, required_power_consumption_kw=7.0, at_s=150),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=1000.0, required_power_consumption_kw=7.0, at_s=150),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
                 'surplus_device_dispatch_decision': 'CLEAR_ALL',

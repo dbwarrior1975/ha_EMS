@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.optimizer_degraded_fallback.scenario_steps import build_harness, run_steps
 
 @pytest.mark.scenario
@@ -15,10 +17,8 @@ def test_forecast_missing_keeps_runtime_alive(project_root):
         {
             'at_s': 0,
             'note': 'missing forecast payload',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'configured_forecast': 'HAEO',
                 'effective_forecast': 'NONE',

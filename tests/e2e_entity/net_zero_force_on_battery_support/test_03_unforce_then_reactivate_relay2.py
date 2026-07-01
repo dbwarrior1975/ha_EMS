@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
@@ -28,11 +30,10 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'at_s': 240,
             'note': 't240 user removes RELAY2 force and the relay turns off at actuator level',
             'set': {
+                **runtime_inputs_for_net_zero_intent(E, rpnz_w=-0.015, required_power_consumption_kw=-3.0, at_s=240),
                 E['devices']['RELAY2']['force_on']: False,
-                E['required_power_consumption_kw']: -3.0,
-                E['rpnz_w']: -0.015,
-                E['grid_power_w']: 2500.0,
             },
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-0.015, required_power_consumption_kw=-3.0, at_s=240),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
                 'surplus_next_target': 'RELAY1',
@@ -60,11 +61,8 @@ def test_03_unforce_then_reactivate_relay2(project_root):
         {
             'at_s': 270,
             'note': 't270 RPC now triggers RELAY2 through ordinary surplus logic, but actuator state remains unchanged this step',
-            'set': {
-                E['required_power_consumption_kw']: 8.0,
-                E['rpnz_w']: 15.0,
-                E['grid_power_w']: -2500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=15.0, required_power_consumption_kw=8.0, at_s=270),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=8.0, at_s=270),
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
                 'surplus_explanation': 'Raw RPC 8.000 kW >= RELAY2 threshold 5.000 kW',
@@ -97,11 +95,8 @@ def test_03_unforce_then_reactivate_relay2(project_root):
         {
             'at_s': 284,
             'note': 't284 RELAY2 freeze is still active and prevents RELAY1 activation',
-            'set': {
-                E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 15.0,
-                E['grid_power_w']: -500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=284),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=284),
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',

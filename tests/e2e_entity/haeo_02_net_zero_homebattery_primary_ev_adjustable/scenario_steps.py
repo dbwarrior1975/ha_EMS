@@ -30,7 +30,7 @@ def build_harness(project_root):
         E['actuator_ev_current_a']: 6,
         E['devices']['RELAY1']['surplus_allowed']: False,
         E['devices']['RELAY2']['surplus_allowed']: False,
-        E['pv_power_kw']: 3.5,
+        E['pv_power_w']: 3500.0,
     })
     seed_active_surplus_devices(h, active_device_ids=())
     h.set_attrs(E['haeo_battery_power_active'], {

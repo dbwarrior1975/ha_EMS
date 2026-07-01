@@ -1,3 +1,5 @@
+from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
+
 DISPATCH_STATE_APPLIER_TRACE = 'sensor.ems_dispatch_state_applier_trace'
 WRITER_TRACE = 'sensor.ems_actuator_writer_trace'
 _FORBIDDEN_STEP_KEYS = (
@@ -125,6 +127,69 @@ def _writer_trace_branch(writer_trace, branch):
         return writer_trace.get('victron')
     devices = writer_trace.get('devices') or {}
     return devices.get(branch)
+
+
+def _effective_runtime_value(h, key):
+    entity_id = _entity(h, key)
+    return h.get(entity_id)
+
+
+def _coerce_expected_number(expected_spec):
+    if isinstance(expected_spec, dict):
+        return expected_spec['value'], expected_spec.get('tolerance', 0)
+    return expected_spec, 0
+
+
+def _assert_expected_number(actual, expected_spec, context):
+    expected, tolerance = _coerce_expected_number(expected_spec)
+    if tolerance:
+        delta = abs(float(actual) - float(expected))
+        assert delta <= float(tolerance), (
+            f"{context} actual={actual} expected={expected} tolerance={tolerance}"
+        )
+        return
+    assert actual == expected, (
+        f"{context} actual={actual} expected={expected} tolerance=0"
+    )
+
+
+def _assert_expected_derived(idx, step, h):
+    expected_derived = step.get('expect_derived')
+    if not expected_derived:
+        return
+
+    note = step['note']
+    actual = derive_net_zero_inputs(
+        quarter_energy_balance_kwh=_effective_runtime_value(h, 'quarter_energy_balance_kwh'),
+        grid_power_w=_effective_runtime_value(h, 'grid_power_w'),
+        now_ts=h.now,
+    )
+    actual_by_field = {
+        'rpnz_w': actual.rpnz_w,
+        'required_power_w': actual.required_power_w,
+        'required_power_consumption_kw': actual.required_power_consumption_kw,
+        'remaining_quarter_s': actual.remaining_quarter_s,
+        'remaining_quarter_min': actual.remaining_quarter_min,
+        'remaining_template_minutes': actual.remaining_quarter_min,
+        'input_quality': actual.input_quality,
+        'input_warnings': actual.input_warnings,
+    }
+    for field, expected_spec in expected_derived.items():
+        assert field in actual_by_field, (
+            f"Invalid E2E fixture: raw runtime inputs do not produce expected NET_ZERO derived intent "
+            f"(step={idx} note={note} unknown_field={field})"
+        )
+        context = (
+            "Invalid E2E fixture: raw runtime inputs do not produce expected NET_ZERO derived intent "
+            f"(step={idx} note={note} field={field})"
+        )
+        actual_value = actual_by_field[field]
+        if isinstance(expected_spec, dict) or isinstance(actual_value, (int, float)):
+            _assert_expected_number(actual_value, expected_spec, context)
+        else:
+            assert actual_value == expected_spec, (
+                f"{context} actual={actual_value} expected={expected_spec}"
+            )
 
 
 def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
@@ -267,6 +332,10 @@ def run_scenario_steps(h, steps, *, validate=True):
 
         if not validate:
             continue
+
+        # Legacy NET_ZERO direct intent keys remain temporarily allowed only as
+        # a migration bridge. New raw runtime fixtures should use expect_derived.
+        _assert_expected_derived(idx, step, h)
 
         policy_trace = h.getattrs(_entity(h, 'policy_diagnostics'))
         dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)

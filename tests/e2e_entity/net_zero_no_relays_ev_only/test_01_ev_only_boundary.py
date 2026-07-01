@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_no_relays_ev_only.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_no_relays_ev_only.scenario_steps import run_steps
 
@@ -13,11 +15,8 @@ def test_01_ev_only_boundary_runs_without_relay_policies(project_root):
         {
             'at_s': 0,
             'note': 't0 no relays configured: policy exposes only EV adjustable target and battery policy.',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: -10.0,
-                E['grid_power_w']: -20.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'relay_device_ids': (),
                 'surplus_device_dispatch_decision': 'NOOP',
@@ -36,11 +35,8 @@ def test_01_ev_only_boundary_runs_without_relay_policies(project_root):
         {
             'at_s': 30,
             'note': 't30 EV-only path activates adjustable EV target without any relay dispatch branch.',
-            'set': {
-                E['required_power_consumption_kw']: 2.6,
-                E['rpnz_w']: 500.0,
-                E['grid_power_w']: -1500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500.0, required_power_consumption_kw=2.6, at_s=30),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=2.6, at_s=30),
             'expect_policy': {
                 'relay_device_ids': (),
                 'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
@@ -59,11 +55,8 @@ def test_01_ev_only_boundary_runs_without_relay_policies(project_root):
         {
             'at_s': 60,
             'note': 't60 with EV adjustable active the writer enables the charger and relay registry remains empty.',
-            'set': {
-                E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 500.0,
-                E['grid_power_w']: -1500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=60),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=60),
             'expect_policy': {
                 'relay_device_ids': (),
                 'surplus_device_dispatch_decision': 'NOOP',

@@ -8,7 +8,7 @@ PV_THRESHOLD_KW = 1.6
 def build_harness(project_root):
     h = QuarterScenarioHarness(project_root=project_root, start_ts=0.0, step_s=30, scenario_dir=Path(__file__).parent)
     E = h.ent
-    pv_ent = E['pv_power_kw']
+    pv_ent = E['pv_power_w']
     h.set_entities({
         E['goal_profile']: 'NET_ZERO',
         E['forecast_profile']: 'NONE',
@@ -20,7 +20,7 @@ def build_harness(project_root):
         E['ev_charger_phases']: 1,
         E['actuator_ev_enabled']: True,
         E['actuator_ev_current_a']: 6,
-        pv_ent: 3.5,
+        pv_ent: 3500.0,
         E['surplus_freeze_s']: 15,
         E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',

@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import run_steps
 from tests.e2e_entity.scenario_runner import seed_previous_device_state
@@ -29,12 +31,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 240,
             'note': 't240 IF only RPC is abouve threshold but PV is below, remain in hard-off and do not count towards release-ready.',
-            'set': {
-                E['required_power_consumption_kw']: 1.45,
-                E['rpnz_w']: -5.0,
-                E['grid_power_w']: -2300.0,
-                E['pv_power_kw']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=-5.0,
+                required_power_consumption_kw=1.45,
+                at_s=240,
+                pv_power_kw=0.0,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=-5.0,
+                required_power_consumption_kw=1.45,
+                at_s=240,
+            ),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 500},
@@ -53,12 +61,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 270,
             'note': 't270 conter not count if only PV is over threshold; remain in hard-off',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 1.0,
-                E['grid_power_w']: -10.0,
-                E['pv_power_kw']: 1.7,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=1.0,
+                required_power_consumption_kw=0.0,
+                at_s=270,
+                pv_power_kw=1.7,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=1.0,
+                required_power_consumption_kw=0.0,
+                at_s=270,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': False},
@@ -74,12 +88,20 @@ def test_03_post_hard_off_recovery(project_root):
             'at_s': 275,
             'note': 't275 PV 1.5 kW: When both RPC and PV are above threshold, count towards release-ready and remain in hard-off until release-ready cycles met.',
             'set': {
-                E['required_power_consumption_kw']: 1.385,
-                E['rpnz_w']: 100.0,
-                E['grid_power_w']: -1100.0,
+                **runtime_inputs_for_net_zero_intent(
+                    E,
+                    rpnz_w=100.0,
+                    required_power_consumption_kw=1.385,
+                    at_s=275,
+                    pv_power_kw=1.7,
+                ),
                 E['ev_hard_off_low_pv_cycles']: 3,
-                E['pv_power_kw']: 1.7,
             },
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=100.0,
+                required_power_consumption_kw=1.385,
+                at_s=275,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': False},
@@ -97,12 +119,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 280,
             'note': 't280 PV 2.5 kW',
-            'set': {
-                E['required_power_consumption_kw']: 2.49,
-                E['rpnz_w']: -10,
-                E['grid_power_w']: 1900.0,
-                E['pv_power_kw']: 1.7,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=-10,
+                required_power_consumption_kw=2.49,
+                at_s=280,
+                pv_power_kw=1.7,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=-10,
+                required_power_consumption_kw=2.49,
+                at_s=280,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': True},
@@ -110,7 +138,7 @@ def test_03_post_hard_off_recovery(project_root):
             'expect_policy': {
                 'ev_hard_off_release_ready_cycles': 2,
                 'battery_min_floor_reason': 'ev_active_floor_override',
-                'primary_power_envelope_w': 380,
+                'primary_power_envelope_w': 2380,
             },
             'expect_values': {
                 E['actuator_battery_setpoint_w']: 0,
@@ -121,12 +149,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 285,
             'note': 't285 PV 2.5 kW',
-            'set': {
-                E['required_power_consumption_kw']: -2.49,
-                E['rpnz_w']: -15,
-                E['grid_power_w']: 2900.0,
-                E['pv_power_kw']: 1.7,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=-15,
+                required_power_consumption_kw=-2.49,
+                at_s=285,
+                pv_power_kw=1.7,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=-15,
+                required_power_consumption_kw=-2.49,
+                at_s=285,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': True},
@@ -145,12 +179,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 295,
             'note': 't295 PV 5.5 kW',
-            'set': {
-                E['required_power_consumption_kw']: 2.49,
-                E['rpnz_w']: 45,
-                E['grid_power_w']: -2900.0,
-                E['pv_power_kw']: 1.7,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=45,
+                required_power_consumption_kw=2.49,
+                at_s=295,
+                pv_power_kw=1.7,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=45,
+                required_power_consumption_kw=2.49,
+                at_s=295,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': True},
@@ -169,12 +209,18 @@ def test_03_post_hard_off_recovery(project_root):
         {
             'at_s': 300,
             'note': 't300 PV 5.5 kW',
-            'set': {
-                E['required_power_consumption_kw']: 2.65,
-                E['rpnz_w']: 45,
-                E['grid_power_w']: -2900.0,
-                E['pv_power_kw']: 3.7,
-            },
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=45,
+                required_power_consumption_kw=2.65,
+                at_s=300,
+                pv_power_kw=3.7,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=45,
+                required_power_consumption_kw=2.65,
+                at_s=300,
+            ),
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
                 'EV_CHARGER': {'enabled': True},

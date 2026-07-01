@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.system_degraded_safe_mode.scenario_steps import build_harness, run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
@@ -19,10 +21,8 @@ def test_writer_freeze_in_system_degraded(project_root):
         {
             'at_s': 1000,
             'note': 'degraded clears latches and skips relay writes while restoring ev minimum',
-            'set': {
-                E['required_power_consumption_kw']: 4.0,
-                E['rpnz_w']: 500,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=4.0, at_s=1000),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=4.0, at_s=1000),
             'expect_policy': {
                 'guard': 'DEGRADED',
                 'dominant_limitation': 'SYSTEM_DEGRADED',

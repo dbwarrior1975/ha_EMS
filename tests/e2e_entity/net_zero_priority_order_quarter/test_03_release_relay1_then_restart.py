@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter.scenario_steps import run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
@@ -24,10 +26,8 @@ def test_03_release_relay1_then_restart(project_root):
         {
             'at_s': 120,
             'note': 't120 RELAY1 becomes the final release decision',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=120),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=120),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
@@ -48,10 +48,8 @@ def test_03_release_relay1_then_restart(project_root):
         {
             'at_s': 121,
             'note': 't121 release visibility clears and policy idles below RELAY1 threshold',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 11.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=11.0, required_power_consumption_kw=0.0, at_s=121),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=11.0, required_power_consumption_kw=0.0, at_s=121),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
             },
@@ -71,10 +69,8 @@ def test_03_release_relay1_then_restart(project_root):
         {
             'at_s': 150,
             'note': 't150 next cycle starts and RELAY1 is activated again',
-            'set': {
-                E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 11.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=11.0, required_power_consumption_kw=3.0, at_s=150),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=11.0, required_power_consumption_kw=3.0, at_s=150),
             'expect_policy': {
                 'surplus_freeze_until_ts': 165.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',

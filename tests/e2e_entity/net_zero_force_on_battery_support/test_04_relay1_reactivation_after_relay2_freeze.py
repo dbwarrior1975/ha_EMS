@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_force_on_battery_support.scenario_steps import run_steps
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
@@ -28,11 +30,8 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
         {
             'at_s': 300,
             'note': 't300 RELAY2 is on and RELAY1 activation has already reached dispatch state state',
-            'set': {
-                E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 15.0,
-                E['grid_power_w']: -500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=300),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=300),
             'expect_policy': {
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
@@ -65,11 +64,8 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
         {
             'at_s': 301,
             'note': 't301 RELAY1 command is already visible while freeze still blocks further surplus activation',
-            'set': {
-                E['required_power_consumption_kw']: 3.0,
-                E['rpnz_w']: 15.0,
-                E['grid_power_w']: -500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=301),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=3.0, at_s=301),
             'expect_policy': {
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
@@ -98,11 +94,8 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
         {
             'at_s': 330,
             'note': 't330 RELAY1 activation is now visible and both relays are stably on',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 15.0,
-                E['grid_power_w']: 1500.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=15.0, required_power_consumption_kw=0.0, at_s=330),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=0.0, at_s=330),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'surplus_next_target': 'ADJUSTABLE',

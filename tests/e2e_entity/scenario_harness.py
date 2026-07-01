@@ -81,6 +81,7 @@ class QuarterScenarioHarness:
         self.ent = {}
         self._legacy_required_power_w = None
         self._legacy_rpnz_w = None
+        self._legacy_derived_override_active = True
         if self.grouped_config_path is not None and self.grouped_config_path.exists():
             self.grouped_config = load_grouped_ems_config(self.grouped_config_path)
             self.ent = build_runtime_entities_from_grouped_config(self.grouped_config)
@@ -194,7 +195,10 @@ class QuarterScenarioHarness:
         }
 
     def _normalize_legacy_runtime_inputs(self, set_values: dict | None):
+        # Test-only migration surface: legacy NET_ZERO intent keys are still
+        # accepted while scenarios move to raw runtime inputs.
         normalized = dict(set_values or {})
+        self._legacy_derived_override_active = False
         legacy_rpnz_w = normalized.pop('__legacy__.rpnz_w', None)
         legacy_required_power_w = normalized.pop('__legacy__.required_power_w', None)
         legacy_required_power_kw = normalized.pop('__legacy__.required_power_consumption_kw', None)
@@ -216,6 +220,8 @@ class QuarterScenarioHarness:
         if legacy_rpnz_w is None and legacy_required_power_w is None and legacy_required_power_kw is None:
             return normalized
 
+        self._legacy_derived_override_active = True
+
         # Keep raw grid_power_w as authored in the old scenarios. The legacy
         # derived values are supplied through a test-only derive shim below.
         if legacy_rpnz_w is not None and quarter_entity not in normalized:
@@ -227,6 +233,8 @@ class QuarterScenarioHarness:
         return normalized
 
     def _derive_net_zero_inputs_for_test(self, **kwargs):
+        # Test-only migration surface: legacy scenarios override derived
+        # NET_ZERO intent while policy logic is migrated to raw runtime inputs.
         derived = self._real_derive_net_zero_inputs(**kwargs)
         required_power_w = (
             derived.required_power_w
@@ -584,7 +592,10 @@ class QuarterScenarioHarness:
 
     def _run_policy_loop(self):
         with self._fake_time_module():
-            self.policy_mod['derive_net_zero_inputs'] = self._derive_net_zero_inputs_for_test
+            if self._legacy_derived_override_active:
+                self.policy_mod['derive_net_zero_inputs'] = self._derive_net_zero_inputs_for_test
+            else:
+                self.policy_mod['derive_net_zero_inputs'] = self._real_derive_net_zero_inputs
             self.policy_mod['ems_policy_engine_loop']()
 
     def _run_dispatch_state_applier_loop(self):

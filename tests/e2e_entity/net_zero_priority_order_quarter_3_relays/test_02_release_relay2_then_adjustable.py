@@ -1,5 +1,7 @@
 import pytest
 
+from tests.e2e_entity.net_zero_inputs import expect_derived_for_net_zero_intent
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.net_zero_priority_order_quarter_3_relays.scenario_steps import build_harness
 from tests.e2e_entity.net_zero_priority_order_quarter_3_relays.scenario_steps import run_steps
 from tests.e2e_entity.net_zero_priority_order_quarter_3_relays.scenario_steps import seed_active_surplus_devices
@@ -29,10 +31,8 @@ def test_02_release_relay2_then_adjustable(project_root):
         {
             'at_s': 76,
             'note': 't76 all four active remain stable with no eligible next target',
-            'set': {
-                E['required_power_consumption_kw']: 6.0,
-                E['rpnz_w']: 450,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=450, required_power_consumption_kw=6.0, at_s=76),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=450, required_power_consumption_kw=6.0, at_s=76),
             'expect_policy': {
                 'surplus_device_dispatch_decision': 'NOOP',
                 'surplus_device_release_candidate': 'RELAY3',
@@ -61,10 +61,8 @@ def test_02_release_relay2_then_adjustable(project_root):
         {
             'at_s': 90,
             'note': 't90 surplus collapses so RELAY3 is released first',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=90),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=90),
             'expect_policy': {
                 'surplus_device_dispatch_decision': 'RELEASE_RELAY3',
                 'surplus_device_release_candidate': 'RELAY3',
@@ -90,10 +88,8 @@ def test_02_release_relay2_then_adjustable(project_root):
         {
             'at_s': 91,
             'note': 't91 RELAY3 release is visible and RELAY2 gets released next',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=91),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=91),
             'expect_policy': {
                 'surplus_device_dispatch_decision': 'RELEASE_RELAY2',
                 'surplus_device_release_candidate': 'RELAY2',
@@ -120,10 +116,8 @@ def test_02_release_relay2_then_adjustable(project_root):
         {
             'at_s': 92,
             'note': 't92 RELAY2 release is visible and EV_CHARGER gets released next',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=92),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=92),
             'expect_policy': {
                 'surplus_device_dispatch_decision': 'RELEASE_ADJUSTABLE',
                 'surplus_device_release_candidate': 'ADJUSTABLE',
@@ -149,10 +143,8 @@ def test_02_release_relay2_then_adjustable(project_root):
         {
             'at_s': 93,
             'note': 't93 EV charger release is visible and RELAY1 releasing is visible on policy',
-            'set': {
-                E['required_power_consumption_kw']: 0.0,
-                E['rpnz_w']: 0.0,
-            },
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=93),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=93),
             'expect_policy': {
                 'surplus_device_dispatch_decision': 'RELEASE_RELAY1',
                 'surplus_device_release_candidate': 'RELAY1',
