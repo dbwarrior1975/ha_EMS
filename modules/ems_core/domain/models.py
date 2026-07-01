@@ -187,12 +187,15 @@ class CoreHaeoConfig:
 class CoreStateConfig:
     surplus_freeze_until: EntityRef
     active_surplus_devices: EntityRef
+    previous_device_state: EntityRef
 
 
 @dataclass
 class CorePolicyOutputsConfig:
     decision_trace: EntityRef
     device_policies: EntityRef
+    dispatch_command: EntityRef
+    policy_state: EntityRef
     surplus_policy_active: EntityRef
 
 

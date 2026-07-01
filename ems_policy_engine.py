@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.balance import compute_rpnz_w
@@ -8,7 +11,6 @@ from ems_core.diagnostics.decision_trace import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
-_DEVICE_POLICIES_VERSION = 0
 
 
 def _enum(allowed_cls, value, default):
@@ -26,10 +28,39 @@ def _policy_output_contract_attrs():
     }
 
 
-def _next_device_policies_version():
-    global _DEVICE_POLICIES_VERSION
-    _DEVICE_POLICIES_VERSION += 1
-    return str(_DEVICE_POLICIES_VERSION)
+def _json_stable(value):
+    if isinstance(value, dict):
+        normalized = {}
+        for key, item in value.items():
+            normalized[str(key)] = _json_stable(item)
+        return normalized
+    if isinstance(value, (list, tuple)):
+        normalized = []
+        for item in value:
+            normalized.append(_json_stable(item))
+        return normalized
+    if isinstance(value, set):
+        sortable_items = []
+        for item in value:
+            normalized_item = _json_stable(item)
+            sortable_items.append((_stable_json_text(normalized_item), normalized_item))
+        sortable_items.sort()
+        normalized = []
+        for _serialized_item, normalized_item in sortable_items:
+            normalized.append(normalized_item)
+        return normalized
+    if isinstance(value, (bool, int, float, str)) or value is None:
+        return value
+    return str(value)
+
+
+def _stable_json_text(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'))
+
+
+def _payload_hash(payload):
+    serialized = _stable_json_text(_json_stable(payload))
+    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:16]
 
 
 def read_core_config():
@@ -238,9 +269,78 @@ def _read_adjustable_surplus_active(entities):
     return adjustable_device_id in active_device_ids
 
 
+_MISSING = object()
+
+
+def _policy_state_attr(entities, key, default):
+    policy_state_entity = entities.get('policy_state')
+    if policy_state_entity:
+        value = get_attr(policy_state_entity, key, _MISSING)
+        if value is not _MISSING:
+            return value
+    decision_trace_entity = entities.get('policy_decision_trace')
+    if decision_trace_entity:
+        value = get_attr(decision_trace_entity, key, _MISSING)
+        if value is not _MISSING:
+            return value
+    return default
+
+
 def _read_previous_force_on_device_ids(entities):
-    value = get_attr(entities['policy_decision_trace'], 'prev_force_on_device_ids', ())
-    return _parse_active_device_ids(value)
+    return _parse_active_device_ids(_policy_state_attr(entities, 'prev_force_on_device_ids', ()))
+
+
+def _device_policies_hash(attrs):
+    return _payload_hash({
+        'device_policies': attrs.get('device_policies', ()),
+    })
+
+
+def _dispatch_command_attrs(attrs):
+    command_hash = _payload_hash({
+        'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
+        'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
+        'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
+        'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
+        'surplus_device_targets': attrs.get('surplus_device_targets', ()),
+        'surplus_freeze_until_ts': attrs.get('surplus_freeze_until_ts'),
+        'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
+    })
+    return {
+        'dispatch_command_hash': command_hash,
+        'dispatch_command_state_kind': 'content_hash',
+        'dispatch_command_version': command_hash,
+        'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
+        'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
+        'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
+        'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
+        'surplus_device_targets': attrs.get('surplus_device_targets', ()),
+        'surplus_freeze_until_ts': attrs.get('surplus_freeze_until_ts'),
+        'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
+        'surplus_explanation': attrs.get('surplus_explanation', ''),
+    }
+
+
+def _policy_state_payload(entities, attrs):
+    prev_force_on_device_ids = _parse_active_device_ids(
+        attrs.get(
+            'prev_force_on_device_ids',
+            _policy_state_attr(entities, 'prev_force_on_device_ids', ()),
+        )
+    )
+    policy_state_hash = _payload_hash({
+        'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
+        'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
+        'prev_force_on_device_ids': prev_force_on_device_ids,
+    })
+    return policy_state_hash, {
+        'policy_state_hash': policy_state_hash,
+        'policy_state_state_kind': 'content_hash',
+        'policy_state_version': policy_state_hash,
+        'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
+        'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
+        'prev_force_on_device_ids': prev_force_on_device_ids,
+    }
 
 
 @time_trigger('period(now, 30s)')
@@ -259,13 +359,9 @@ def ems_policy_engine_loop():
         cfg,
         haeo,
         now_ts,
-        previous_quarter_key=get_attr(entities['policy_decision_trace'], 'haeo_nz_quarter_key', ''),
+        previous_quarter_key=_policy_state_attr(entities, 'haeo_nz_quarter_key', ''),
         previous_primary_load='',
-        previous_primary_device_id=get_attr(
-            entities['policy_decision_trace'],
-            'haeo_nz_primary_device_id',
-            '',
-        ),
+        previous_primary_device_id=_policy_state_attr(entities, 'haeo_nz_primary_device_id', ''),
     )
     remaining_s = max((15 - (int(now_ts / 60) % 15)) * 60, 30)
     active_surplus_device_ids = _read_active_surplus_device_ids(entities)
@@ -292,14 +388,20 @@ def ems_policy_engine_loop():
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     attrs.update(config_trace_attrs())
     attrs.update(_policy_output_contract_attrs())
-    device_policies_version = _next_device_policies_version()
-    attrs['device_policies_version'] = device_policies_version
+    device_policies_hash = _device_policies_hash(attrs)
+    attrs['device_policies_hash'] = device_policies_hash
+    attrs['device_policies_state_kind'] = 'content_hash'
+    attrs['device_policies_version'] = device_policies_hash
+    dispatch_command_attrs = _dispatch_command_attrs(attrs)
+    policy_state_hash, policy_state_attrs = _policy_state_payload(entities, attrs)
     publish_sensor(
         entities['previous_device_state'],
         _selected_previous_device_state_for_outputs(outputs)['mode'],
         _previous_device_state_attrs_from_outputs(outputs),
     )
-    publish_sensor(entities['device_policies'], device_policies_version, attrs)
+    publish_sensor(entities['device_policies'], device_policies_hash, attrs)
+    publish_sensor(entities['dispatch_command'], dispatch_command_attrs['dispatch_command_hash'], dispatch_command_attrs)
+    publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
     publish_sensor(entities['policy_decision_trace'], _trace_state(profiles, outputs), attrs)
     publish_sensor(entities['surplus_policy_active_pys'], 'on' if outputs.surplus_policy_active else 'off', attrs)
     publish_sensor(entities['surplus_next_target_pys'], outputs.surplus_next_target, attrs)

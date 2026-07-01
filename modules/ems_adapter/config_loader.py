@@ -71,6 +71,8 @@ ALLOWED_POLICY_OUTPUT_KEYS = frozenset(
     (
         'decision_trace',
         'device_policies',
+        'dispatch_command',
+        'policy_state',
         'surplus_policy_active',
         'surplus_next_target',
         'surplus_next_threshold',
@@ -255,6 +257,8 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             (
                 'decision_trace',
                 'device_policies',
+                'dispatch_command',
+                'policy_state',
                 'surplus_policy_active',
                 'surplus_next_target',
                 'surplus_next_threshold',
@@ -264,14 +268,6 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             ),
             issues,
         )
-        if 'device_policies' in ems['policy_outputs']:
-            issues.append(
-                _issue(
-                    'ems.policy_outputs.device_policies',
-                    SEVERITY_WARNING,
-                    'runtime still publishes device policies primarily via decision_trace attrs',
-                )
-            )
 
     if isinstance(ems.get('haeo'), dict):
         _validate_required_entities(
@@ -537,10 +533,13 @@ def build_core_config_from_grouped_reader(
         state=CoreStateConfig(
             surplus_freeze_until=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'surplus_freeze_until'), read_entity, ''),
             active_surplus_devices=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'active_surplus_devices'), read_entity, ''),
+            previous_device_state=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), read_entity, ''),
         ),
         policy_outputs=CorePolicyOutputsConfig(
             decision_trace=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'decision_trace'), read_entity, ''),
             device_policies=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'device_policies'), read_entity, ''),
+            dispatch_command=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'dispatch_command'), read_entity, ''),
+            policy_state=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'policy_state'), read_entity, ''),
             surplus_policy_active=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'surplus_policy_active'), read_entity, ''),
         ),
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),

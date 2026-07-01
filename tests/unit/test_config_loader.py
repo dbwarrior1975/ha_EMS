@@ -34,7 +34,7 @@ def test_example_grouped_config_loads_and_validates(project_root):
 
     assert 'ems' in config
     assert result.ok is True
-    assert any(issue.severity == SEVERITY_WARNING for issue in result.issues)
+    assert not any(issue.severity == SEVERITY_ERROR for issue in result.issues)
 
 
 @pytest.mark.unit

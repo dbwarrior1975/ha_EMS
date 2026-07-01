@@ -16,6 +16,8 @@ def test_required_entities_exist():
         'guard_profile',
         'policy_decision_trace',
         'device_policies',
+        'dispatch_command',
+        'policy_state',
         'active_surplus_devices',
         'previous_device_state',
         'surplus_next_target_pys',
@@ -74,6 +76,8 @@ def test_unit_conversion_contract():
     assert ENT['rpnz_w'].startswith('sensor.')
     assert ENT['required_power_consumption_kw'].startswith('sensor.')
     assert ENT['policy_decision_trace'].startswith('sensor.')
+    assert ENT['dispatch_command'].startswith('sensor.')
+    assert ENT['policy_state'].startswith('sensor.')
     assert ENT['actuator_battery_setpoint_w'].startswith('number.')
     assert ENT['actuator_ev_current_a'].startswith('number.')
 
@@ -84,6 +88,8 @@ def test_unknown_state_defaults():
     assert ENT['surplus_freeze_until'].startswith('input_datetime.')
     assert ENT['active_surplus_devices'].startswith('sensor.')
     assert ENT['previous_device_state'].startswith('sensor.')
+    assert ENT['dispatch_command'].startswith('sensor.')
+    assert ENT['policy_state'].startswith('sensor.')
     assert ENT['actuator_writer_trace'].startswith('sensor.')
 
 

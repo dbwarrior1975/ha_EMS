@@ -96,7 +96,7 @@ ems:
         can_absorb_w: true
         can_produce_w: false
         min_absorb_w: input_number.ems_relay1_nominal_absorb_w
-        max_absorb_w: input_number.ems_relay1_power_kw
+        max_absorb_w: input_number.ems_relay1_power_w
         step_w: input_number.ems_relay1_power_kw
       policy:
         priority: input_number.ems_surplus_relay1_priority
@@ -111,7 +111,7 @@ ems:
         can_absorb_w: true
         can_produce_w: false
         min_absorb_w: input_number.ems_relay2_nominal_absorb_w
-        max_absorb_w: input_number.ems_relay2_power_kw
+        max_absorb_w: input_number.ems_relay2_power_w
         step_w: input_number.ems_relay2_power_kw
       policy:
         priority: input_number.ems_surplus_relay2_priority
@@ -128,6 +128,7 @@ ems:
     rpnz_w: sensor.ems_calculated_required_power_for_net_zero
     pv_power_w: sensor.pv_instant_power_2
 
+
   haeo:
     battery_power_active: sensor.haeo_battery_power_active
     ev_power_active: sensor.haeo_ev_battery_power_active
@@ -142,6 +143,8 @@ ems:
   policy_outputs:
     decision_trace: sensor.ems_policy_decision_trace_pyscript
     device_policies: sensor.ems_device_policies_pyscript
+    dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
+    policy_state: sensor.ems_policy_state_pyscript
     surplus_policy_active: binary_sensor.ems_net_zero_surplus_policy_active_pyscript
     surplus_next_target: sensor.ems_net_zero_surplus_next_target_pyscript
     surplus_next_threshold: sensor.ems_net_zero_surplus_next_threshold_kw_pyscript

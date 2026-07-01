@@ -8,6 +8,7 @@ from ems_adapter.config_loader import (
     validate_grouped_ems_config,
 )
 from ems_adapter.device_read_model import build_device_configs
+from ems_adapter import runtime_context as runtime_context_mod
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config, read_runtime_context
 from tests.entity_ids import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
@@ -415,6 +416,37 @@ def test_read_runtime_context_validation_error_lists_failing_paths(project_root,
 
 
 @pytest.mark.unit
+def test_read_runtime_context_caches_grouped_config_until_file_signature_changes(project_root, tmp_path, monkeypatch):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_path = tmp_path / 'grouped_cache.yaml'
+    grouped_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+
+    calls = []
+    real_loader = runtime_context_mod.load_and_validate_grouped_ems_config
+
+    def counting_loader(path):
+        calls.append(path)
+        return real_loader(path)
+
+    signatures = iter(((1, 100), (1, 100), (2, 100)))
+
+    def controlled_signature(_path):
+        return next(signatures)
+
+    monkeypatch.setattr(runtime_context_mod, 'load_and_validate_grouped_ems_config', counting_loader)
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', controlled_signature)
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    assert calls == [str(grouped_path), str(grouped_path)]
+
+
+@pytest.mark.unit
 def test_harness_builds_scenario_entity_registry_from_scenario_yaml(project_root):
     scenario_dir = project_root / 'tests' / 'e2e_entity' / 'net_zero_priority_order_quarter_3_relays'
 
@@ -659,7 +691,38 @@ def test_policy_outputs_publish_device_policy_contract_and_payloads(project_root
 
 
 @pytest.mark.unit
-def test_device_policies_sensor_state_is_version_not_policy_count(project_root):
+def test_canonical_payload_hash_is_stable_for_semantically_equal_payloads(project_root):
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    payload_hash = harness.policy_mod['_payload_hash']
+
+    left = {
+        'device_policies': (
+            {'device_id': 'RELAY1', 'enabled': True, 'targets': ('a', 'b')},
+            {'device_id': 'RELAY2', 'enabled': False, 'meta': {'priority': 2, 'mode': 'off'}},
+        ),
+        'flags': {'alpha', 'beta'},
+    }
+    right = {
+        'flags': {'beta', 'alpha'},
+        'device_policies': [
+            {'targets': ['a', 'b'], 'enabled': True, 'device_id': 'RELAY1'},
+            {'meta': {'mode': 'off', 'priority': 2}, 'enabled': False, 'device_id': 'RELAY2'},
+        ],
+    }
+    changed = {
+        'device_policies': [
+            {'targets': ['a', 'b'], 'enabled': True, 'device_id': 'RELAY1'},
+            {'meta': {'mode': 'off', 'priority': 2}, 'enabled': True, 'device_id': 'RELAY2'},
+        ],
+        'flags': {'beta', 'alpha'},
+    }
+
+    assert payload_hash(left) == payload_hash(right)
+    assert payload_hash(left) != payload_hash(changed)
+
+
+@pytest.mark.unit
+def test_device_policies_sensor_state_is_stable_content_hash(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     device_policies_entity = ENT['device_policies']
 
@@ -675,24 +738,125 @@ def test_device_policies_sensor_state_is_version_not_policy_count(project_root):
             ENT['haeo_ev_active_power_fresh_source']: 0,
         }
     )
-    harness.step(note='device policies version first')
+    harness._run_policy_loop()
     first_state = harness.get(device_policies_entity)
     first_attrs = harness.getattrs(device_policies_entity)
 
-    harness.step(
-        set_values={
+    harness._run_policy_loop()
+    second_state = harness.get(device_policies_entity)
+    second_attrs = harness.getattrs(device_policies_entity)
+
+    harness.set_entities(
+        {
+            ENT['control_profile']: 'MANUAL',
+        }
+    )
+    harness._run_policy_loop()
+    third_state = harness.get(device_policies_entity)
+    third_attrs = harness.getattrs(device_policies_entity)
+
+    assert first_state == first_attrs['device_policies_hash']
+    assert first_state == first_attrs['device_policies_version']
+    assert first_attrs['device_policies_state_kind'] == 'content_hash'
+    assert second_state == second_attrs['device_policies_hash']
+    assert first_state == second_state
+    assert first_attrs['device_policies'] == second_attrs['device_policies']
+    assert third_state == third_attrs['device_policies_hash']
+    assert third_state != second_state
+    assert third_attrs['device_policies'] != second_attrs['device_policies']
+
+
+@pytest.mark.unit
+def test_dispatch_command_sensor_state_is_stable_content_hash_and_carries_dispatch_attrs(project_root):
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    dispatch_entity = ENT['dispatch_command']
+
+    harness.set_entities(
+        {
+            ENT['grid_power_w']: -2200,
+            ENT['quarter_energy_balance']: -0.4,
+            ENT['rpnz_w']: 2200,
+            ENT['required_power_consumption_kw']: 2.2,
+            ENT['soc']: 55,
+            ENT['min_cell_voltage_v']: 3.2,
+            ENT['haeo_battery_active_power_fresh_source']: 0,
+            ENT['haeo_ev_active_power_fresh_source']: 0,
+        }
+    )
+    harness._run_policy_loop()
+    first_state = harness.get(dispatch_entity)
+    first_attrs = harness.getattrs(dispatch_entity)
+
+    harness._run_policy_loop()
+    second_state = harness.get(dispatch_entity)
+    second_attrs = harness.getattrs(dispatch_entity)
+
+    harness.set_entities(
+        {
             ENT['grid_power_w']: -3000,
             ENT['quarter_energy_balance']: -0.7,
             ENT['rpnz_w']: 3000,
             ENT['required_power_consumption_kw']: 3.0,
-        },
-        note='device policies version second',
+        }
     )
-    second_state = harness.get(device_policies_entity)
-    second_attrs = harness.getattrs(device_policies_entity)
+    harness._run_policy_loop()
+    third_state = harness.get(dispatch_entity)
+    third_attrs = harness.getattrs(dispatch_entity)
 
-    assert first_state == first_attrs['device_policies_version']
-    assert second_state == second_attrs['device_policies_version']
-    assert first_state != second_state
-    assert len(first_attrs['device_policies']) == len(second_attrs['device_policies'])
-    assert second_state != len(second_attrs['device_policies'])
+    assert first_state == first_attrs['dispatch_command_hash']
+    assert first_state == first_attrs['dispatch_command_version']
+    assert first_attrs['dispatch_command_state_kind'] == 'content_hash'
+    assert second_state == second_attrs['dispatch_command_hash']
+    assert first_state == second_state
+    assert third_state == third_attrs['dispatch_command_hash']
+    assert third_state != second_state
+    assert 'surplus_device_dispatch_action' in third_attrs
+    assert 'surplus_device_targets' in third_attrs
+    assert 'surplus_freeze_until_ts' in third_attrs
+
+
+@pytest.mark.unit
+def test_policy_state_sensor_state_is_stable_content_hash_and_carries_previous_state_fields(project_root):
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    policy_state_entity = ENT['policy_state']
+
+    harness._run_policy_loop()
+    first_state = harness.get(policy_state_entity)
+    first_attrs = harness.getattrs(policy_state_entity)
+    harness._run_policy_loop()
+    second_state = harness.get(policy_state_entity)
+    second_attrs = harness.getattrs(policy_state_entity)
+
+    assert first_state == first_attrs['policy_state_hash']
+    assert first_state == first_attrs['policy_state_version']
+    assert first_attrs['policy_state_state_kind'] == 'content_hash'
+    assert second_state == second_attrs['policy_state_hash']
+    assert first_state == second_state
+    assert 'haeo_nz_quarter_key' in second_attrs
+    assert 'haeo_nz_primary_device_id' in second_attrs
+    assert 'prev_force_on_device_ids' in second_attrs
+
+
+@pytest.mark.unit
+def test_policy_state_helpers_prefer_canonical_sensor_over_trace(project_root):
+    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    harness.set_attrs(
+        ENT['policy_state'],
+        {
+            'haeo_nz_quarter_key': 'canonical-quarter',
+            'haeo_nz_primary_device_id': 'HOME_BATTERY',
+            'prev_force_on_device_ids': ('RELAY2',),
+        },
+    )
+    harness.set_attrs(
+        ENT['policy_decision_trace'],
+        {
+            'haeo_nz_quarter_key': 'trace-quarter',
+            'haeo_nz_primary_device_id': 'EV_CHARGER',
+            'prev_force_on_device_ids': ('RELAY1',),
+        },
+    )
+
+    assert harness.policy_mod['_policy_state_attr'](harness.ent, 'haeo_nz_quarter_key', '') == 'canonical-quarter'
+    assert harness.policy_mod['_policy_state_attr'](harness.ent, 'haeo_nz_primary_device_id', '') == 'HOME_BATTERY'
+    assert harness.policy_mod['_read_previous_force_on_device_ids'](harness.ent) == ('RELAY2',)

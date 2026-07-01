@@ -1,4 +1,5 @@
 from ems_adapter.ha_adapter import get_attr, get_bool, get_float, get_int, get_str, publish_sensor, set_boolean, set_number
+from ems_adapter.runtime_context import read_core_config, read_runtime_entities
 from ems_core.domain.ev_power import ev_min_current_a_from_min_absorb_w, ev_power_w_to_current_a
 from ems_core.domain.models import EmsDeviceConfig
 from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capability_block_reason
@@ -7,10 +8,7 @@ from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capabi
 def _load_runtime_entities():
     ent = globals().get('ENT', {})
     try:
-        reader = globals().get('read_runtime_entities')
-        if reader is None:
-            from ems_adapter.runtime_context import read_runtime_entities as reader
-        runtime_entities = reader(get_bool, get_float, get_int, get_str)
+        runtime_entities = read_runtime_entities(get_bool, get_float, get_int, get_str)
     except Exception:
         runtime_entities = {}
     if ent:
@@ -21,11 +19,6 @@ def _load_runtime_entities():
 
 
 def _load_core_config():
-    reader = globals().get('read_core_config')
-    if reader is not None:
-        return reader()
-    from ems_adapter.runtime_context import read_core_config
-
     return read_core_config(get_bool, get_float, get_int, get_str)
 
 
@@ -57,16 +50,12 @@ def _device_policy_by_id(device_id, entities=None):
 
 
 def _device_policy_source_for_id(device_id, entities=None):
-    get_attr_fn = globals().get('get_attr')
-    if get_attr_fn is None:
-        return None, '', 'missing_get_attr'
-
     source_entities = (
         (_ent('device_policies', 'sensor.ems_device_policies_pyscript', entities), 'canonical'),
         (_ent('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities), 'fallback_device_policies_missing'),
     )
     for source_entity, source_reason in source_entities:
-        policies = get_attr_fn(source_entity, 'device_policies', None)
+        policies = get_attr(source_entity, 'device_policies', None)
         if not policies:
             continue
         for policy in policies:
@@ -91,11 +80,7 @@ def _device_policy_target_w(policy, default=0):
 
 
 def _previous_device_state_mode(entities=None):
-    get_attr_fn = globals().get('get_attr')
-    if get_attr_fn is None:
-        return ''
-
-    mode = get_attr_fn(_ent('previous_device_state', 'sensor.ems_previous_device_state', entities), 'mode', '')
+    mode = get_attr(_ent('previous_device_state', 'sensor.ems_previous_device_state', entities), 'mode', '')
     if mode:
         return str(mode)
     return ''
@@ -444,10 +429,6 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
 
 
 def _publish_writer_trace(victron, device_traces, entities=None):
-    publish_sensor_fn = globals().get('publish_sensor')
-    if publish_sensor_fn is None:
-        return
-
     trace_ent = _ent('actuator_writer_trace', 'sensor.ems_actuator_writer_trace', entities)
     device_policies_entity = _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities)
     attrs = {
@@ -459,7 +440,7 @@ def _publish_writer_trace(victron, device_traces, entities=None):
         'victron': victron,
         'devices': device_traces,
     }
-    publish_sensor_fn(trace_ent, 'ACTIVE', attrs)
+    publish_sensor(trace_ent, 'ACTIVE', attrs)
 
 
 @time_trigger('period(now, 30s)')

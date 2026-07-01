@@ -42,6 +42,9 @@ def _load_writer_module(project_root):
     def get_str(entity_id, default=''):
         return str(state.get(entity_id, default))
 
+    def get_attr(_entity_id, _attr, default=None):
+        return default
+
     def set_boolean(entity_id, on):
         calls.append(('set_boolean', entity_id, bool(on)))
         state[entity_id] = bool(on)
@@ -72,6 +75,7 @@ def _load_writer_module(project_root):
         'get_float': get_float,
         'get_int': get_int,
         'get_str': get_str,
+        'get_attr': get_attr,
         'set_boolean': set_boolean,
         'set_number': set_number,
         'publish_sensor': publish_sensor,
@@ -80,10 +84,10 @@ def _load_writer_module(project_root):
         '_TEST_TRIGGER_CALLS': trigger_calls,
         '_TEST_CALLS': calls,
     }
-    _install_core_capabilities(ns)
-
     code = compile(src, str(path), 'exec')
     exec(code, ns)
+    ns['read_runtime_entities'] = lambda *args, **kwargs: {}
+    _install_core_capabilities(ns)
     return ns, state, ENT
 
 
@@ -129,7 +133,7 @@ def _install_core_capabilities(mod, **overrides):
 
     devices = {device_id: _device(device_id) for device_id in device_defaults}
 
-    mod['read_core_config'] = lambda: SimpleNamespace(
+    mod['read_core_config'] = lambda *args, **kwargs: SimpleNamespace(
         home_battery=devices['HOME_BATTERY'],
         ev_charger=devices['EV_CHARGER'],
         relay1=devices['RELAY1'],
@@ -137,6 +141,16 @@ def _install_core_capabilities(mod, **overrides):
         devices=devices,
         device_by_id=lambda device_id: devices.get(device_id),
     )
+
+
+@pytest.mark.unit
+def test_writer_runtime_config_loaders_are_direct_imports_not_pyscript_globals(project_root):
+    source = (project_root / 'ems_actuator_writers.py').read_text(encoding='utf-8')
+
+    assert "globals().get('read_runtime_entities')" not in source
+    assert 'globals().get("read_runtime_entities")' not in source
+    assert "globals().get('read_core_config')" not in source
+    assert 'globals().get("read_core_config")' not in source
 
 
 @pytest.mark.unit

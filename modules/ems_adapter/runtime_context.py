@@ -25,6 +25,59 @@ _GROUPED_CONFIG_DUAL_READ_STATUS = {
 
 _DEFAULT_GROUPED_CONFIG_PATH = '/config/EMS_config.yaml'
 _MAX_VALIDATION_ISSUES_IN_ERROR = 8
+_RUNTIME_CONTEXT_CONFIG_CACHE = {
+    'path': None,
+    'mtime_ns': None,
+    'size': None,
+    'config': None,
+    'validation': None,
+}
+
+
+def _reset_runtime_context_config_cache():
+    _RUNTIME_CONTEXT_CONFIG_CACHE.clear()
+    _RUNTIME_CONTEXT_CONFIG_CACHE.update(
+        {
+            'path': None,
+            'mtime_ns': None,
+            'size': None,
+            'config': None,
+            'validation': None,
+        }
+    )
+
+
+def _grouped_config_file_signature(path):
+    stat_result = os.stat(path)
+    return stat_result.st_mtime_ns, stat_result.st_size
+
+
+def _load_grouped_config_cached(path):
+    mtime_ns, size = _grouped_config_file_signature(path)
+    if (
+        _RUNTIME_CONTEXT_CONFIG_CACHE.get('path') == path
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('mtime_ns') == mtime_ns
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('size') == size
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('config') is not None
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('validation') is not None
+    ):
+        return (
+            _RUNTIME_CONTEXT_CONFIG_CACHE['config'],
+            _RUNTIME_CONTEXT_CONFIG_CACHE['validation'],
+            True,
+        )
+
+    grouped_config, validation = load_and_validate_grouped_ems_config(path)
+    _RUNTIME_CONTEXT_CONFIG_CACHE.update(
+        {
+            'path': path,
+            'mtime_ns': mtime_ns,
+            'size': size,
+            'config': grouped_config,
+            'validation': validation,
+        }
+    )
+    return grouped_config, validation, False
 
 def _read_grouped_entity(entity_id, default, read_bool, read_float, read_int, read_str):
     if isinstance(default, bool):
@@ -99,7 +152,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
     if not path:
         path = _DEFAULT_GROUPED_CONFIG_PATH
     try:
-        grouped_config, validation = load_and_validate_grouped_ems_config(path)
+        grouped_config, validation, cache_hit = _load_grouped_config_cached(path)
     except Exception as exc:
         status = {
             'enabled': True,
@@ -146,6 +199,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         'source': 'grouped_config',
         'path': path,
         'reason': 'loaded',
+        'config_cache_hit': cache_hit,
     }, grouped_config
 
 
@@ -218,6 +272,8 @@ def build_runtime_entities_from_grouped_config(config):
     if isinstance(outputs, dict):
         ent['policy_decision_trace'] = outputs.get('decision_trace')
         ent['device_policies'] = outputs.get('device_policies')
+        ent['dispatch_command'] = outputs.get('dispatch_command')
+        ent['policy_state'] = outputs.get('policy_state')
         ent['surplus_policy_active_pys'] = outputs.get('surplus_policy_active')
         ent['surplus_next_target_pys'] = outputs.get('surplus_next_target')
         ent['surplus_next_threshold_pys'] = outputs.get('surplus_next_threshold')

@@ -141,9 +141,9 @@ def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
     )
 
     dispatch_source = dispatch_state_trace.get('decision_source')
-    assert dispatch_source == 'device_trace', (
+    assert dispatch_source == 'dispatch_command', (
         f"step={idx} note={note} dispatch_state.decision_source "
-        f"actual={dispatch_source} expected=device_trace"
+        f"actual={dispatch_source} expected=dispatch_command"
     )
 
     dispatch_contract = dispatch_state_trace.get('dispatch_state_contract')
