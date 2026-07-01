@@ -75,8 +75,8 @@ def _canonical_active_device_ids(active_ids):
 
 
 def _read_surplus_device_targets(entities=None):
-    trace_entity = _entity_id('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities)
-    return _read_surplus_device_targets_from_entity(trace_entity)
+    dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
+    return _read_surplus_device_targets_from_entity(dispatch_entity)
 
 
 def _read_surplus_device_targets_from_entity(entity_id):
@@ -149,7 +149,6 @@ def _decision_text_from_device_command(action, device_id, target=''):
 def _read_dispatch_command():
     entities = _load_runtime_entities()
     dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
-    trace_entity = _entity_id('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities)
     targets = _read_surplus_device_targets_from_entity(dispatch_entity)
     action = get_attr(dispatch_entity, 'surplus_device_dispatch_action', '')
     target = get_attr(dispatch_entity, 'surplus_device_dispatch_target', '')
@@ -171,32 +170,9 @@ def _read_dispatch_command():
             'decision': _decision_text_from_device_command(action, resolved_device_id, target),
         }
 
-    fallback_reason = 'fallback_dispatch_command_invalid_action'
-    if action in ('', None, 'unknown', 'unavailable'):
-        fallback_reason = 'fallback_dispatch_command_missing'
-
-    targets = _read_surplus_device_targets_from_entity(trace_entity)
-    action = get_attr(trace_entity, 'surplus_device_dispatch_action', '')
-    target = get_attr(trace_entity, 'surplus_device_dispatch_target', '')
-    device_id = get_attr(trace_entity, 'surplus_device_dispatch_device_id', '')
-    resolved_device_id = str(device_id or _target_device_id_for_decision_name(target, targets) or '')
-    decision_name = _target_decision_name_for_device_id(resolved_device_id, targets) or str(target or '')
-    if _valid_dispatch_action(action):
-        return {
-            'source_entity': trace_entity,
-            'source_reason': fallback_reason,
-            'version': str(version or ''),
-            'source': 'policy_decision_trace',
-            'action': action,
-            'target': target,
-            'device_id': resolved_device_id,
-            'decision_name': decision_name,
-            'decision': _decision_text_from_device_command(action, resolved_device_id, target),
-        }
-
     return {
         'source_entity': dispatch_entity,
-        'source_reason': fallback_reason,
+        'source_reason': 'canonical_missing_or_invalid',
         'version': str(version or ''),
         'source': 'dispatch_command',
         'action': 'NOOP',
@@ -259,7 +235,7 @@ def ems_dispatch_state_applier_loop():
     freeze_written = _set_freeze_until_ts(_entity_id('surplus_freeze_until', 'input_datetime.ems_surplus_freeze_until', entities), freeze_until_ts)
     active_device_ids = _active_surplus_device_ids(command, entities)
 
-    publish_sensor('sensor.ems_dispatch_state_applier_trace', decision, {
+    publish_sensor(_entity_id('dispatch_state_applier_trace', 'sensor.ems_dispatch_state_applier_trace', entities), decision, {
         'decision': decision,
         'decision_source': command['source'],
         'dispatch_source_entity': command['source_entity'],

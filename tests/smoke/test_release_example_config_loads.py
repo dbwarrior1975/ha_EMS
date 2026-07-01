@@ -33,7 +33,7 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
         note='release example smoke',
     )
 
-    trace_attrs = snap['attrs'][ENT['policy_decision_trace']]
+    trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
 
     assert trace_attrs['config_source'] == 'grouped_config'

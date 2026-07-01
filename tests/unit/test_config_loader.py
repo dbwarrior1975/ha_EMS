@@ -239,6 +239,81 @@ def test_validate_rejects_unknown_policy_output_field_generically(project_root):
 
 
 @pytest.mark.unit
+def test_validate_accepts_diagnostics_outputs_section(project_root):
+    config = _load_example(project_root)
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is True
+
+
+@pytest.mark.unit
+def test_validate_rejects_legacy_policy_decision_trace_with_guidance(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs']['decision_trace'] = 'sensor.legacy_trace'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_outputs.decision_trace'] == (
+        'Unsupported legacy policy_outputs field: decision_trace. '
+        'Use diagnostics_outputs.policy_diagnostics instead.'
+    )
+
+
+@pytest.mark.unit
+def test_validate_rejects_legacy_actuator_writer_trace_with_guidance(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs']['actuator_writer_trace'] = 'sensor.legacy_writer_trace'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_outputs.actuator_writer_trace'] == (
+        'Unsupported legacy policy_outputs field: actuator_writer_trace. '
+        'Use diagnostics_outputs.actuator_writer_trace instead.'
+    )
+
+
+@pytest.mark.unit
+def test_validate_rejects_legacy_dispatch_state_applier_trace_with_guidance(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs']['dispatch_state_applier_trace'] = 'sensor.legacy_dispatch_trace'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_outputs.dispatch_state_applier_trace'] == (
+        'Unsupported legacy policy_outputs field: dispatch_state_applier_trace. '
+        'Use diagnostics_outputs.dispatch_state_applier_trace instead.'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('field_name', 'entity_id'),
+    (
+        ('surplus_policy_active', 'binary_sensor.legacy_surplus_policy_active'),
+        ('surplus_next_target', 'sensor.legacy_surplus_next_target'),
+        ('surplus_next_threshold', 'sensor.legacy_surplus_next_threshold'),
+        ('surplus_release_candidate', 'sensor.legacy_surplus_release_candidate'),
+        ('surplus_explanation', 'sensor.legacy_surplus_explanation'),
+    ),
+)
+def test_validate_rejects_removed_standalone_surplus_summary_outputs(project_root, field_name, entity_id):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs'][field_name] = entity_id
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)[f'ems.policy_outputs.{field_name}'] == (
+        f'Unsupported legacy policy_outputs field: {field_name}. '
+        'Standalone surplus summary sensors were removed.'
+    )
+
+
+@pytest.mark.unit
 def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
     aliases = runtime_alias_index(config)

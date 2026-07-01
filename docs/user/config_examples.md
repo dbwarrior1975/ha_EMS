@@ -13,9 +13,12 @@ testin entity registry -lahteena.
 Canonical odotus kaikissa esimerkeissa:
 
 1. `sensor.ems_device_policies_pyscript` sisaltaa device-id-kohtaiset policyt
-2. `sensor.ems_active_surplus_devices` listaa aktiiviset device-id:t
-3. `sensor.ems_actuator_writer_trace` raportoi writer-toteuman `devices`-mapissa
-4. vanhat yksittaiskentat tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
+2. `sensor.ems_surplus_dispatch_command_pyscript` sisaltaa dispatch-paatoksen
+3. `sensor.ems_policy_state_pyscript` sisaltaa jatkuvuustilan
+4. `sensor.ems_policy_diagnostics_pyscript` sisaltaa selityspayloadin
+5. `sensor.ems_active_surplus_devices` listaa aktiiviset device-id:t
+6. `sensor.ems_actuator_writer_trace` raportoi writer-toteuman `devices`-mapissa
+7. vanhat yksittaiskentat tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
 
 ## Only HOME_BATTERY
 

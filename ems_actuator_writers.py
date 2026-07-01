@@ -50,17 +50,12 @@ def _device_policy_by_id(device_id, entities=None):
 
 
 def _device_policy_source_for_id(device_id, entities=None):
-    source_entities = (
-        (_ent('device_policies', 'sensor.ems_device_policies_pyscript', entities), 'canonical'),
-        (_ent('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript', entities), 'fallback_device_policies_missing'),
-    )
-    for source_entity, source_reason in source_entities:
-        policies = get_attr(source_entity, 'device_policies', None)
-        if not policies:
-            continue
+    source_entity = _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities)
+    policies = get_attr(source_entity, 'device_policies', None)
+    if policies:
         for policy in policies:
             if isinstance(policy, dict) and policy.get('device_id') == device_id:
-                return policy, source_entity, source_reason
+                return policy, source_entity, 'canonical'
     return None, '', 'missing_device_policy'
 
 
@@ -128,7 +123,7 @@ def _write_battery_actuator(entities=None):
             'policy_source': 'missing_device_policy',
         }
 
-    policy_source = 'device_policy'
+    policy_source = 'canonical'
     write_enabled = _device_policy_enabled(device_policy)
     if not write_enabled:
         return {
@@ -197,7 +192,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
             'policy_source': 'missing_device_policy',
         }
 
-    policy_source = 'device_policy'
+    policy_source = 'canonical'
     device_entities = (entities or {}).get('devices', {}) or {}
     device_runtime = device_entities.get(device_id, {})
     enabled_entity = device_runtime.get('enabled') or _ent('actuator_ev_enabled', 'switch.charger_control', entities)
@@ -348,7 +343,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
             'policy_source': 'missing_device_policy',
         }
 
-    policy_source = 'device_policy'
+    policy_source = 'canonical'
     device_entities = (entities or {}).get('devices', {}) or {}
     device_runtime = device_entities.get(device_id or '', {})
     if device_runtime.get('enabled'):

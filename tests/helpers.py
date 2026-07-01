@@ -6,6 +6,7 @@ from ems_core.domain.models import (
     CoreBatteryGuardConfig,
     CoreBatteryPolicyConfig,
     CoreConfig,
+    CoreDiagnosticsOutputsConfig,
     CoreDeviceCapabilitiesConfig,
     CoreEvAdapterConfig,
     CoreEvChargerDeviceConfig,
@@ -219,11 +220,14 @@ def make_cfg(**overrides):
             previous_device_state='sensor.previous_device_state',
         ),
         policy_outputs=CorePolicyOutputsConfig(
-            decision_trace='sensor.decision_trace',
             device_policies='sensor.device_policies',
             dispatch_command='sensor.dispatch_command',
             policy_state='sensor.policy_state',
-            surplus_policy_active='binary_sensor.surplus_policy_active',
+        ),
+        diagnostics_outputs=CoreDiagnosticsOutputsConfig(
+            policy_diagnostics='sensor.policy_diagnostics',
+            actuator_writer_trace='sensor.actuator_writer_trace',
+            dispatch_state_applier_trace='sensor.dispatch_state_applier_trace',
         ),
         devices={
             'HOME_BATTERY': home_battery,

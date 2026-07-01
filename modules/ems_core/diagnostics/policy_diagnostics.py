@@ -30,7 +30,6 @@ def net_zero_attrs(outputs, profiles, guard_decision=None):
         'surplus_dispatch_decision': outputs.surplus_dispatch_decision,
         'surplus_explanation': outputs.surplus_explanation,
         'device_policies': device_policy_payloads or (),
-        'policy_trace_canonical_contract': 'device_policies',
     }
 
     attrs.update(outputs.attrs)

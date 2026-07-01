@@ -35,6 +35,7 @@ Viimeisin varmennettu tila nykyisessa siivousvaiheessa:
 1. `python3 -m pytest -q tests`
 2. `python3 -m pytest -q tests/e2e_entity`
 3. `python3 -m pytest -q tests/smoke/test_pyscript_ast_compat.py`
+4. `python3 -m pytest -q`
 
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
@@ -51,7 +52,7 @@ Aidosti toteutettuja kohteita:
 3. `test_evaluator.py`
 4. `test_writer_semantics.py`
 5. `test_surplus_allocator.py`
-6. `test_decision_trace.py`
+6. `test_policy_diagnostics.py`
 
 Keskeisia aidosti toteutettuja kohteita ovat myos:
 
@@ -172,9 +173,10 @@ runtime-parityssa.
 3. `rpnz_w = 11 W` -> ei releasea taman saannon perusteella
 4. `rpnz_w = 0 W` ja `-1 W` -> release edelleen tapahtuu
 
-### Decision trace
+### Policy diagnostics
 
-`tests/unit/test_decision_trace.py` tarkistaa, etta keskeiset kentat ja `battery_write_enabled` valittyvat trace-attribuutteihin.
+`tests/unit/test_policy_diagnostics.py` tarkistaa, etta keskeiset kentat ja
+`battery_write_enabled` valittyvat diagnostiikka-attribuutteihin.
 
 ### Quarter-skenaariot
 

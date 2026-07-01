@@ -149,13 +149,11 @@ ems:
     previous_device_state: sensor.ems_previous_device_state
 
   policy_outputs:
-    decision_trace: sensor.ems_policy_decision_trace_pyscript
     device_policies: sensor.ems_device_policies_pyscript
     dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
     policy_state: sensor.ems_policy_state_pyscript
-    surplus_policy_active: binary_sensor.ems_net_zero_surplus_policy_active_pyscript
-    surplus_next_target: sensor.ems_net_zero_surplus_next_target_pyscript
-    surplus_next_threshold: sensor.ems_net_zero_surplus_next_threshold_kw_pyscript
-    surplus_release_candidate: sensor.ems_net_zero_surplus_release_candidate_pyscript
-    surplus_explanation: sensor.ems_net_zero_surplus_explanation_pyscript
+
+  diagnostics_outputs:
+    policy_diagnostics: sensor.ems_policy_diagnostics_pyscript
     actuator_writer_trace: sensor.ems_actuator_writer_trace
+    dispatch_state_applier_trace: sensor.ems_dispatch_state_applier_trace

@@ -362,7 +362,7 @@ def test_policy_loop_publishes_grouped_config_default_source_trace_attrs(project
     harness = QuarterScenarioHarness(project_root)
     harness.step(note='dual-read trace')
 
-    attrs = harness.getattrs(ENT['policy_decision_trace'])
+    attrs = harness.getattrs(ENT['policy_diagnostics'])
     assert attrs['config_source'] == 'grouped_config'
     assert attrs['config_dual_read_enabled'] is True
     assert attrs['config_dual_read_ok'] is True
@@ -377,7 +377,7 @@ def test_grouped_config_default_source_marks_production_ready(project_root, monk
     harness = QuarterScenarioHarness(project_root)
     harness.step(note='strict grouped production preflight')
 
-    attrs = harness.getattrs(ENT['policy_decision_trace'])
+    attrs = harness.getattrs(ENT['policy_diagnostics'])
     assert attrs['config_source'] == 'grouped_config'
     assert attrs['config_dual_read_ok'] is True
     assert attrs['config_grouped_production_ready'] is True
@@ -538,7 +538,7 @@ def test_grouped_config_dual_read_accepts_grouped_specific_entity_ids(project_ro
     assert status['reason'] == 'loaded'
     assert status['mismatches'] == ()
     harness.step(note='parity mismatch trace')
-    attrs = harness.getattrs(ENT['policy_decision_trace'])
+    attrs = harness.getattrs(ENT['policy_diagnostics'])
     assert attrs['config_grouped_production_ready'] is True
     assert attrs['config_grouped_production_ready_reason'] == 'ready'
 
@@ -562,7 +562,7 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
         note='grouped source e2e',
     )
 
-    trace_attrs = snap['attrs'][ENT['policy_decision_trace']]
+    trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
 
     assert trace_attrs['config_source'] == 'grouped_config'
@@ -570,10 +570,10 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
     assert trace_attrs['config_dual_read_ok'] is True
     assert trace_attrs['config_dual_read_reason'] == 'loaded'
     assert writer_attrs['writer_trace_canonical_contract'] == 'devices'
-    assert writer_attrs['victron']['policy_source'] == 'device_policy'
-    assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
-    assert writer_attrs['devices']['RELAY1']['policy_source'] == 'device_policy'
-    assert writer_attrs['devices']['RELAY2']['policy_source'] == 'device_policy'
+    assert writer_attrs['victron']['policy_source'] == 'canonical'
+    assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'canonical'
+    assert writer_attrs['devices']['RELAY1']['policy_source'] == 'canonical'
+    assert writer_attrs['devices']['RELAY2']['policy_source'] == 'canonical'
 
 
 @pytest.mark.unit
@@ -620,7 +620,7 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
     harness.step(note='activate first surplus device')
     harness.step(note='activate selected garage ev')
     snap = harness.step(note='selected garage ev writes')
-    trace_attrs = snap['attrs'][ENT['policy_decision_trace']]
+    trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
     policies = {item['device_id']: item for item in trace_attrs['device_policies']}
 
@@ -632,8 +632,8 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
     assert policies['EV_CHARGER']['enabled'] is False
     assert policies['EV_CHARGER']['target_w'] == 0
     assert trace_attrs['previous_ev_device_states']['EV_GARAGE']['mode'] == trace_attrs['ev_policy_mode']
-    assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
-    assert writer_attrs['devices']['EV_GARAGE']['policy_source'] == 'device_policy'
+    assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'canonical'
+    assert writer_attrs['devices']['EV_GARAGE']['policy_source'] == 'canonical'
     assert writer_attrs['devices']['EV_GARAGE']['target_current_a'] == 16
     assert snap['values']['switch.ev_garage_enabled'] is True
     assert snap['values']['number.ev_garage_current_a'] == 16
@@ -666,7 +666,7 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
     )
 
     snap = harness.step(note='grouped config no ev policy run')
-    trace_attrs = snap['attrs'][ENT['policy_decision_trace']]
+    trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
     policies = {item['device_id']: item for item in trace_attrs['device_policies']}
 
@@ -685,7 +685,7 @@ def test_policy_outputs_publish_device_policy_contract_and_payloads(project_root
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     harness.step(note='policy output contract attrs')
 
-    attrs = harness.getattrs(ENT['policy_decision_trace'])
+    attrs = harness.getattrs(ENT['policy_diagnostics'])
     assert attrs['policy_output_contract'] == 'device_policy_primary'
     assert attrs['device_policies']
 
@@ -826,12 +826,22 @@ def test_policy_state_sensor_state_is_stable_content_hash_and_carries_previous_s
     harness._run_policy_loop()
     second_state = harness.get(policy_state_entity)
     second_attrs = harness.getattrs(policy_state_entity)
+    harness.set_entities(
+        {
+            ENT['devices']['RELAY1']['force_on']: True,
+        }
+    )
+    harness._run_policy_loop()
+    third_state = harness.get(policy_state_entity)
+    third_attrs = harness.getattrs(policy_state_entity)
 
     assert first_state == first_attrs['policy_state_hash']
     assert first_state == first_attrs['policy_state_version']
     assert first_attrs['policy_state_state_kind'] == 'content_hash'
     assert second_state == second_attrs['policy_state_hash']
     assert first_state == second_state
+    assert third_state == third_attrs['policy_state_hash']
+    assert third_state != second_state
     assert 'haeo_nz_quarter_key' in second_attrs
     assert 'haeo_nz_primary_device_id' in second_attrs
     assert 'prev_force_on_device_ids' in second_attrs
@@ -849,7 +859,7 @@ def test_policy_state_helpers_prefer_canonical_sensor_over_trace(project_root):
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'haeo_nz_quarter_key': 'trace-quarter',
             'haeo_nz_primary_device_id': 'EV_CHARGER',

@@ -63,7 +63,6 @@ def _load_writer_module(project_root):
         'actuator_relay1': 'input_boolean.actuator_relay1',
         'actuator_relay2': 'input_boolean.actuator_relay2',
         'device_policies': 'sensor.ems_device_policies_pyscript',
-        'policy_decision_trace': 'sensor.ems_policy_decision_trace_pyscript',
     }
 
     ns = {
@@ -97,7 +96,6 @@ def _install_device_policies(mod, policies):
         mod,
         {
             ent.get('device_policies', 'sensor.ems_device_policies_pyscript'): tuple(policies),
-            ent.get('policy_decision_trace', 'sensor.ems_policy_decision_trace_pyscript'): tuple(policies),
         },
     )
 
@@ -204,7 +202,7 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
     result = mod['_write_battery_actuator']()
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert state[ENT['actuator_battery_setpoint_w']] == 0
 
 
@@ -249,7 +247,7 @@ def test_writer_battery_can_read_device_policy_target(project_root):
     result = mod['_write_battery_actuator']()
 
     assert result['written'] is True
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert result['policy_target_w'] == 500
     assert state[ENT['actuator_battery_setpoint_w']] == 500
 
@@ -309,7 +307,7 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert result['target_current_a'] == 16
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 16
@@ -371,7 +369,7 @@ def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(p
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert result['target_current_a'] == 24
     assert state[ENT['actuator_ev_current_a']] == 24
 
@@ -434,7 +432,7 @@ def test_writer_relay_device_policy_can_turn_off_actuator(project_root):
     )
 
     assert result['written'] is True
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert state[ENT['actuator_relay1']] is False
 
 
@@ -496,7 +494,7 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
 
     assert result['written'] is False
     assert result['reason'] == 'policy_skip'
-    assert result['policy_source'] == 'device_policy'
+    assert result['policy_source'] == 'canonical'
     assert state[ENT['actuator_relay1']] is True
 
 
@@ -550,10 +548,10 @@ def test_writer_loop_uses_device_policies_across_all_devices(project_root):
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
-    assert result['victron']['policy_source'] == 'device_policy'
-    assert result['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
-    assert result['devices']['RELAY1']['policy_source'] == 'device_policy'
-    assert result['devices']['RELAY2']['policy_source'] == 'device_policy'
+    assert result['victron']['policy_source'] == 'canonical'
+    assert result['devices']['EV_CHARGER']['policy_source'] == 'canonical'
+    assert result['devices']['RELAY1']['policy_source'] == 'canonical'
+    assert result['devices']['RELAY2']['policy_source'] == 'canonical'
     assert state[ENT['actuator_battery_setpoint_w']] == 500
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 12
@@ -627,7 +625,7 @@ def test_writer_loop_writes_third_relay_from_device_registry(project_root):
     assert result['devices']['RELAY3']['written'] is True
     assert result['devices']['RELAY3']['action'] == 'turn_on'
     assert state['switch.relay_3_2'] is True
-    assert writer_trace['attrs']['devices']['RELAY3']['policy_source'] == 'device_policy'
+    assert writer_trace['attrs']['devices']['RELAY3']['policy_source'] == 'canonical'
 
 
 @pytest.mark.unit
@@ -726,15 +724,15 @@ def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(projec
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
-    assert result['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
-    assert result['devices']['GARAGE_EV']['policy_source'] == 'device_policy'
+    assert result['devices']['EV_CHARGER']['policy_source'] == 'canonical'
+    assert result['devices']['GARAGE_EV']['policy_source'] == 'canonical'
     assert result['devices']['GARAGE_EV']['action'] == 'enable_and_set_current'
     assert result['devices']['GARAGE_EV']['target_current_a'] == 16
     assert state[ENT['actuator_ev_enabled']] is False
     assert state[ENT['actuator_ev_current_a']] == 6
     assert state['switch.garage_ev_enabled'] is True
     assert state['number.garage_ev_current_a'] == 16
-    assert writer_trace['attrs']['devices']['EV_CHARGER']['policy_source'] == 'device_policy'
+    assert writer_trace['attrs']['devices']['EV_CHARGER']['policy_source'] == 'canonical'
     assert writer_trace['attrs']['devices']['GARAGE_EV']['target_current_a'] == 16
 
     
@@ -915,7 +913,7 @@ def test_writer_state_trigger_uses_device_policies_not_policy_trace(project_root
 
 
 @pytest.mark.unit
-def test_writer_uses_canonical_device_policies_before_trace_fallback(project_root):
+def test_writer_uses_canonical_device_policies(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies_by_entity(
@@ -923,9 +921,6 @@ def test_writer_uses_canonical_device_policies_before_trace_fallback(project_roo
         {
             ENT['device_policies']: (
                 {'device_id': 'RELAY1', 'target_w': 2500, 'enabled': True, 'mode': 'relay'},
-            ),
-            ENT['policy_decision_trace']: (
-                {'device_id': 'RELAY1', 'target_w': 0, 'enabled': False, 'mode': 'relay'},
             ),
         },
     )
@@ -939,24 +934,21 @@ def test_writer_uses_canonical_device_policies_before_trace_fallback(project_roo
 
 
 @pytest.mark.unit
-def test_writer_can_still_use_trace_fallback_when_canonical_missing(project_root):
+def test_writer_missing_canonical_device_policy_does_not_fallback(project_root):
     mod, state, ENT = _load_writer_module(project_root)
 
     _install_device_policies_by_entity(
         mod,
-        {
-            ENT['policy_decision_trace']: (
-                {'device_id': 'RELAY1', 'target_w': 2500, 'enabled': True, 'mode': 'relay'},
-            ),
-        },
+        {},
     )
 
     state[ENT['actuator_relay1']] = False
 
     result = mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
 
-    assert result['written'] is True
-    assert state[ENT['actuator_relay1']] is True
+    assert result['written'] is False
+    assert result['reason'] == 'missing_device_policy'
+    assert state[ENT['actuator_relay1']] is False
 
 
 @pytest.mark.unit

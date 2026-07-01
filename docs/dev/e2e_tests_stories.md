@@ -7,7 +7,7 @@ Jokaisessa story-kansiossa on oma `scenario_overview.md`, joka on tarkin paikka 
 Kanoninen e2e-semanttiikka:
 
 1. policy-tason odotukset todennetaan ensisijaisesti `device_policies`-rakenteesta
-2. dispatch-tason odotukset todennetaan `policy_decision_trace`- ja
+2. dispatch-tason odotukset todennetaan `policy_diagnostics`- ja
    `dispatch_state_applier_trace` -attribuuteista
 3. aktiivinen surplus-tila todennetaan kanonisesti `active_surplus_devices`-rakenteesta
 4. vanhat `policy_*`- ja `surplus_*_active` -entityt eivat kuulu enaa

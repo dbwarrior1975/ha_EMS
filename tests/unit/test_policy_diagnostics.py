@@ -1,11 +1,11 @@
 import pytest
-from ems_core.diagnostics.decision_trace import net_zero_attrs
+from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_core.domain.models import DevicePolicy, NetZeroOutputs
 from tests.helpers import make_profiles
 
 
 @pytest.mark.unit
-def test_decision_trace_exposes_core_fields_and_battery_authority():
+def test_policy_diagnostics_exposes_core_fields_and_battery_authority():
     out = NetZeroOutputs(
         battery_target_w=100,
         battery_write_enabled=False,
@@ -38,7 +38,6 @@ def test_decision_trace_exposes_core_fields_and_battery_authority():
     assert attrs['configured_forecast'] == 'NONE'
     assert attrs['device_policy_parity_ok'] is True
     assert attrs['device_policies'][0]['device_id'] == 'HOME_BATTERY'
-    assert attrs['policy_trace_canonical_contract'] == 'device_policies'
     assert 'ev_current_a' not in attrs
     assert 'relay1_command' not in attrs
     assert 'relay2_command' not in attrs

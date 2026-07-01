@@ -198,7 +198,8 @@ def seed_previous_device_state(
 
 
 def seed_previous_policy_trace(h, **attrs):
-    h.set_attrs(_entity(h, 'policy_decision_trace'), attrs)
+    h.set_attrs(_entity(h, 'policy_state'), attrs)
+    h.set_attrs(_entity(h, 'policy_diagnostics'), attrs)
 
 
 def seed_active_surplus_devices(
@@ -267,7 +268,7 @@ def run_scenario_steps(h, steps, *, validate=True):
         if not validate:
             continue
 
-        policy_trace = h.getattrs(_entity(h, 'policy_decision_trace'))
+        policy_trace = h.getattrs(_entity(h, 'policy_diagnostics'))
         dispatch_state_trace = h.getattrs(DISPATCH_STATE_APPLIER_TRACE)
         _assert_canonical_contracts(idx, step['note'], policy_trace, dispatch_state_trace)
 

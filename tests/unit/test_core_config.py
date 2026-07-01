@@ -39,10 +39,12 @@ def _core_entity_values():
         'sensor.ev_akut_active_power': 'sensor.ev_akut_active_power',
         'input_datetime.ems_surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
         'sensor.ems_previous_device_state': 'sensor.ems_previous_device_state',
-        'sensor.ems_policy_decision_trace_pyscript': 'sensor.ems_policy_decision_trace_pyscript',
         'sensor.ems_device_policies_pyscript': 'sensor.ems_device_policies_pyscript',
         'sensor.ems_surplus_dispatch_command_pyscript': 'sensor.ems_surplus_dispatch_command_pyscript',
         'sensor.ems_policy_state_pyscript': 'sensor.ems_policy_state_pyscript',
+        'sensor.ems_policy_diagnostics_pyscript': 'sensor.ems_policy_diagnostics_pyscript',
+        'sensor.ems_actuator_writer_trace': 'sensor.ems_actuator_writer_trace',
+        'sensor.ems_dispatch_state_applier_trace': 'sensor.ems_dispatch_state_applier_trace',
         'sensor.ems_active_surplus_devices': 'sensor.ems_active_surplus_devices',
         'sensor.average_active_power_2': 'sensor.average_active_power_2',
         'sensor.hourly_energy_balance': 'sensor.hourly_energy_balance',
@@ -94,10 +96,12 @@ def test_build_core_config_from_grouped_config_maps_top_level_sections(project_r
     assert core.state.surplus_freeze_until == 'input_datetime.ems_surplus_freeze_until'
     assert core.state.active_surplus_devices == 'sensor.ems_active_surplus_devices'
     assert core.state.previous_device_state == 'sensor.ems_previous_device_state'
-    assert core.policy_outputs.decision_trace == 'sensor.ems_policy_decision_trace_pyscript'
     assert core.policy_outputs.device_policies == 'sensor.ems_device_policies_pyscript'
     assert core.policy_outputs.dispatch_command == 'sensor.ems_surplus_dispatch_command_pyscript'
     assert core.policy_outputs.policy_state == 'sensor.ems_policy_state_pyscript'
+    assert core.diagnostics_outputs.policy_diagnostics == 'sensor.ems_policy_diagnostics_pyscript'
+    assert core.diagnostics_outputs.actuator_writer_trace == 'sensor.ems_actuator_writer_trace'
+    assert core.diagnostics_outputs.dispatch_state_applier_trace == 'sensor.ems_dispatch_state_applier_trace'
 
 
 @pytest.mark.unit

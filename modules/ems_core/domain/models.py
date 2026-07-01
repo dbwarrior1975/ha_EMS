@@ -192,11 +192,16 @@ class CoreStateConfig:
 
 @dataclass
 class CorePolicyOutputsConfig:
-    decision_trace: EntityRef
     device_policies: EntityRef
     dispatch_command: EntityRef
     policy_state: EntityRef
-    surplus_policy_active: EntityRef
+
+
+@dataclass
+class CoreDiagnosticsOutputsConfig:
+    policy_diagnostics: EntityRef
+    actuator_writer_trace: EntityRef
+    dispatch_state_applier_trace: EntityRef
 
 
 @dataclass
@@ -226,6 +231,7 @@ class CoreConfig:
     runtime: CoreRuntimeConfig
     state: CoreStateConfig
     policy_outputs: CorePolicyOutputsConfig
+    diagnostics_outputs: CoreDiagnosticsOutputsConfig
     haeo: Optional[CoreHaeoConfig] = None
     role_constraints: Optional[CoreRoleConstraintsConfig] = None
     devices: Optional[dict[str, CoreDeviceConfig]] = None

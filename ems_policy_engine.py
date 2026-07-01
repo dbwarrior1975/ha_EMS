@@ -7,7 +7,7 @@ from ems_core.net_zero.balance import compute_rpnz_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs, configured_forecast, effective_forecast
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
-from ems_core.diagnostics.decision_trace import net_zero_attrs
+from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
@@ -25,6 +25,9 @@ def _policy_output_contract_attrs():
     return {
         'policy_engine_build': _POLICY_ENGINE_BUILD,
         'policy_output_contract': 'device_policy_primary',
+        'canonical_policy_output_contract': 'device_policies',
+        'diagnostics_contract': 'policy_explanation_only',
+        'runtime_contract': False,
     }
 
 
@@ -278,11 +281,6 @@ def _policy_state_attr(entities, key, default):
         value = get_attr(policy_state_entity, key, _MISSING)
         if value is not _MISSING:
             return value
-    decision_trace_entity = entities.get('policy_decision_trace')
-    if decision_trace_entity:
-        value = get_attr(decision_trace_entity, key, _MISSING)
-        if value is not _MISSING:
-            return value
     return default
 
 
@@ -402,9 +400,4 @@ def ems_policy_engine_loop():
     publish_sensor(entities['device_policies'], device_policies_hash, attrs)
     publish_sensor(entities['dispatch_command'], dispatch_command_attrs['dispatch_command_hash'], dispatch_command_attrs)
     publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
-    publish_sensor(entities['policy_decision_trace'], _trace_state(profiles, outputs), attrs)
-    publish_sensor(entities['surplus_policy_active_pys'], 'on' if outputs.surplus_policy_active else 'off', attrs)
-    publish_sensor(entities['surplus_next_target_pys'], outputs.surplus_next_target, attrs)
-    publish_sensor(entities['surplus_next_threshold_pys'], outputs.surplus_next_threshold_kw, attrs)
-    publish_sensor(entities['surplus_release_candidate_pys'], outputs.surplus_release_candidate, attrs)
-    publish_sensor(entities['surplus_explanation_pys'], outputs.surplus_explanation, attrs)
+    publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), attrs)

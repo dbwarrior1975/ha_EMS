@@ -20,12 +20,14 @@ uusi tuotantologiikka perustuu `kind`, `capabilities`, `policy` ja `adapter`
 -kenttiin. Custom device-id voi olla esimerkiksi `RELAY_SAUNA`,
 `RELAY_BOILER`, `EV_MAIN` tai `EV_GARAGE`.
 
-Canonical trace- ja writer-pinta on device-id-pohjainen:
+Kanoninen runtime-pinta on device-id-pohjainen:
 
 1. `sensor.ems_device_policies_pyscript`
-2. `sensor.ems_active_surplus_devices`
-3. `sensor.ems_policy_decision_trace_pyscript`
-4. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
+2. `sensor.ems_surplus_dispatch_command_pyscript`
+3. `sensor.ems_policy_state_pyscript`
+4. `sensor.ems_policy_diagnostics_pyscript`
+5. `sensor.ems_active_surplus_devices`
+6. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
 ### Releen lisaaminen
 

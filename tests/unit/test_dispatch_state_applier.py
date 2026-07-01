@@ -29,7 +29,7 @@ def test_dispatch_state_applier_prefers_canonical_dispatch_command_over_trace(pr
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'surplus_device_dispatch_action': 'CLEAR_ALL',
             'surplus_device_dispatch_target': '',
@@ -76,7 +76,7 @@ def test_dispatch_state_applier_reports_adjustable_active_device_id_from_trace(p
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'surplus_device_dispatch_action': 'ACTIVATE',
             'surplus_device_dispatch_target': 'ADJUSTABLE',
@@ -102,27 +102,19 @@ def test_dispatch_state_applier_reports_adjustable_active_device_id_from_trace(p
 
 
 @pytest.mark.unit
-def test_dispatch_state_applier_falls_back_to_trace_when_canonical_missing(project_root):
+def test_dispatch_state_applier_missing_canonical_dispatch_command_is_noop(project_root):
     harness = QuarterScenarioHarness(project_root)
-    harness.set_attrs(
-        ENT['policy_decision_trace'],
-        {
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'RELAY1',
-            'surplus_device_dispatch_device_id': 'RELAY1',
-        },
-    )
 
     harness._run_dispatch_state_applier_loop()
 
     trace = harness.getattrs(DISPATCH_TRACE)
-    assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ('RELAY1',)
-    assert trace['decision'] == 'ACTIVATE_RELAY1'
-    assert trace['decision_source'] == 'policy_decision_trace'
-    assert trace['dispatch_source_reason'] == 'fallback_dispatch_command_missing'
-    assert trace['device_dispatch_action'] == 'ACTIVATE'
-    assert trace['device_dispatch_device_id'] == 'RELAY1'
-    assert trace['writes'] == ['on:RELAY1']
+    assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ()
+    assert trace['decision'] == 'NOOP'
+    assert trace['decision_source'] == 'dispatch_command'
+    assert trace['dispatch_source_reason'] == 'canonical_missing_or_invalid'
+    assert trace['device_dispatch_action'] == 'NOOP'
+    assert trace['device_dispatch_device_id'] == ''
+    assert trace['writes'] == []
 
 
 @pytest.mark.unit
@@ -144,7 +136,7 @@ def test_dispatch_state_applier_activates_nth_relay_from_device_trace(project_ro
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'surplus_device_dispatch_action': 'ACTIVATE',
             'surplus_device_dispatch_target': 'RELAY3',
@@ -194,7 +186,7 @@ def test_dispatch_state_applier_releases_nth_relay_from_decision_name(project_ro
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'surplus_device_dispatch_action': 'RELEASE',
             'surplus_device_dispatch_target': 'RELAY3',
@@ -240,7 +232,7 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
         },
     )
     harness.set_attrs(
-        ENT['policy_decision_trace'],
+        ENT['policy_diagnostics'],
         {
             'surplus_device_dispatch_action': 'CLEAR_ALL',
             'surplus_device_dispatch_target': '',

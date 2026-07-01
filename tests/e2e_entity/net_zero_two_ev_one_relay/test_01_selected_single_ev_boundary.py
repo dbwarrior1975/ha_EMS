@@ -106,7 +106,7 @@ def test_01_two_ev_boundary_targets_only_selected_ev(project_root):
 
     run_steps(h, steps)
 
-    policy_trace = h.getattrs(E['policy_decision_trace'])
+    policy_trace = h.getattrs(E['policy_diagnostics'])
     writer_trace = h.getattrs('sensor.ems_actuator_writer_trace')
     policy_ids = {item['device_id'] for item in policy_trace['device_policies']}
     writer_ids = set((writer_trace.get('devices') or {}).keys())

@@ -2,113 +2,48 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin kayttoa, valvontaa ja vianetsintaa.
+Tama dokumentti kuvaa nykyisen EMS-runtime-polun valvonnan ja perusvianetsinnan.
 
 ## Kanoninen runtime-pinta
 
-Nykyisen tuotantopolun ensisijainen totuus ei ole enaa yksittaisissa
-`policy_*`- tai `surplus_*_active`-entiteeteissa, vaan naissa pinoissa:
+Operoinnissa seurataan ensisijaisesti naita entiteetteja:
 
-1. `sensor.ems_policy_decision_trace_pyscript`
-2. `sensor.ems_device_policies_pyscript`
-3. `sensor.ems_active_surplus_devices`
-4. `sensor.ems_previous_device_state`
-5. `sensor.ems_actuator_writer_trace`
+1. `sensor.ems_device_policies_pyscript`
+2. `sensor.ems_surplus_dispatch_command_pyscript`
+3. `sensor.ems_policy_state_pyscript`
+4. `sensor.ems_active_surplus_devices`
+5. `sensor.ems_policy_diagnostics_pyscript`
+6. `sensor.ems_actuator_writer_trace`
+7. `sensor.ems_dispatch_state_applier_trace`
 
 Kaytannollinen tulkinta:
 
-1. `policy_decision_trace` kertoo miksi EMS paatti niin kuin paatti
-2. `device_policies` kertoo mita writerille pyydetaan kanonisessa device-id-muodossa
-3. `policy_decision_trace.surplus_device_targets` kertoo surplus-kohteiden valintapinnan
-4. `active_surplus_devices` kertoo mitka surplus-kohteet ovat kanonisesti aktiivisia
-5. `actuator_writer_trace.devices` kertoo mita writer teki device-id-kohtaisesti
-6. `previous_device_state` kantaa yli syklien erityisesti EV:n edellisen moodin muistia
+1. `device_policies` kertoo mita writerille pyydetaan
+2. `dispatch_command` kertoo mita surplus-tilalle pyydetaan
+3. `policy_state` kantaa yli syklien tarvittavan jatkuvuustilan
+4. `active_surplus_devices` kertoo mitka surplus-kohteet ovat aktiivisia
+5. `policy_diagnostics` kertoo miksi EMS paatti niin kuin paatti
+6. `actuator_writer_trace` kertoo mita writer teki
+7. `dispatch_state_applier_trace` kertoo miten dispatch-komento sovellettiin
 
-Poistetut vanhat peilit:
+## Hash-state semantiikka
 
-1. vanhat policy mirror -sensorit on poistettu
-2. vanhat surplus active -boolean peilit on poistettu
+Kolmen kanonisen output-sensorin `state` on sisaltopohjainen hash:
 
-Jos HA:ssa on viela automaatioita tai dashboardeja, jotka lukevat naita, ne
-pitää paivittaa kayttamaan kanonisia entityja.
+1. `device_policies` -> `device_policies_hash`
+2. `dispatch_command` -> `dispatch_command_hash`
+3. `policy_state` -> `policy_state_hash`
 
-## Operoinnin ohjauspisteet
+Varsinainen payload luetaan attribuuteista. `state` ei ole monotoninen laskuri.
 
-Keskeiset profiilientiteetit:
+## Tarkeimmat seurattavat entiteetit
+
+### Profiilit
 
 1. `input_select.ems_control_profile`
 2. `input_select.ems_goal_profile`
 3. `input_select.ems_forecast_profile`
 4. `input_select.ems_guard_profile`
-
-Tuetut profiiliarvot:
-
-1. control: `MANUAL`, `MANUAL_SAFE`, `AUTOMATIC`, `HORIZON_BY_HAEO`
-2. goal: `NET_ZERO`, `MAX_EXPORT`, `CHEAP_GRID_CHARGE`
-3. forecast: `NONE`, `HAEO`
-4. guard: `NORMAL_LIMITS`, `STRICT_LIMITS`, `BATTERY_PROTECT`, `DEGRADED`
-
-Keskeiset konfiguraatioentiteetit:
-
-1. `input_number.ems_deadband_w`
-2. `input_number.ems_ramp_max_w`
-3. `input_number.ems_strict_limits_max_w`
-4. `input_number.ems_max_battery_discharge_w`
-5. `input_number.ems_max_battery_charge_w`
-6. `input_number.ems_battery_protect_soc`
-7. `input_number.ems_battery_protect_soc_recovery_margin`
-8. `input_number.ems_battery_protect_min_cell_voltage_v`
-9. `input_number.ems_ev_min_power_w`
-10. `input_number.ems_ev_max_power_w`
-11. `input_number.ems_ev_charger_phases`
-12. `input_boolean.ems_ev_force_on`
-13. `input_number.ems_ev_hard_off_pv_threshold_kw`
-14. `input_number.ems_ev_hard_off_low_pv_cycles`
-15. `input_number.ems_ev_hard_off_release_cycles`
-16. `input_number.ems_ev_current_step_a`
-17. `input_number.ems_ev_voltage_v`
-18. `input_number.ems_haeo_stale_timeout_s`
-19. relekohtaiset power/helper-entityt, esimerkiksi `input_number.ems_relay_sauna_power_kw`
-19. relekohtaiset nominal/step-helperit, esimerkiksi `input_number.ems_relay_sauna_nominal_absorb_w`
-20. `input_number.ems_nz_battery_floor_default_w`
-21. `input_number.ems_nz_battery_floor_ev_active_w`
-22. `input_select.ems_adjustable_surplus_load`
-23. `input_select.ems_adjustable_primary_load`
-24. `input_number.ems_adjustable_surplus_activation_w`
-25. `input_number.ems_adjustable_surplus_load_priority`
-26. device-id-kohtaiset prioriteettientiteetit releille ja EV-latureille
-
-Floor-semanttiikka NET_ZEROssa:
-
-1. `ems_nz_battery_floor_default_w` on yleinen akun minimi-floor.
-2. jos `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `ems_nz_battery_floor_ev_active_w`.
-3. EV-primary-polussa `ems_nz_battery_floor_ev_active_w` korvaa default-floorin.
-
-## Kaytossa olevat komponentit
-
-Nykyisen tuotantoketjun jarjestys on:
-
-1. `ems_policy_engine.py`
-2. `ems_dispatch_state_applier.py`
-3. `ems_actuator_writers.py`
-
-Kaikki kolme komponenttia kaynnistyvat 30 sekunnin periodilla ja osa myos tilamuutoksista.
-
-## Goal-profile-valinta
-
-Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
-
-## Troubleshooting
-
-### Battery stays below max even though HOME_BATTERY is primary
-
-1. Tarkista `sensor.ems_active_surplus_devices`.
-2. Tarkista `quarter_energy_balance_kwh`-lahde ja `rpnz_w`.
-3. Jos `rpnz_w` on `+1 ... +10 W`, aktiivisen surplus-kuorman pitaisi vapautua deadbandin perusteella.
-4. Jos `rpnz_w` on yli `10 W`, release ei tapahdu taman saannon perusteella.
-5. Tarkista `sensor.ems_policy_decision_trace_pyscript` ja `sensor.ems_actuator_writer_trace`.
-
-## Tarkeimmat seurattavat entiteetit
 
 ### Mittaukset
 
@@ -116,63 +51,10 @@ Nykyinen EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
 2. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage`
 3. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_power`
 4. `sensor.average_active_power_2`
-5. `number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point`
-6. `sensor.hourly_energy_balance` (ulkoinen HA-entity, jota EMS lukee avaimella `quarter_energy_balance_kwh`)
-7. `switch.charger_control`
-8. `number.charger_current_level`
-9. `sensor.required_power_consumption`
-10. `sensor.ems_calculated_required_power_for_net_zero`
-11. `sensor.pv_instant_power_2`
-
-Quarter-balance tulkinta:
-
-1. EMS:n kanoninen runtime-nimi on `quarter_energy_balance_kwh`.
-2. Se kuvaa nykyisen vartin energiataseen, ei tuntitaseen semantiikkaa.
-3. `rpnz_w` voi olla vartin alussa pieni positiivinen arvo, esimerkiksi `+4 W`, vaikka aktiivinen surplus-kuorma pitaisi kaytannossa vapauttaa.
-4. Taman vuoksi aktiivisen surplus-release kayttaa `10 W` deadbandia.
-
-### Releiden override- ja sallintaentiteetit
-
-Releiden entityt ovat device-id-kohtaisia. Legacy-esimerkissa ne voivat olla:
-
-1. `input_boolean.ems_relay1_enabled_import_zero`
-2. `input_boolean.ems_relay2_enabled_import_zero`
-3. `input_boolean.ems_relay1_force_on`
-4. `input_boolean.ems_relay2_force_on`
-
-Generic-esimerkissa sama pinta voi olla:
-
-1. `input_boolean.ems_relay_sauna_enabled_import_zero`
-2. `input_boolean.ems_relay_boiler_enabled_import_zero`
-3. `input_boolean.ems_relay_sauna_force_on`
-4. `input_boolean.ems_relay_boiler_force_on`
-
-### HAEO-entiteetit
-
-1. `sensor.haeo_battery_power_active`
-2. `sensor.haeo_ev_battery_power_active`
-3. `sensor.battery_active_power`
-4. `sensor.ev_akut_active_power`
-
-HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ovat alle `ems_haeo_stale_timeout_s` -rajan.
-
-### Kanoniset policy-ulostulot
-
-1. `sensor.ems_policy_decision_trace_pyscript`
-2. `sensor.ems_device_policies_pyscript`
-3. `sensor.ems_previous_device_state`
-4. `sensor.ems_active_surplus_devices`
-5. `policy_decision_trace.surplus_device_targets`
-
-### Kanoniset surplus-tilat
-
-1. `input_datetime.ems_surplus_freeze_until`
-2. `sensor.ems_active_surplus_devices`
-
-### Poistetut peilit
-
-1. vanhat policy mirror -sensorit on poistettu
-2. vanhat surplus active -boolean peilit on poistettu
+5. `sensor.hourly_energy_balance`
+6. `sensor.required_power_consumption`
+7. `sensor.ems_calculated_required_power_for_net_zero`
+8. `sensor.pv_instant_power_2`
 
 ### Aktuaattorit
 
@@ -182,284 +64,47 @@ HAEO on effective vain, jos se on konfiguroitu ja molemmat freshness-lahteet ova
 4. `switch.relay_1_2`
 5. `switch.relay_2_2`
 
-Nimet ylla ovat yhden esimerkkiasennuksen Home Assistant -entityja. Canonical EMS-pinta
-ei sido releita nimiin `RELAY1` tai `RELAY2`, vaan writer trace raportoi
-toteuman device-id-kohtaisesti `sensor.ems_actuator_writer_trace` -sensorin
-`devices`-mapissa.
+## Troubleshooting
 
-### Diagnostiikka
+### EMS paattaa, mutta writer ei kirjoita
 
-1. `sensor.ems_policy_decision_trace_pyscript`
-2. `sensor.ems_actuator_writer_trace`
-3. `sensor.ems_dispatch_state_applier_trace`
-4. adapteri-/debug-avaimet elavat vain diagnostiikassa, eivat kanonisessa
-   operointisopimuksessa
+1. tarkista `sensor.ems_device_policies_pyscript`
+2. tarkista `sensor.ems_actuator_writer_trace`
+3. tarkista laitteen `policy_source`, `reason` ja `written` writer tracesta
 
-## Operatiivinen kayttaytyminen profiileittain
+### Surplus-tila ei paivity odotetusti
 
-### `AUTOMATIC + NET_ZERO`
+1. tarkista `sensor.ems_surplus_dispatch_command_pyscript`
+2. tarkista `sensor.ems_dispatch_state_applier_trace`
+3. tarkista `sensor.ems_active_surplus_devices`
+4. tarkista `input_datetime.ems_surplus_freeze_until`
 
-Tama on koodin perusteella varsinainen paikallinen neljannesbalanssin optimointitila.
+### Halutaan ymmartaa policy-paatoksen syy
 
-Kayttaytyminen:
+Tarkista ensin `sensor.ems_policy_diagnostics_pyscript` attribuutit:
 
-1. akun setpoint lasketaan `candidate_sp_net_zero()`-funktion kautta
-2. surplus policy voi aktivoitua vain, jos guard on `NORMAL_LIMITS` ja effective forecast on `NONE`
-3. surplus-kohteiden aktivointi noudattaa prioriteetteja
-4. surplus-kohteiden vapautus tapahtuu kanteisjarjestyksessa
+1. `explanation`
+2. `dominant_limitation`
+3. `surplus_explanation`
+4. `surplus_device_dispatch_action`
+5. `surplus_device_dispatch_target`
+6. `surplus_device_dispatch_device_id`
+7. `surplus_device_targets`
 
-### `MAX_EXPORT`
+### Invalidi tai puuttuva runtime-output
 
-Nykyisen tuotantokoodin policy-tason semantiikka:
+1. puuttuva tai invalidi `device_policies` johtaa writerissa safe skip -kayttaytymiseen
+2. puuttuva tai invalidi `dispatch_command` johtaa dispatch-applierissa safe `NOOP` -kayttaytymiseen
+3. puuttuva tai invalidi `policy_state` ei kaynnista trace-fallbackia, vaan policy engine kayttaa oletusjatkuvuutta
 
-1. akun paikallinen fallback-target on `-4000` W, ellei HAEO syota muuta targetia
-2. EV policy current on `0`
-3. relekomennot ovat `0`
+## Poistetut vanhat pinnat
 
-Yllapitajan kannalta taman tilan nykyinen tavoitesemantiikka on dokumentoitava muodossa:
+Seuraavia ei tule enaa kayttaa dashboardeissa, automaatioissa tai templateissa:
 
-1. EV policy current `0`
-2. charger disabled
-3. current `0`
-4. relays off
+1. vanha policy-trace-sensori
+2. standalone surplus summary -sensorit
+3. vanhat surplus active -boolean peilit
 
-Nykyinen writer-koodi tukee tata semantiikkaa `ev_policy_mode=hard_off` -attribuutilla. Tahan liittyva e2e-goal transition -testi odottaa EV off -lopputulosta `MAX_EXPORT`-tilassa.
-
-### `CHEAP_GRID_CHARGE`
-
-Nykyinen kayttaytyminen:
-
-1. akun paikallinen fallback-target on `100` W
-2. EV oletuksena `capabilities.max_absorb_w`
-3. jos `ev_force_on` on tosi, EV pidetaan `capabilities.max_absorb_w` -tasolla
-4. jos HAEO on voimassa, EV-target voidaan johtaa HAEO-targetista watteina
-5. releet pysyvat pois paalta
-
-### `MANUAL`
-
-Nykyinen kayttaytyminen:
-
-1. akkuun ei kirjoiteta writerissa
-2. moottori raportoi `battery_write_enabled=False`
-3. EV-target tulee `capabilities.max_absorb_w`:sta, jos `ev_force_on` on tosi
-4. muuten EV skipataan
-5. releet seuraavat vain `force_on`-tilaa
-
-### `MANUAL_SAFE`
-
-Nykyinen kayttaytyminen:
-
-1. akkua ei normaalisti muuteta automaattisesti
-2. guard voi kuitenkin clampata akun targetia turvalliseen suuntaan
-3. writerissa on fallback-logiikka, joka sallii kirjoituksen guard-clamp-testausta varten, jos policy-attribuutti ei ole saatavilla
-4. EV kayttaytyy kayttajan nakokulmasta kuten `MANUAL`
-5. releet seuraavat `force_on`-tilaa
-
-## Guard-tilojen operatiivinen merkitys
-
-### `BATTERY_PROTECT`
-
-Aktivoituu, jos:
-
-1. SOC alittaa rajan
-2. tai min-cell voltage alittaa rajan
-3. tai molemmat alittavat rajansa
-
-Operatiivinen vaikutus:
-
-1. akun target clampataan ei-negatiiviseksi
-2. purku estetaan kaytannossa
-3. palautuminen vaatii seka SOC recovery marginin etta min-cell thresholdin tayttymisen
-
-### `DEGRADED`
-
-Aktivoituu stale/invalid battery inverter- tai SOC-datasta.
-
-Operatiivinen vaikutus:
-
-1. akun target menee arvoon `0`
-2. EV strategy palauttaa `-1`
-3. relay strategy palauttaa `-1`
-4. `dominant_limitation` on `SYSTEM_DEGRADED`
-5. dispatch state applier voi clearata aktiiviset surplus-stateit, mutta actuator writer loop skiptaa olemassa olevat EV- ja relay-actuatorit, jos policy on `-1`
-
-### `STRICT_LIMITS`
-
-Tama on kayttajan pakottama guard-tila. EMS ei overridea sita evaluatorissa.
-
-Operatiivinen vaikutus:
-
-1. akun target clampataan `strict_limits_max_w`-rajan sisaan
-
-## HAEO:n nykyinen operatiivinen rooli
-
-HAEO:n nykyinen rooli on rajattu. Koodin perusteella se tekee seuraavaa:
-
-1. tuo akkutargetin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloihin, jos forecast on tuore
-2. tuo EV-targetin `CHEAP_GRID_CHARGE`-tilaan, jos forecast on tuore
-3. `HORIZON_BY_HAEO + NET_ZERO` voi muodostaa EMS:n sisaisen varttikohtaisen HAEO-planin
-4. `HORIZON_BY_HAEO` voi pakottaa HAEO-ennusteen konfiguroiduksi, vaikka forecast-profile olisi `NONE`
-
-## Surplus-kuormien operointi
-
-Legacy-esimerkissa kohteet voivat olla `EV_CHARGER`, `RELAY1` ja `RELAY2`.
-Yleisessa n-device-configissa surplus-kohdejoukko muodostuu device registrysta:
-
-1. kaikki `kind: RELAY` -laitteet, joilla `can_absorb_w=true` ja `surplus_allowed` on paalla
-2. valittu `kind: EV_CHARGER` -laite selected-single boundaryn mukaan
-3. tarvittaessa `HOME_BATTERY`, jos se on valittu adjustable-surplus-rooliin
-
-Aktivointi ja vapautus tapahtuvat canonical `device_id`:n perusteella.
-Aktivointi- ja vapautusjarjestys riippuu prioriteeteista.
-
-Legacy-esimerkin prioriteetit:
-
-1. `RELAY1 = 3`
-2. `EV_CHARGER = 2`
-3. `RELAY2 = 1`
-
-Generic-esimerkin prioriteetit:
-
-1. `RELAY_SAUNA = 3`
-2. `EV_GARAGE = 2`
-3. `RELAY_BOILER = 1`
-
-Generic-esimerkin aktivointijarjestys on:
-
-1. `RELAY_SAUNA`
-2. `EV_GARAGE`
-3. `RELAY_BOILER`
-
-Ja vapautusjarjestys on:
-
-1. `RELAY_BOILER`
-2. `EV_GARAGE`
-3. `RELAY_SAUNA`
-
-## Tarkeimmat diagnostiset tarkastukset
-
-Kun halutaan ymmartaa EMS:n paatos, tarkasta ensiksi `policy_decision_trace`-attribuutit:
-
-1. `guard`
-2. `guard_reason`
-3. `dominant_limitation`
-4. `effective_forecast`
-5. `battery_write_enabled`
-6. `surplus_policy_active`
-7. `surplus_device_dispatch_decision`
-8. `surplus_explanation`
-9. `surplus_device_targets`
-10. `surplus_device_dispatch_target`
-11. `surplus_device_dispatch_device_id`
-12. `surplus_freeze_until_ts`
-13. `config_source`
-14. `config_grouped_production_ready`
-15. `device_policies`
-
-Tulkitse policy trace oikein:
-
-1. `device_policies` on writerin kanoninen ohjauspyynto
-2. `sensor.ems_device_policies_pyscript` state on versionumero, ei policyjen maara
-3. yksittaiset peilikentat eivat kuulu release-sopimukseen
-4. writerin ampeeritotuus loytyy `actuator_writer_trace.devices.<device_id>.target_current_a`-kentasta valitulle EV:lle
-5. jos trace ja writer nayttavat eri asioita eri hetkella, luota writerin
-   toteutuneeseen actuator-traceen ja nykyiseen actuator-stateen
-
-Sen jalkeen tarkasta:
-
-1. `sensor.ems_dispatch_state_applier_trace`
-2. `sensor.ems_actuator_writer_trace`
-
-## Vianetsintaohjeet
-
-### EV ei kaynnisty
-
-Tarkista jarjestyksessa:
-
-1. `goal_profile`
-2. `guard`
-3. `sensor.ems_device_policies_pyscript` / `device_policies`
-4. `sensor.ems_active_surplus_devices`
-5. `actuator_writer_trace.devices.<ev_device_id>`
-
-Tulkitse:
-
-1. jos valitun EV-device-id:n `enabled = false` ja `target_w = 0`, EV:ta ei pyydeta aktiiviseksi
-2. jos valitun EV-device-id:n `enabled = true` ja `target_w > 0`, writer muuntaa pyynnon ampeereiksi
-3. writer-tracen `reason` kertoo, kirjoitettiinko oikeasti vai oliko tila jo valmiiksi oikea
-
-### EV jaa vaaraan virtaan
-
-Tarkista:
-
-1. `ev_force_on`
-2. `goal_profile`
-3. `sensor.ems_device_policies_pyscript`
-4. `actuator_writer_trace.ev.reason`
-
-Tyypillinen selitys nykykoodissa:
-
-1. NET_ZERO release -polussa writer palauttaa currentin minimiin
-2. `hard_off`-polussa writer sammuttaa laturin mutta jattaa selectorin minimiin
-
-Restore_min-haaran tarkennus (EV-primary + HOME_BATTERY):
-
-1. jos `ev_policy_mode = restore_min` ja `charger_on = false`, battery-target voi jatkaa normaalia NET_ZERO-saatoa (purku sallittu)
-2. jos `ev_policy_mode = restore_min` ja `charger_on = true`, battery floor-hold voi aktivoitua ja battery-target lukittuu flooriin
-3. tarkista aina yhdessa: `ev_policy_mode`, `EV_CHARGER.target_w`, `switch.charger_control` (`charger_on`) ja `battery_min_floor_reason`
-
-### Releet eivat aktivoidu
-
-Tarkista:
-
-1. `relay*_surplus_allowed`
-2. `relay*_force_on`
-3. `sensor.ems_active_surplus_devices`
-4. `device_policies`
-5. `actuator_writer_trace.devices.<relay_device_id>`
-
-### Akku ei reagoi
-
-Tarkista:
-
-1. `battery_write_enabled`
-2. `control_profile`
-3. `guard`
-4. `device_policies`
-5. `actuator_battery_setpoint_w`
-6. writerin deadband- ja ramp-arvot
-
-Jos `battery_write_enabled=False`, writer ei kirjoita akulle.
-
-### Järjestelma putoaa `DEGRADED`-tilaan
-
-Tarkista:
-
-1. battery inverter heartbeatin ika
-2. SOC:n saatavuus ja validius
-3. `guard_reason`
-
-Koodin perusteella `DEGRADED` tulee stale/invalid battery inverter- tai SOC-datasta.
-
-### HAEO ei vaikuta
-
-Tarkista:
-
-1. `forecast_profile`
-2. `control_profile`
-3. `configured_forecast`
-4. `effective_forecast`
-5. HAEO freshness-lahteiden paivitysajat
-
-Jos `effective_forecast=NONE`, EMS on paikallisessa fallbackissa, vaikka HAEO olisi konfiguroitu.
-
-## Tunnetut ristiriidat ja riskit
-
-1. Goal-profile-valinnan automatiikkaa ei loytynyt taman repon sisalta.
-2. `DEGRADED`-tilassa writer skiptaa rele- ja EV-actuatorien aktiivisen pakottamisen, vaikka latchit clearataan. Tama kannattaa huomioida turvallisuusriskina ja erillisena tuotantopaatoksena.
-
-## Avoimet kysymykset / jatkokehitys
-
-1. Missa mahdollinen automaattinen goal switcher sijaitsee, jos sellainen on tuotannossa kaytossa?
-2. Tarvitaanko erillinen health-check tai dashboard `guard_reason`, `battery_write_enabled`, `ev_policy_mode` ja HAEO freshness -seurantaan?
-3. Pitaako vanhat `__pycache__`- ja `.pyc`-artefaktit poistaa reposta?
+Jos Home Assistantissa on viela riippuvuuksia naihin, ne on paivitettava
+kanonisiin `device_policies`, `dispatch_command`, `policy_state` ja
+`policy_diagnostics` -pintoihin.

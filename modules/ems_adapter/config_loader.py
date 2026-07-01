@@ -10,6 +10,7 @@ from ems_core.domain.models import (
     CoreBatteryGuardConfig,
     CoreBatteryPolicyConfig,
     CoreConfig,
+    CoreDiagnosticsOutputsConfig,
     CoreDeviceCapabilitiesConfig,
     CoreEvAdapterConfig,
     CoreEvChargerDeviceConfig,
@@ -45,6 +46,7 @@ REQUIRED_TOP_LEVEL_SECTIONS = (
     'runtime',
     'state',
     'policy_outputs',
+    'diagnostics_outputs',
 )
 OPTIONAL_TOP_LEVEL_SECTIONS = (
     'role_constraints',
@@ -69,18 +71,29 @@ ALLOWED_ROLE_KEYS = {
 ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
 ALLOWED_POLICY_OUTPUT_KEYS = frozenset(
     (
-        'decision_trace',
         'device_policies',
         'dispatch_command',
         'policy_state',
-        'surplus_policy_active',
-        'surplus_next_target',
-        'surplus_next_threshold',
-        'surplus_release_candidate',
-        'surplus_explanation',
-        'actuator_writer_trace',
     )
 )
+ALLOWED_DIAGNOSTICS_OUTPUT_KEYS = frozenset(
+    (
+        'policy_diagnostics',
+        'actuator_writer_trace',
+        'dispatch_state_applier_trace',
+    )
+)
+LEGACY_POLICY_OUTPUT_REJECTIONS = {
+    'decision_trace': 'Unsupported legacy policy_outputs field: decision_trace. Use diagnostics_outputs.policy_diagnostics instead.',
+    'actuator_writer_trace': 'Unsupported legacy policy_outputs field: actuator_writer_trace. Use diagnostics_outputs.actuator_writer_trace instead.',
+    'dispatch_state_applier_trace': 'Unsupported legacy policy_outputs field: dispatch_state_applier_trace. Use diagnostics_outputs.dispatch_state_applier_trace instead.',
+    'surplus_policy_active': 'Unsupported legacy policy_outputs field: surplus_policy_active. Standalone surplus summary sensors were removed.',
+    'surplus_next_target': 'Unsupported legacy policy_outputs field: surplus_next_target. Standalone surplus summary sensors were removed.',
+    'surplus_next_threshold': 'Unsupported legacy policy_outputs field: surplus_next_threshold. Standalone surplus summary sensors were removed.',
+    'surplus_release_candidate': 'Unsupported legacy policy_outputs field: surplus_release_candidate. Standalone surplus summary sensors were removed.',
+    'surplus_explanation': 'Unsupported legacy policy_outputs field: surplus_explanation. Standalone surplus summary sensors were removed.',
+}
+KNOWN_POLICY_OUTPUT_KEYS = frozenset(tuple(ALLOWED_POLICY_OUTPUT_KEYS) + tuple(LEGACY_POLICY_OUTPUT_REJECTIONS))
 ALLOWED_DEVICE_KEYS = frozenset(('kind', 'capabilities', 'policy', 'adapter', 'guard'))
 ALLOWED_CAPABILITIES_KEYS = frozenset(
     (
@@ -245,26 +258,37 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         )
 
     if isinstance(ems.get('policy_outputs'), dict):
+        _validate_legacy_policy_output_fields(ems['policy_outputs'], issues)
         _validate_unknown_fields(
             ems['policy_outputs'],
             'ems.policy_outputs',
-            ALLOWED_POLICY_OUTPUT_KEYS,
+            KNOWN_POLICY_OUTPUT_KEYS,
             issues,
         )
         _validate_required_entities(
             ems['policy_outputs'],
             'ems.policy_outputs',
             (
-                'decision_trace',
                 'device_policies',
                 'dispatch_command',
                 'policy_state',
-                'surplus_policy_active',
-                'surplus_next_target',
-                'surplus_next_threshold',
-                'surplus_release_candidate',
-                'surplus_explanation',
+            ),
+            issues,
+        )
+    if isinstance(ems.get('diagnostics_outputs'), dict):
+        _validate_unknown_fields(
+            ems['diagnostics_outputs'],
+            'ems.diagnostics_outputs',
+            ALLOWED_DIAGNOSTICS_OUTPUT_KEYS,
+            issues,
+        )
+        _validate_required_entities(
+            ems['diagnostics_outputs'],
+            'ems.diagnostics_outputs',
+            (
+                'policy_diagnostics',
                 'actuator_writer_trace',
+                'dispatch_state_applier_trace',
             ),
             issues,
         )
@@ -302,6 +326,15 @@ def _validation_result(ok: bool, issues: list[ConfigValidationIssue]) -> ConfigV
         errors=tuple(errors),
         warnings=tuple(warnings),
     )
+
+
+def _validate_legacy_policy_output_fields(
+    policy_outputs: dict,
+    issues: list[ConfigValidationIssue],
+) -> None:
+    for field_name, message in LEGACY_POLICY_OUTPUT_REJECTIONS.items():
+        if field_name in policy_outputs:
+            issues.append(_issue(f'ems.policy_outputs.{field_name}', SEVERITY_ERROR, message))
 
 
 def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
@@ -536,11 +569,14 @@ def build_core_config_from_grouped_reader(
             previous_device_state=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), read_entity, ''),
         ),
         policy_outputs=CorePolicyOutputsConfig(
-            decision_trace=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'decision_trace'), read_entity, ''),
             device_policies=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'device_policies'), read_entity, ''),
             dispatch_command=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'dispatch_command'), read_entity, ''),
             policy_state=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'policy_state'), read_entity, ''),
-            surplus_policy_active=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'surplus_policy_active'), read_entity, ''),
+        ),
+        diagnostics_outputs=CoreDiagnosticsOutputsConfig(
+            policy_diagnostics=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'policy_diagnostics'), read_entity, ''),
+            actuator_writer_trace=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'actuator_writer_trace'), read_entity, ''),
+            dispatch_state_applier_trace=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'dispatch_state_applier_trace'), read_entity, ''),
         ),
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),

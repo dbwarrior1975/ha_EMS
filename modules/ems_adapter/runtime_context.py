@@ -260,6 +260,7 @@ def build_runtime_entities_from_grouped_config(config):
     runtime = ems.get('runtime', {})
     state = ems.get('state', {})
     outputs = ems.get('policy_outputs', {})
+    diagnostics = ems.get('diagnostics_outputs', {})
     haeo = ems.get('haeo', {})
     devices = ems.get('devices', {})
     if isinstance(runtime, dict):
@@ -270,16 +271,13 @@ def build_runtime_entities_from_grouped_config(config):
         ent['active_surplus_devices'] = state.get('active_surplus_devices')
         ent['previous_device_state'] = state.get('previous_device_state')
     if isinstance(outputs, dict):
-        ent['policy_decision_trace'] = outputs.get('decision_trace')
         ent['device_policies'] = outputs.get('device_policies')
         ent['dispatch_command'] = outputs.get('dispatch_command')
         ent['policy_state'] = outputs.get('policy_state')
-        ent['surplus_policy_active_pys'] = outputs.get('surplus_policy_active')
-        ent['surplus_next_target_pys'] = outputs.get('surplus_next_target')
-        ent['surplus_next_threshold_pys'] = outputs.get('surplus_next_threshold')
-        ent['surplus_release_candidate_pys'] = outputs.get('surplus_release_candidate')
-        ent['surplus_explanation_pys'] = outputs.get('surplus_explanation')
-        ent['actuator_writer_trace'] = outputs.get('actuator_writer_trace')
+    if isinstance(diagnostics, dict):
+        ent['policy_diagnostics'] = diagnostics.get('policy_diagnostics')
+        ent['actuator_writer_trace'] = diagnostics.get('actuator_writer_trace')
+        ent['dispatch_state_applier_trace'] = diagnostics.get('dispatch_state_applier_trace')
     if isinstance(haeo, dict):
         ent['haeo_battery_power_active'] = haeo.get('battery_power_active')
         ent['haeo_ev_battery_power_active'] = haeo.get('ev_power_active')

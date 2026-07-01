@@ -2,573 +2,158 @@
 
 ## Tarkoitus
 
-Tama dokumentti kuvaa projektin nykyarkkitehtuurin. Kuvaus perustuu erityisesti tiedostoihin `ems_policy_engine.py`, `ems_dispatch_state_applier.py`, `ems_actuator_writers.py` ja `modules/ems_core/*`.
+Tama dokumentti kuvaa nykyisen aktiivisen runtime-arkkitehtuurin. Kuvaus
+vastaa tiedostoja `ems_policy_engine.py`, `ems_dispatch_state_applier.py`,
+`ems_actuator_writers.py` ja `modules/ems_adapter/runtime_context.py`.
 
-Projektin ydin on kolmen paakomponentin ketju:
+## Kanoninen tuotantoketju
 
-1. policy engine laskee EMS:n tavoiteohjaukset
-2. surplus dispatch state applier paivittaa sisaiset aktiivisuuslukot
-3. actuator writer loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
+EMS:n tuotantopolku on kolmevaiheinen:
 
-Nykyinen tuotantopolku perustuu kanonisesti naihin pintoihin:
+1. policy engine laskee policy-payloadit
+2. dispatch state applier paivittaa aktiiviset surplus-tilat
+3. actuator writer kirjoittaa lopulliset aktuaattorikomennot
 
-1. `policy_decision_trace`
-2. `device_policies`
-3. `active_surplus_devices`
-4. `previous_device_state`
+Kanoniset runtime-outputit ovat:
 
-`policy_*`-sensorit ja `surplus_*_active`-booleanit eivat kuulu enaa aktiiviseen
-tuotantopintaan. Jaljella olevat `surplus_*_pys`-sensorit ovat diagnostisia
-yksittaisjulkaisuja, mutta dispatch- ja writer-paatokset nojaavat kanonisesti
-`policy_decision_trace`-, `device_policies`-, `active_surplus_devices`- ja
-`previous_device_state`-pintoihin.
+1. `policy_outputs.device_policies`
+2. `policy_outputs.dispatch_command`
+3. `policy_outputs.policy_state`
 
-Adapteri-/debug-viewt elavat vain erillisissa deprecated adapter -poluissa.
+Diagnostiikka-outputit ovat:
 
-Liiketoimintatavoitteiden nakokulma on koottu erikseen tiedostoon
-`docs/user/business_logic_guide.md`.
+1. `diagnostics_outputs.policy_diagnostics`
+2. `diagnostics_outputs.actuator_writer_trace`
+3. `diagnostics_outputs.dispatch_state_applier_trace`
+
+`policy_diagnostics` on vain selitys- ja debug-pinta. Sita ei saa kayttaa
+command/state-lahteena.
 
 ## Kokonaiskuva
 
 ```mermaid
 flowchart LR
     HA[Home Assistant entityt] --> RC[runtime_context.py\nentity registry + CoreConfig]
-    RC --> P[ems_policy_engine.py\npolicy engine]
-    P --> TRACE[policy_decision_trace]
+    RC --> P[ems_policy_engine.py]
     P --> DP[device_policies]
-    P --> PREV[previous_device_state]
-    TRACE --> L[ems_dispatch_state_applier.py\ndispatch state applier]
-    L --> ACTIVE[active_surplus_devices\n+ surplus_freeze_until]
-    DP --> W[ems_actuator_writers.py\nactuator writer loop]
-    TRACE --> W
+    P --> DC[dispatch_command]
+    P --> PS[policy_state]
+    P --> PD[policy_diagnostics]
+    DC --> D[ems_dispatch_state_applier.py]
+    D --> ACTIVE[active_surplus_devices\n+ surplus_freeze_until]
+    D --> DTRACE[dispatch_state_applier_trace]
+    DP --> W[ems_actuator_writers.py]
     ACTIVE --> W
-    W --> ACT[actuator_* entiteetit]
-    P --> SDIAG[surplus_* diagnostics\n(deprecated adapter only)]
-    L --> LTRACE[dispatch_state_applier_trace]
+    W --> ACT[actuator_* entityt]
     W --> WTRACE[actuator_writer_trace]
 ```
 
-## Tilakaavio
+## Komponentit
 
-Seuraava kaavio kokoaa yhteen guard-profiilien keskeiset operaatiotilat ja surplus-dispatch-statejen paavaiheet.
-
-```mermaid
-stateDiagram-v2
-    [*] --> NORMAL_LIMITS
-
-    NORMAL_LIMITS --> BATTERY_PROTECT: soc < protect_soc or min_cell < protect_v
-    BATTERY_PROTECT --> NORMAL_LIMITS: soc >= protect_soc + margin and min_cell >= protect_v
-
-    NORMAL_LIMITS --> STRICT_LIMITS: user selects STRICT_LIMITS
-    STRICT_LIMITS --> NORMAL_LIMITS: user leaves STRICT_LIMITS
-
-    NORMAL_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
-    BATTERY_PROTECT --> DEGRADED: stale/invalid battery inverter or soc
-    STRICT_LIMITS --> DEGRADED: stale/invalid battery inverter or soc
-    DEGRADED --> NORMAL_LIMITS: data fresh and valid, no protect trigger
-    DEGRADED --> BATTERY_PROTECT: data fresh and battery protect trigger
-
-    state "Surplus Dispatch State" as SDS {
-        [*] --> IDLE
-        IDLE --> ACTIVE: ACTIVATE_*
-        ACTIVE --> ACTIVE: ACTIVATE_* (same or next target)
-        ACTIVE --> IDLE: RELEASE_* or CLEAR_ALL
-        ACTIVE --> FROZEN: freeze_until_ts > now
-        FROZEN --> ACTIVE: freeze expired and target still active
-        FROZEN --> IDLE: RELEASE_* or CLEAR_ALL
-        IDLE --> FROZEN: freeze created on force/activation edge
-    }
-```
-
-## Paakomponentit
-
-### 1. Policy Engine
+### Policy Engine
 
 Tiedosto: `ems_policy_engine.py`
 
 Vastuut:
 
-1. lukee konfiguraation `runtime_context`-kerroksen kautta `CoreConfig`-malliin
-2. lukee aktiiviset profiilit `Profiles`-malliin
-3. lukee mittaukset `RuntimeMeasurements`-malliin
-4. arvioi guard-tilan `evaluate_guard()`-funktion kautta
-5. lukee HAEO-ennusteen tilan ja tuoreuden
-6. laskee net zero -moottorin ulostulot `compute_net_zero_engine_outputs()`-funktion kautta
-7. julkaisee kanoniset `device_policies`, `policy_decision_trace`,
-   `active_surplus_devices` ja `previous_device_state` -ulostulot
-8. erillisia vanhoja diagnostiikkapeileja ei julkaista aktiivisessa
-   runtime-polussa
+1. lukee `CoreConfig`-konfiguraation runtime_contextin kautta
+2. lukee profiilit ja mittaukset
+3. arvioi guard-tilan
+4. laskee `NetZeroOutputs`-ulostulon
+5. julkaisee `device_policies`, `dispatch_command` ja `policy_state`
+6. julkaisee `policy_diagnostics`-selityspayloadin
 
-Koodin triggerit:
+Julkaisusopimus:
 
-1. `@time_trigger('period(now, 30s)')`
-2. `@state_trigger(...)` profiili- ja mittausentiteeteille
+1. `device_policies` sensorin `state` on `device_policies_hash`
+2. `dispatch_command` sensorin `state` on `dispatch_command_hash`
+3. `policy_state` sensorin `state` on `policy_state_hash`
+4. varsinainen payload on attribuuteissa
 
-Julkaistavat kanoniset policy-entiteetit:
-
-1. `device_policies`
-2. `policy_decision_trace`
-3. `active_surplus_devices`
-4. `previous_device_state`
-
-Julkaistavat diagnostiset yksittaiskentat:
-
-1. `surplus_policy_active_pys`
-2. `surplus_next_target_pys`
-3. `surplus_next_threshold_pys`
-4. `surplus_release_candidate_pys`
-5. `surplus_explanation_pys`
-
-### 2. Dispatch State Applier
+### Dispatch State Applier
 
 Tiedosto: `ems_dispatch_state_applier.py`
 
 Vastuut:
 
-1. lukee `policy_decision_trace`-entiteetin attribuuteista device-id-pohjaisen
-   dispatch-paatoksen
-2. paivittaa kanonisen `active_surplus_devices`-tilan
-3. kirjoittaa `surplus_freeze_until`-ajan `input_datetime`-entiteettiin
-4. julkaisee `sensor.ems_dispatch_state_applier_trace`-diagnostiikan
+1. lukee dispatch-paatoksen vain `dispatch_command`-sensorista
+2. paivittaa `active_surplus_devices`-tilan
+3. kirjoittaa `surplus_freeze_until`-ajan
+4. julkaisee `dispatch_state_applier_trace`-diagnostiikan
 
-Tama komponentti ei tee optimointia itse, vaan toteuttaa policy engine -komponentin paatoksen tilamuutoksiksi.
+Jos `dispatch_command` puuttuu tai on invalidi, kayttaytyminen on eksplisiittinen
+safe `NOOP`.
 
-### 3. Actuator Writer Loop
+### Actuator Writer
 
 Tiedosto: `ems_actuator_writers.py`
 
 Vastuut:
 
-1. kirjoittaa akun setpointin `actuator_battery_setpoint_w`-entiteettiin
-2. kirjoittaa EV-laturin paalle/pois-tilan ja virran `actuator_ev_enabled` ja `actuator_ev_current_a` -entiteetteihin
-3. kirjoittaa releiden paalle/pois-komennot `actuator_relay1` ja `actuator_relay2` -entiteetteihin
-4. julkaisee `sensor.ems_actuator_writer_trace`-diagnostiikan
+1. lukee laitekohtaiset policyt vain `device_policies`-sensorista
+2. kirjoittaa akun setpointin
+3. kirjoittaa EV-laturin enabled/current-arvot
+4. kirjoittaa releiden on/off-tilat
+5. julkaisee `actuator_writer_trace`-diagnostiikan
 
-Actuator writer loop toimii kanonisesti `device_policies`-ulostulon perusteella.
-`sensor.ems_device_policies_pyscript` state on monotonisesti kasvava versionumero;
-varsinainen payload luetaan sensorin `device_policies`-attribuutista.
-Akkuwriterissa policy-attribuutin `battery_write_enabled` rooli on edelleen
-olennainen, mutta writer ei hae paatoksia vanhoista `policy_*`-attribuuttifallbackeista.
+Writer ei lue `policy_diagnostics`-payloadia fallbackina.
 
-EV-writerin kanoninen syote on `DevicePolicy.target_w`. Ampeerit ovat writer-
-/adapteritason muunnos. `ev_policy_mode` erottaa edelleen kaksi eri `0 A`
--semantiikkaa:
+## Runtime entity registry
 
-1. `ev_policy_mode == hard_off` -> laturi kytketaan pois paalta, mutta current-selector pidetaan hardware-minimissa
-2. muu `0 A` -> surplus release -semantiikka, jossa virta palautetaan minimiin vain jos laturi on jo paalla
+Tiedosto: `modules/ems_adapter/runtime_context.py`
 
-## Domain-mallit
+Kanoniset runtime-avaimet:
 
-Tiedosto: `modules/ems_core/domain/models.py`
+1. `device_policies`
+2. `dispatch_command`
+3. `policy_state`
+4. `policy_diagnostics`
+5. `actuator_writer_trace`
+6. `dispatch_state_applier_trace`
+7. `active_surplus_devices`
+8. `previous_device_state`
+9. `surplus_freeze_until`
 
-Projektin keskeiset mallit:
+Legacy-trace- ja standalone surplus summary -avaimia ei exposeerata aktiivisessa
+registryssa.
 
-1. `Profiles`
-2. `CoreConfig`
-3. `RuntimeMeasurements`
-4. `HaeoTargets`
-5. `NetZeroState`
-6. `SurplusDeviceTarget`
-7. `SurplusDispatchInput`
-8. `SurplusDispatchDecision`
-9. `NetZeroOutputs`
+## Konfiguraatiosopimus
 
-### Profiilit
+Kanoninen grouped config -muoto:
 
-`ControlProfile`:
+```yaml
+ems:
+  policy_outputs:
+    device_policies: sensor.ems_device_policies_pyscript
+    dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
+    policy_state: sensor.ems_policy_state_pyscript
 
-1. `MANUAL`
-2. `MANUAL_SAFE`
-3. `AUTOMATIC`
-4. `HORIZON_BY_HAEO`
+  diagnostics_outputs:
+    policy_diagnostics: sensor.ems_policy_diagnostics_pyscript
+    actuator_writer_trace: sensor.ems_actuator_writer_trace
+    dispatch_state_applier_trace: sensor.ems_dispatch_state_applier_trace
+```
 
-`GoalProfile`:
+Seuraavat legacy-kentat hylataan eksplisiittisesti:
 
-1. `NET_ZERO`
-2. `MAX_EXPORT`
-3. `CHEAP_GRID_CHARGE`
+1. legacy policy trace -alias
+2. `policy_outputs.actuator_writer_trace`
+3. `policy_outputs.dispatch_state_applier_trace`
+4. standalone surplus summary -kentat
 
-`ForecastProfile`:
+## Diagnostiikkamoduuli
 
-1. `NONE`
-2. `HAEO`
+Tiedosto: `modules/ems_core/diagnostics/policy_diagnostics.py`
 
-`GuardProfile`:
+Diagnostiikkapayload sisaltaa selitys- ja seurantakenttia kuten:
 
-1. `NORMAL_LIMITS`
-2. `STRICT_LIMITS`
-3. `BATTERY_PROTECT`
-4. `DEGRADED`
+1. `device_policies`
+2. `surplus_device_dispatch_action`
+3. `surplus_device_dispatch_target`
+4. `surplus_device_dispatch_device_id`
+5. `surplus_device_targets`
+6. `surplus_explanation`
+7. `config_source`
+8. `policy_output_contract`
 
-## Runtime-context ja entity-mappaus
-
-Keskeiset tiedostot:
-
-1. `modules/ems_adapter/runtime_context.py`
-
-Nykyinen tuotantopolku lukee entity-id:t ensisijaisesti `runtime_context`-
-kerroksen kautta grouped `EMS_config.yaml` -rakenteesta.
-
-`read_config()` palauttaa nykyisin vain `CoreConfig`-instanssin. Erillinen
-rinnakkainen config-view on poistettu aktiivisesta runtime-polusta.
-
-Keskeiset entity-ryhmat ovat edelleen:
-
-1. profiilit: `control_profile`, `goal_profile`, `forecast_profile`, `guard_profile`
-2. konfiguraatio: yhteiset kentat (`deadband_w`, `ramp_max_w`,
-   `strict_limits_max_w`, `max_battery_discharge_w`, `max_solar_charge_w`,
-   `ev_*`) seka device-registryyn sidotut laitekohtaiset kentat kuten
-   `capabilities.max_absorb_w` ja `policy.priority`
-3. mittaukset: `soc`, `min_cell_voltage_v`, `grid_power_w`, `current_battery_sp`, `quarter_energy_balance`, `pv_power_kw`
-4. HAEO: `haeo_battery_power_active`, `haeo_ev_battery_power_active`, freshness-lahteet
-5. policy-ulostulot: `policy_decision_trace`, `device_policies`, `previous_device_state`
-6. surplus-tilat: `surplus_freeze_until`, `active_surplus_devices`
-7. aktuaattorit: `actuator_battery_setpoint_w`, `actuator_ev_current_a`, `actuator_ev_enabled`, `actuator_relay1`, `actuator_relay2`
-
-## Guard-logiikka
-
-Tiedosto: `modules/ems_core/guard/evaluator.py`
-
-Guardin arviointi tapahtuu jokaisessa policy engine -ajokierroksessa.
-
-### `STRICT_LIMITS`
-
-Jos guard on kayttajan valitsema `STRICT_LIMITS`, evaluator ei overridea sita. Koodin syyteksti on: `STRICT_LIMITS is user selected; EMS will not override`.
-
-### `DEGRADED`
-
-`DEGRADED` aktivoituu, jos battery inverter/SOC-data on stale tai virheellinen:
-
-1. `battery_heartbeat_age_s > battery_heartbeat_timeout_s`
-2. SOC puuttuu tai ei ole valilla 0..100
-
-Koodin syyteksti: `battery inverter/SOC data is stale or invalid`.
-
-### `BATTERY_PROTECT`
-
-`BATTERY_PROTECT` aktivoituu, jos jompikumpi tai molemmat ehdoista tayttyvat:
-
-1. `soc < battery_protect_soc`
-2. `min_cell_voltage_v < battery_protect_min_cell_voltage_v`
-
-Palautuminen tapahtuu vain, jos molemmat palautumisehdot tayttyvat samanaikaisesti:
-
-1. `soc >= battery_protect_soc + battery_protect_soc_recovery_margin`
-2. `min_cell_voltage_v >= battery_protect_min_cell_voltage_v`
-
-Tama kayttaytyminen on varmennettu myos skenaariotesteissa.
-
-## Net zero -moottori
-
-Tiedosto: `modules/ems_core/net_zero/engine.py`
-
-Moottori yhdistaa profiilit, guard-tilan, HAEO:n, akun setpoint-laskennan, EV-strategian ja surplus-allokaation yhdeksi `NetZeroOutputs`-tulokseksi.
-
-`compute_net_zero_engine_outputs(...)` lukee releiden runtime-tilan
-device-id-pohjaisesta `relay_device_states`-mapista ja edellisen force-tilan
-`previous_force_on_device_ids`-joukosta. Tuotantopolun canonical runtime state
-on `CoreConfig`, `device_policies`, `surplus_device_targets`,
-`active_surplus_devices` ja writer trace `devices`.
-
-### Ennusteen roolit
-
-`configured_forecast()`:
-
-1. `MANUAL` ja `MANUAL_SAFE` pakottavat ennusteen `NONE`
-2. `forecast_profile == HAEO` aktivoi HAEO-konfiguraation
-3. `HORIZON_BY_HAEO` + `forecast_profile == NONE` aktivoi HAEO-konfiguraation
-
-`effective_forecast()`:
-
-1. HAEO on tehokkaasti kaytossa vain, jos se on konfiguroitu
-2. ja freshness-ehto toteutuu
-
-### Dominant limitation
-
-Moottori julkaisee `dominant_limitation`-kenttan, jonka mahdollisia arvoja ovat esimerkiksi:
-
-1. `SYSTEM_DEGRADED`
-2. `BATTERY_SOC_LIMIT`
-3. `USER_MANUAL_OVERRIDE`
-4. `MANUAL_SAFE_ACTIVE`
-5. `STRICT_POWER_LIMITS`
-6. `FORECAST_FALLBACK_LOCAL`
-7. `OPTIMIZATION_ACTIVE`
-
-## Akkuohjauksen semantiikka
-
-### `MANUAL`
-
-`MANUAL`-tilassa moottori palauttaa nykyisen akun setpointin, mutta `battery_write_enabled` on `False`. Actuator writer loop ei siis kirjoita akulle.
-
-### `MANUAL_SAFE`
-
-`MANUAL_SAFE`-tilassa akun semantiikka on kaksiosainen:
-
-1. normaalitilassa moottori palauttaa nykyisen akun setpointin ja `battery_write_enabled` on `False`
-2. guard-tiloissa moottori voi clampata akun setpointia turvalliseen suuntaan ja samalla `battery_write_enabled` muuttuu `True`
-
-Tarkemmat guard-vaikutukset:
-
-1. `DEGRADED` -> akkutarget `0`
-2. `BATTERY_PROTECT` -> akkutarget ei-negatiiviseksi
-3. `STRICT_LIMITS` -> akkutarget `[-strict_limits_max_w, +strict_limits_max_w]`
-4. `NORMAL_LIMITS` -> purkupuoli clampataan rajaan `-abs(max_battery_discharge_w)`
-
-`max_battery_discharge_w`-merkkisemantiikka:
-
-1. canonical syote on negatiivinen export-domainissa (esim. `-4000`)
-2. positiivinen syote (esim. `4000`) on edelleen sallittu aiemman syotemuodon vuoksi
-3. moottori normalisoi molemmat samaan clamp-rajaan `-abs(limit)`
-4. trace julkaisee normalisoinnin diagnostiset kentat:
-    - `discharge_limit_w`
-    - `discharge_limit_sign_mode`
-    - `configured_discharge_limit_w`
-
-### `NET_ZERO`
-
-`NET_ZERO`-tilassa akun target lasketaan `candidate_sp_net_zero()`-funktion avulla. Laskenta kayttaa:
-
-1. `rpnz_w`
-2. `grid_actual_w`
-3. nykyista akun setpointia
-4. deadbandia
-5. ramppirajaa
-6. `max_solar_charge_w`-ylakattoa
-7. konfiguroitavaa minimi-flooria `nz_battery_floor_default_w`
-
-Surplus-release poikkeus:
-
-1. aktiivisen surplus-kuorman release ei kayta enaa raakaa ehtoa `rpnz_w <= 0`
-2. surplus allocator kasittelee `rpnz_w <= 10 W` practical-zero deadbandina
-3. jos aktiivisia surplus-kohteita on, alin prioriteetti vapautetaan taman deadbandin sisalla
-
-EV-primary poikkeus:
-
-1. jos `adjustable_primary_load = EV_CHARGER`, akun minimi-floor ei tule `nz_battery_floor_default_w`-arvosta
-2. silloin floor tulee erillisesta arvosta `nz_battery_floor_ev_active_w`
-3. kaytannossa EV-primary-polku siis yliajaa default-floorin
-4. EV-primary battery-authority kayttaa samaa `RPNZ_PRACTICAL_ZERO_W = 10 W` kaytannon nollaa erottaakseen pienen positiivisen RPNZ:n aidosta lisakulutustarpeesta
-
-### `MAX_EXPORT`
-
-Ilman HAEO:ta akun paikallinen fallback on `-4000` W.
-
-Jos HAEO on tehokkaasti kaytossa, akun target tulee suoraan `haeo.battery_target_kw`-ennusteesta wattimuotoon muunnettuna.
-
-Kun guard on `NORMAL_LIMITS`, lopullinen target clampataan aina purkurajaan `-abs(max_battery_discharge_w)`.
-
-### `CHEAP_GRID_CHARGE`
-
-Ilman HAEO:ta akun paikallinen fallback on `100` W.
-
-Jos HAEO on tehokkaasti kaytossa, akun target tulee `haeo.battery_target_kw`-ennusteesta.
-
-## EV-ohjauksen semantiikka
-
-Tiedosto: `modules/ems_core/net_zero/load_projection.py`
-
-### `MANUAL`
-
-Jos `ev_force_on` on tosi, EV-targetiksi asetetaan `capabilities.max_absorb_w`. Muuten EV-target on `0`.
-
-### `MANUAL_SAFE`
-
-EV-semantiikka on koodikommentin mukaan sama kuin `MANUAL` "for now". Akkuun liittyva turvallisuus clampataan muualla.
-
-### `DEGRADED`
-
-`DEGRADED`-guard palauttaa EV:lle aina `0`, eli writer ei tee aktiivista EV-ohjausta.
-
-### `NET_ZERO`
-
-`NET_ZERO`-tilassa `ev_force_on` pakottaa EV:n `capabilities.max_absorb_w` -tasolle. Ilman forcea EV saa targetin vain surplus-burnin kautta.
-
-Semantiikka:
-
-1. jos `burn_active` on epatosi ja `ev_force_on` on epatosi, EV-target on `0`
-2. jos `burn_active` on tosi, EV-target on `capabilities.max_absorb_w`
-3. jos `ev_force_on` on tosi, EV-target on `capabilities.max_absorb_w`
-
-### `MAX_EXPORT`
-
-Nykyinen tuotantokoodi palauttaa `MAX_EXPORT`-tilassa EV-policyksi `0`.
-
-Koodikommentti sanoo, etta `MAX_EXPORT means export-first: flexible EV charging must be off`.
-
-Tama on nykyisen tuotantosemantiikan ydin. Yllapidon kannalta tama tarkoittaa tavoitetilana:
-
-1. EV policy current `0`
-2. charger disabled
-3. current `0`
-4. relays off
-
-Nykyinen writer-toteutus tukee taman tavoitesemantiikan `hard_off`-attribuutilla.
-
-### `CHEAP_GRID_CHARGE`
-
-Semantiikka:
-
-1. jos `ev_force_on` on tosi, EV-target on `capabilities.max_absorb_w`
-2. muuten HAEO voi syottaa EV-kohdetehon watteina
-3. ilman forcea ja ilman HAEO:ta oletus on `capabilities.max_absorb_w`
-
-### EV hard-off low-PV -kayttaytyminen
-
-Tiedosto: `modules/ems_core/net_zero/engine.py` ja writer `ems_actuator_writers.py`.
-
-Nykyinen tuotantoketju tukee EV:lle erillista low-PV hard-off -tilaa.
-
-Semantiikka:
-
-1. `EV_CHARGER.target_w` voi olla `0`
-2. samalla attribuutti `ev_policy_mode` voi olla `hard_off`
-3. writer sammuttaa silloin laturin, mutta jattaa current-selectorin minimiin
-4. attribuutti `ev_low_pv_cycles` kertoo montako matalan PV:n sykliä on kertynyt
-
-## Releohjauksen semantiikka
-
-Tiedosto: `modules/ems_core/net_zero/load_projection.py`
-
-### `MANUAL` ja `MANUAL_SAFE`
-
-Releet seuraavat suoraan `force_on`-tilaa:
-
-1. `force_on=True` -> komento `1`
-2. muuten komento `0`
-
-### `DEGRADED`
-
-Palauttaa `-1`, eli skip.
-
-### `NET_ZERO`
-
-Semantiikka:
-
-1. `force_on=True` ohittaa muun logiikan -> `1`
-2. jos import-zero ei ole sallittu -> `0`
-3. jos `net_zero_active=True` -> `1`
-4. muuten `0`
-
-### `MAX_EXPORT` ja `CHEAP_GRID_CHARGE`
-
-Kummassakin palautetaan `0`, eli releet ovat pois.
-
-## Surplus-allokaatio
-
-Tiedosto: `modules/ems_core/net_zero/surplus_allocator.py`
-
-Allokaattori tekee prioriteettipohjaisen aktivointi- ja vapautuspaatoksen.
-
-Peruskayttaytyminen:
-
-1. jos policy ei ole aktiivinen -> `CLEAR_ALL`
-2. jos aktiivinen kohde ei ole enaa kelvollinen -> vapauta se
-3. jos `rpnz_w <= SURPLUS_RELEASE_DEADBAND_W` ja aktiivisia kohteita on -> vapauta alin prioriteetti ensin
-4. jos freeze on aktiivinen -> ei uusia aktivointeja
-5. muuten aktivoi seuraava kohde, jos `rpc_kw >= threshold_kw`
-
-Prioriteetti ja jarjestys:
-
-1. `next_device_target()` valitsee suurimman prioriteetin, pienimman rankin kohteen
-2. `release_device_target()` vapauttaa pienimman prioriteetin, suurimman rankin aktiivisen kohteen
-
-Kokonaisuus on testattu useissa quarter-skenaarioissa.
-
-## HAEO:n nykyinen rooli
-
-Tiedostot: `modules/ems_core/integrations/haeo_horizon.py` ja moottorin forecast-kasittely `engine.py`:ssa.
-
-Nykyinen koodista todennettava rooli:
-
-1. forecastin tuoreuden tarkastus tapahtuu freshness-lahteiden viimeisimpien paivitysaikojen perusteella
-2. akun HAEO-target voidaan lukea `haeo_battery_power_active`-entiteetin `forecast`-attribuutista
-3. EV HAEO-target voidaan lukea `haeo_ev_battery_power_active`-entiteetin `forecast`-attribuutista
-4. HAEO vaikuttaa akkusetpointiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
-5. HAEO vaikuttaa EV-ohjaukseen `CHEAP_GRID_CHARGE`-tilassa
-6. `HORIZON_BY_HAEO` voi pakottaa forecast-konfiguraation HAEO:on vaikka `forecast_profile` olisi `NONE`
-
-Rajaus: `haeo_horizon.py` tekee vain forecast-aikaleimojen ja -arvojen poiminnan. Se ei enaa sisalla EV-tehosta selector-virtaan tehtavaa vanhaa muunnosta.
-
-Tarkeaa: koodin perusteella HAEO ei tee taytta `NET_ZERO`-optimointia. `NET_ZERO`-tilassa seliteteksti on nimenomaan paikallisen policylogiikan hallitsema, vaikka HAEO olisi nakyvissa.
-
-## Diagnostiikka ja observability
-
-### `policy_decision_trace`
-
-Tiedosto: `modules/ems_core/diagnostics/decision_trace.py`
-
-Keskeisia attribuutteja:
-
-1. `control`
-2. `goal`
-3. `forecast_profile`
-4. `guard`
-5. `effective_forecast`
-6. `dominant_limitation`
-7. `explanation`
-8. `battery_write_enabled`
-9. `surplus_policy_active`
-10. `surplus_next_target`
-11. `surplus_next_threshold_kw`
-12. `surplus_release_candidate`
-13. `surplus_device_dispatch_action`
-14. `surplus_explanation`
-15. `configured_forecast`
-16. `active_stack`
-17. `surplus_freeze_until_ts`
-18. `surplus_rpc_kw`
-19. `surplus_rpnz_w`
-20. `guard_reason`
-
-Tulkinta:
-
-1. `device_policies` on kanoninen writer-sopimus
-2. erilliset peilikentat on poistettu aktiivisesta runtime-polusta eivatka
-   kuulu release-contractiin
-3. EV:n kanoninen writer-sopimus kulkee vain `device_policies[*].target_w`-arvona
-4. writerin toteutunut ampeeritaso nahtaan `actuator_writer_trace.ev.target_current_a`-kentasta
-5. writer ei lue ohjauspaatoksia erillisista peilikentista, vaan vain kanonisesta
-   `device_policies`-payloadista
-
-### `actuator_writer_trace`
-
-Sisaltaa omat haaransa:
-
-1. `victron`
-2. `ev`
-3. `relay1`
-4. `relay2`
-
-### `dispatch_state_applier_trace`
-
-Sisaltaa esimerkiksi:
-
-1. `decision`
-2. `writes`
-3. `freeze_written`
-4. `freeze_until_ts`
-5. `relay1_active`
-6. `ev_active`
-7. `relay2_active`
-
-## Goal-profile-valinta
-
-EMS lukee goal-profiilin entiteetista `input_select.ems_goal_profile`.
-
-## Nykyinen EV 0 A -semantiikka
-
-Nykytilassa EV:n `0 A` policy jakautuu kolmeen eri writer-polkuun:
-
-1. `ev_policy_mode=restore_min` -> jo paalla oleva laturi pidetaan paalla ja current-selector palautetaan minimiin; pois paalla olevaa laturia ei kaynnisteta
-2. `ev_policy_mode=hard_off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
-3. `release` / eksplisiittinen `off` -> writer sammuttaa laturin ja palauttaa current-selectorin minimiin
-
-Tama semantiikka on nyt linjassa nykyisten e2e-skenaarioiden kanssa.
-
-## Avoimet kysymykset / jatkokehitys
-
-1. Onko `ems_policy_engine.py`-nimeaminen ja rajapinta nyt lopullinen tuotantolinjaus?
-2. Pitaako writeriin lisata erillinen eksplisiittinen EV hard-off -polku `MAX_EXPORT`-semantiikkaa varten?
-3. Tarvitaanko erillinen `SAFE_OFF`- tai `PAUSED`-kayttotila tulevaisuudessa, jos halutaan yksi eksplisiittinen tapa pysayttaa EMS:n vaikutus ilman manuaalista aktuaattorikohtaista asetusta?
-4. Sijaitseeko mahdollinen automaattinen goal switcher toisessa Home Assistant -konfiguraatiorepossa?
+Se ei ole erillinen command-bus eika state-bus.
