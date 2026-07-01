@@ -318,10 +318,31 @@ def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
     config = _load_example(project_root)
     aliases = runtime_alias_index(config)
 
-    assert aliases['required_power_consumption_kw'].config_path == 'ems.runtime.required_power_w'
-    assert aliases['required_power_consumption_kw'].unit_transform == 'W_TO_KW'
-    assert aliases['pv_power_kw'].unit_transform == 'W_TO_KW'
     assert aliases['ev_hard_off_pv_threshold_kw'].unit_transform == 'W_TO_KW'
+
+
+@pytest.mark.unit
+def test_validate_rejects_legacy_runtime_fields_with_explicit_messages(project_root):
+    config = _load_example(project_root)
+    runtime = config['ems']['runtime']
+    runtime['required_power_w'] = 'sensor.required_power_consumption'
+    runtime['rpnz_w'] = 'sensor.ems_calculated_required_power_for_net_zero'
+    runtime['pv_power_kw'] = 'sensor.pv_kw'
+
+    result = validate_grouped_ems_config(config)
+
+    messages = _error_messages(result)
+    assert messages['ems.runtime.required_power_w'] == (
+        'runtime.required_power_w is no longer accepted; required power is derived inside EMS '
+        'from grid_power_w, quarter_energy_balance_kwh, and current quarter time.'
+    )
+    assert messages['ems.runtime.rpnz_w'] == (
+        'runtime.rpnz_w is no longer accepted; RPNZ is derived inside EMS from '
+        'quarter_energy_balance_kwh and current quarter time.'
+    )
+    assert messages['ems.runtime.pv_power_kw'] == (
+        'runtime.pv_power_kw is no longer accepted; use runtime.pv_power_w.'
+    )
 
 
 @pytest.mark.unit

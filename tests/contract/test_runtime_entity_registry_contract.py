@@ -58,6 +58,7 @@ def test_entity_ids_are_unique():
         },
         'number.charger_current_level': {'charger_current', 'actuator_ev_current_a'},
         'switch.charger_control': {'charger_control', 'actuator_ev_enabled'},
+        'sensor.hourly_energy_balance': {'quarter_energy_balance', 'quarter_energy_balance_kwh'},
     }
 
     actual_shared = {
@@ -70,8 +71,9 @@ def test_entity_ids_are_unique():
 
 @pytest.mark.unit
 def test_unit_conversion_contract():
-    assert ENT['rpnz_w'].startswith('sensor.')
-    assert ENT['required_power_consumption_kw'].startswith('sensor.')
+    assert ENT['grid_power_w'].startswith('sensor.')
+    assert ENT['quarter_energy_balance_kwh'].startswith('sensor.')
+    assert ENT['pv_power_w'].startswith('sensor.')
     assert ENT['policy_diagnostics'].startswith('sensor.')
     assert ENT['dispatch_command'].startswith('sensor.')
     assert ENT['policy_state'].startswith('sensor.')

@@ -3,7 +3,7 @@ import json
 
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_core.guard.evaluator import evaluate_guard
-from ems_core.net_zero.balance import compute_rpnz_w
+from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs, configured_forecast, effective_forecast
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
@@ -121,7 +121,8 @@ def read_measurements(now_ts, cfg, entities):
         battery_heartbeat_age_s=age_seconds(entities['battery_heartbeat'], now_ts),
         grid_power_w=get_float(entities['grid_power_w'], 0),
         current_battery_setpoint_w=get_float(entities['current_battery_sp'], 100),
-        quarter_energy_balance_kwh=get_float(entities['quarter_energy_balance'], 0),
+        quarter_energy_balance_kwh=get_float(entities['quarter_energy_balance_kwh'], 0),
+        pv_power_w=get_float(entities['pv_power_w'], None),
         relay_states=relay_states,
         ev_states=ev_states,
     )
@@ -342,7 +343,15 @@ def _policy_state_payload(entities, attrs):
 
 
 @time_trigger('period(now, 30s)')
-@state_trigger('input_select.ems_control_profile or input_select.ems_goal_profile or input_select.ems_guard_profile or input_select.ems_forecast_profile or sensor.required_power_consumption or sensor.ems_calculated_required_power_for_net_zero')
+@state_trigger(
+    'input_select.ems_control_profile '
+    'or input_select.ems_goal_profile '
+    'or input_select.ems_guard_profile '
+    'or input_select.ems_forecast_profile '
+    'or sensor.average_active_power_2 '
+    'or sensor.hourly_energy_balance '
+    'or sensor.pv_instant_power_2'
+)
 def ems_policy_engine_loop():
     import time
     now_ts = time.time()
@@ -361,20 +370,25 @@ def ems_policy_engine_loop():
         previous_primary_load='',
         previous_primary_device_id=_policy_state_attr(entities, 'haeo_nz_primary_device_id', ''),
     )
-    remaining_s = max((15 - (int(now_ts / 60) % 15)) * 60, 30)
     active_surplus_device_ids = _read_active_surplus_device_ids(entities)
     previous_device_state = _read_previous_device_state(entities)
     previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-    nz = NetZeroState(
-        rpnz_w=get_float(entities['rpnz_w'], compute_rpnz_w(m.quarter_energy_balance_kwh, remaining_s)),
-        required_power_consumption_kw=get_float(entities['required_power_consumption_kw'], 0),
+    derived = derive_net_zero_inputs(
+        quarter_energy_balance_kwh=m.quarter_energy_balance_kwh,
+        grid_power_w=m.grid_power_w,
+        now_ts=now_ts,
     )
+    nz = NetZeroState(
+        rpnz_w=derived.rpnz_w,
+        required_power_consumption_kw=derived.required_power_consumption_kw,
+    )
+    pv_power_kw = None if m.pv_power_w is None else m.pv_power_w / 1000.0
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=parse_input_datetime_ts(entities['surplus_freeze_until']),
         ev_burn_active=_read_adjustable_surplus_active(entities),
         adjustable_surplus_active=_read_adjustable_surplus_active(entities),
-        pv_power_kw=get_float(entities['pv_power_kw'], None),
+        pv_power_kw=pv_power_kw,
         ev_hard_off_active=bool(previous_device_state['hard_off_active']),
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
         ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
@@ -386,6 +400,23 @@ def ems_policy_engine_loop():
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     attrs.update(config_trace_attrs())
     attrs.update(_policy_output_contract_attrs())
+    attrs.update(
+        {
+            'runtime_input_contract': 'raw_measurements_only',
+            'net_zero_derived_source': 'internal',
+            'net_zero_input_quality': derived.input_quality,
+            'net_zero_input_warnings': derived.input_warnings,
+            'grid_power_w': m.grid_power_w,
+            'quarter_energy_balance_kwh': m.quarter_energy_balance_kwh,
+            'pv_power_w': m.pv_power_w,
+            'pv_power_kw': pv_power_kw,
+            'remaining_quarter_s': derived.remaining_quarter_s,
+            'remaining_quarter_min': derived.remaining_quarter_min,
+            'rpnz_w': derived.rpnz_w,
+            'required_power_w': derived.required_power_w,
+            'required_power_consumption_kw': derived.required_power_consumption_kw,
+        }
+    )
     device_policies_hash = _device_policies_hash(attrs)
     attrs['device_policies_hash'] = device_policies_hash
     attrs['device_policies_state_kind'] = 'content_hash'

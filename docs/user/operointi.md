@@ -52,9 +52,7 @@ Varsinainen payload luetaan attribuuteista. `state` ei ole monotoninen laskuri.
 3. `sensor.victron_mqtt_b827eb48c929_battery_1_battery_power`
 4. `sensor.average_active_power_2`
 5. `sensor.hourly_energy_balance`
-6. `sensor.required_power_consumption`
-7. `sensor.ems_calculated_required_power_for_net_zero`
-8. `sensor.pv_instant_power_2`
+6. `sensor.pv_instant_power_2`
 
 ### Aktuaattorit
 

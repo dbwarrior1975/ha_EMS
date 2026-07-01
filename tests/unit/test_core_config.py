@@ -48,8 +48,6 @@ def _core_entity_values():
         'sensor.ems_active_surplus_devices': 'sensor.ems_active_surplus_devices',
         'sensor.average_active_power_2': 'sensor.average_active_power_2',
         'sensor.hourly_energy_balance': 'sensor.hourly_energy_balance',
-        'sensor.required_power_consumption': 'sensor.required_power_consumption',
-        'sensor.ems_calculated_required_power_for_net_zero': 'sensor.ems_calculated_required_power_for_net_zero',
         'sensor.pv_instant_power_2': 'sensor.pv_instant_power_2',
         'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc': 55,
         'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage': 3.2,

@@ -210,8 +210,6 @@ def make_cfg(**overrides):
         runtime=CoreRuntimeConfig(
             grid_power_w='sensor.grid_power_w',
             quarter_energy_balance_kwh='sensor.hourly_energy_balance',
-            required_power_w='sensor.required_power_w',
-            rpnz_w='sensor.rpnz_w',
             pv_power_w='sensor.pv_power_w',
         ),
         state=CoreStateConfig(
@@ -311,6 +309,7 @@ def make_m(**overrides):
         grid_power_w=0.0,
         current_battery_setpoint_w=100.0,
         quarter_energy_balance_kwh=0.0,
+        pv_power_w=None,
         ev_states=ev_states,
         relay_states=relay_states,
     )
@@ -334,3 +333,28 @@ def make_nz(**overrides):
     data = dict(rpnz_w=0.0, required_power_consumption_kw=0.0)
     data.update(overrides)
     return NetZeroState(**data)
+
+
+def balance_for_rpnz_w(rpnz_w, remaining_s=900.0):
+    return -(float(rpnz_w) / 1000.0) * float(remaining_s) / 3600.0
+
+
+def runtime_inputs_for_net_zero(
+    entity_ids,
+    *,
+    rpnz_w,
+    required_power_consumption_kw,
+    remaining_s=900.0,
+    remaining_min=15.0,
+    pv_power_kw=None,
+):
+    quarter_energy_balance_kwh = balance_for_rpnz_w(rpnz_w, remaining_s=remaining_s)
+    required_power_w = float(required_power_consumption_kw) * 1000.0
+    grid_power_w = -required_power_w - quarter_energy_balance_kwh * 60000.0 / float(remaining_min)
+    values = {
+        entity_ids['quarter_energy_balance_kwh']: quarter_energy_balance_kwh,
+        entity_ids['grid_power_w']: grid_power_w,
+    }
+    if pv_power_kw is not None:
+        values[entity_ids['pv_power_w']] = float(pv_power_kw) * 1000.0
+    return values

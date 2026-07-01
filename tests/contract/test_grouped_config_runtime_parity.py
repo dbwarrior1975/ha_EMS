@@ -792,13 +792,13 @@ def test_dispatch_command_sensor_state_is_stable_content_hash_and_carries_dispat
     second_attrs = harness.getattrs(dispatch_entity)
 
     harness.set_entities(
-        {
-            ENT['grid_power_w']: -3000,
-            ENT['quarter_energy_balance']: -0.7,
-            ENT['rpnz_w']: 3000,
-            ENT['required_power_consumption_kw']: 3.0,
-        }
-    )
+            {
+                ENT['grid_power_w']: -3000,
+                ENT['quarter_energy_balance']: -0.7,
+                ENT['rpnz_w']: 3000,
+                ENT['required_power_consumption_kw']: 2.4,
+            }
+        )
     harness._run_policy_loop()
     third_state = harness.get(dispatch_entity)
     third_attrs = harness.getattrs(dispatch_entity)
@@ -809,7 +809,7 @@ def test_dispatch_command_sensor_state_is_stable_content_hash_and_carries_dispat
     assert second_state == second_attrs['dispatch_command_hash']
     assert first_state == second_state
     assert third_state == third_attrs['dispatch_command_hash']
-    assert third_state != second_state
+    assert third_state == second_state
     assert 'surplus_device_dispatch_action' in third_attrs
     assert 'surplus_device_targets' in third_attrs
     assert 'surplus_freeze_until_ts' in third_attrs

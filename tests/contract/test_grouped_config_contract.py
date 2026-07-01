@@ -51,9 +51,6 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
         'ev_force_on',
         'actuator_relay1',
         'actuator_relay2',
-        'required_power_consumption_kw',
-        'rpnz_w',
-        'pv_power_kw',
     }
 
     for runtime_key in expected_exact_matches:
@@ -101,8 +98,6 @@ def test_example_grouped_config_exposes_explicit_unit_aliases(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     aliases = runtime_alias_index(config)
 
-    assert aliases['required_power_consumption_kw'].unit_transform == 'W_TO_KW'
-    assert aliases['pv_power_kw'].unit_transform == 'W_TO_KW'
     assert aliases['ev_hard_off_pv_threshold_kw'].unit_transform == 'W_TO_KW'
     assert aliases['ev_hard_off_pv_threshold_kw'].config_path == 'ems.devices.EV_CHARGER.policy.low_pv_threshold_w'
 

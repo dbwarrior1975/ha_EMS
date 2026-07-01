@@ -148,7 +148,7 @@ Quarter-balance semantiikka:
 
 1. EMS:n kanoninen runtime-termi on `quarter_energy_balance_kwh`
 2. se kuvaa nykyisen vartin energiataseen, vaikka ulkoinen HA-entity voi edelleen olla `sensor.hourly_energy_balance`
-3. `rpnz_w` voidaan johtaa kvartaalitaseesta ja jaljella olevasta varttiajasta
+3. `rpnz_w` johdetaan EMS:n sisalla kvartaalitaseesta ja jaljella olevasta varttiajasta
 4. aktiivisen surplus-kuorman release kayttaa `10 W` practical-zero deadbandia
 5. jos `rpnz_w <= 10 W`, alin prioriteetti aktiivisista surplus-kohteista voidaan vapauttaa
 
@@ -246,12 +246,10 @@ Keskeiset mittausavaimet (EMS):
 3. `battery_heartbeat`
 4. `grid_power_w`
 5. `current_battery_sp`
-6. `quarter_energy_balance`
+6. `quarter_energy_balance_kwh`
 7. `charger_control`
 8. `charger_current`
-9. `required_power_consumption_kw`
-10. `rpnz_w`
-11. `pv_power_kw`
+9. `pv_power_w`
 
 Keskeiset config-avaimet (EMS):
 

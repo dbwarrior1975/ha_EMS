@@ -248,9 +248,6 @@ def build_runtime_entities_from_grouped_config(config):
         'ev_force_on',
         'actuator_relay1',
         'actuator_relay2',
-        'required_power_consumption_kw',
-        'rpnz_w',
-        'pv_power_kw',
     ):
         alias = alias_index.get(key)
         if alias is not None and alias.value:
@@ -266,6 +263,8 @@ def build_runtime_entities_from_grouped_config(config):
     if isinstance(runtime, dict):
         ent['grid_power_w'] = runtime.get('grid_power_w')
         ent['quarter_energy_balance'] = runtime.get('quarter_energy_balance_kwh')
+        ent['quarter_energy_balance_kwh'] = runtime.get('quarter_energy_balance_kwh')
+        ent['pv_power_w'] = runtime.get('pv_power_w')
     if isinstance(state, dict):
         ent['surplus_freeze_until'] = state.get('surplus_freeze_until')
         ent['active_surplus_devices'] = state.get('active_surplus_devices')

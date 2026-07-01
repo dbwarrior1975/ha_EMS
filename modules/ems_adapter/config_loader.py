@@ -83,6 +83,24 @@ ALLOWED_DIAGNOSTICS_OUTPUT_KEYS = frozenset(
         'dispatch_state_applier_trace',
     )
 )
+ALLOWED_RUNTIME_KEYS = frozenset(
+    (
+        'grid_power_w',
+        'quarter_energy_balance_kwh',
+        'pv_power_w',
+    )
+)
+LEGACY_RUNTIME_REJECTIONS = {
+    'required_power_w': (
+        'runtime.required_power_w is no longer accepted; required power is derived inside EMS '
+        'from grid_power_w, quarter_energy_balance_kwh, and current quarter time.'
+    ),
+    'rpnz_w': (
+        'runtime.rpnz_w is no longer accepted; RPNZ is derived inside EMS from '
+        'quarter_energy_balance_kwh and current quarter time.'
+    ),
+    'pv_power_kw': 'runtime.pv_power_kw is no longer accepted; use runtime.pv_power_w.',
+}
 LEGACY_POLICY_OUTPUT_REJECTIONS = {
     'decision_trace': 'Unsupported legacy policy_outputs field: decision_trace. Use diagnostics_outputs.policy_diagnostics instead.',
     'actuator_writer_trace': 'Unsupported legacy policy_outputs field: actuator_writer_trace. Use diagnostics_outputs.actuator_writer_trace instead.',
@@ -242,10 +260,17 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         )
 
     if isinstance(ems.get('runtime'), dict):
+        _validate_legacy_runtime_fields(ems['runtime'], issues)
+        _validate_unknown_fields(
+            ems['runtime'],
+            'ems.runtime',
+            frozenset(tuple(ALLOWED_RUNTIME_KEYS) + tuple(LEGACY_RUNTIME_REJECTIONS)),
+            issues,
+        )
         _validate_required_entities(
             ems['runtime'],
             'ems.runtime',
-            ('grid_power_w', 'quarter_energy_balance_kwh', 'required_power_w', 'rpnz_w', 'pv_power_w'),
+            ('grid_power_w', 'quarter_energy_balance_kwh', 'pv_power_w'),
             issues,
         )
 
@@ -337,6 +362,15 @@ def _validate_legacy_policy_output_fields(
             issues.append(_issue(f'ems.policy_outputs.{field_name}', SEVERITY_ERROR, message))
 
 
+def _validate_legacy_runtime_fields(
+    runtime: dict,
+    issues: list[ConfigValidationIssue],
+) -> None:
+    for field_name, message in LEGACY_RUNTIME_REJECTIONS.items():
+        if field_name in runtime:
+            issues.append(_issue(f'ems.runtime.{field_name}', SEVERITY_ERROR, message))
+
+
 def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
     ems = config.get('ems', {})
     profiles = ems.get('profiles', {})
@@ -359,9 +393,6 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
         _alias('adjustable_surplus_load', 'ems.global_config.adjustable_surplus_load', global_config.get('adjustable_surplus_load')),
         _alias('adjustable_primary_load', 'ems.global_config.adjustable_primary_load', global_config.get('adjustable_primary_load')),
         _alias('adjustable_surplus_activation', 'ems.global_config.adjustable_surplus_activation_w', global_config.get('adjustable_surplus_activation_w')),
-        _alias('required_power_consumption_kw', 'ems.runtime.required_power_w', runtime.get('required_power_w'), unit_transform='W_TO_KW'),
-        _alias('rpnz_w', 'ems.runtime.rpnz_w', runtime.get('rpnz_w')),
-        _alias('pv_power_kw', 'ems.runtime.pv_power_w', runtime.get('pv_power_w'), unit_transform='W_TO_KW'),
     ]
 
     home_battery = devices.get('HOME_BATTERY', {})
@@ -559,8 +590,6 @@ def build_core_config_from_grouped_reader(
         runtime=CoreRuntimeConfig(
             grid_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), read_entity, 0),
             quarter_energy_balance_kwh=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'quarter_energy_balance_kwh'), read_entity, 0),
-            required_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'required_power_w'), read_entity, 0),
-            rpnz_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'rpnz_w'), read_entity, 0),
             pv_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'pv_power_w'), read_entity, 0),
         ),
         state=CoreStateConfig(
