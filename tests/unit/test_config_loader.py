@@ -857,6 +857,22 @@ def test_core_config_view_hot_path_starts_without_legacy_device_bridge(project_r
 
 
 @pytest.mark.unit
+def test_dynamic_runtime_snapshot_keeps_only_dynamic_device_leaf_values(project_root):
+    config = _load_example(project_root)
+    plan = compile_core_config_plan_from_grouped_config(config)
+    config_loader_mod = sys.modules['ems_adapter.config_loader']
+
+    snapshot = config_loader_mod.build_dynamic_runtime_snapshot(plan, lambda _entity_id, default: default)
+
+    assert 'can_absorb_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
+    assert 'can_produce_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
+    assert 'priority' in ((snapshot.device_values['EV_CHARGER'].get('policy') or {}))
+    assert 'enabled' in ((snapshot.device_values['EV_CHARGER'].get('adapter') or {}))
+    assert 'policy' in snapshot.home_battery_values
+    assert 'priority' in snapshot.home_battery_values['policy']
+
+
+@pytest.mark.unit
 def test_home_battery_access_paths_share_same_per_view_object(project_root):
     config = _load_example(project_root)
     plan = compile_core_config_plan_from_grouped_config(config)

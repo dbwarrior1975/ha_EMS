@@ -574,6 +574,7 @@ def test_runtime_context_dynamic_read_audit_collapses_duplicate_reads_within_sin
     assert read_counts['shared'] == 1
     assert audit['total_reads'] >= audit['underlying_reads']
     assert audit['cache_hits'] >= 1
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
     shared_entries = [
         entry for entry in audit['entries']
         if entry['entity_id'] == 'input_select.ems_shared_profile'
@@ -582,6 +583,8 @@ def test_runtime_context_dynamic_read_audit_collapses_duplicate_reads_within_sin
     assert shared_entries[0]['count'] == 2
     assert shared_entries[0]['underlying_reads'] == 1
     assert shared_entries[0]['cache_hits'] == 1
+    assert metrics['policy_engine_dynamic_config_unique_reads'] >= 1
+    assert metrics['policy_engine_dynamic_config_audit_entries'] >= 1
 
 
 @pytest.mark.unit
@@ -747,6 +750,40 @@ def test_runtime_context_static_cache_hit_when_config_signature_unchanged(projec
     assert metrics['policy_engine_static_context_cache_hit'] is True
     assert metrics['policy_engine_static_context_cache_hits'] == 1
     assert str(entities['device_policies']).startswith('sensor.ems_device_policies')
+
+
+@pytest.mark.unit
+def test_runtime_context_reuses_static_plan_object_on_cache_hit_while_refreshing_dynamic_values(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    values = {
+        ENT['devices']['EV_CHARGER']['priority']: 4,
+    }
+
+    def read_bool(_entity_id):
+        return False
+
+    def read_float(_entity_id, default=0.0):
+        return values.get(_entity_id, default)
+
+    def read_int(entity_id, default=0):
+        return values.get(entity_id, default)
+
+    def read_str(_entity_id, default=''):
+        return values.get(_entity_id, default)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    first_plan = runtime_context_mod._RUNTIME_CONTEXT_CONFIG_CACHE['core_config_plan']
+    values[ENT['devices']['EV_CHARGER']['priority']] = 9
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    second_plan = runtime_context_mod._RUNTIME_CONTEXT_CONFIG_CACHE['core_config_plan']
+
+    assert first_plan is second_plan
+    assert first_cfg.ev_charger.policy.priority == 4
+    assert second_cfg.ev_charger.policy.priority == 9
+    assert runtime_context_mod.runtime_context_metrics_attrs()['policy_engine_static_context_cache_hit'] is True
 
 
 @pytest.mark.unit
@@ -1024,6 +1061,13 @@ def test_core_config_materialization_submetrics_are_numeric_and_non_negative(pro
         'policy_engine_core_config_derived_fields_ms',
         'policy_engine_dynamic_runtime_snapshot_ms',
         'policy_engine_policy_context_view_ms',
+        'policy_engine_dynamic_config_unique_reads',
+        'policy_engine_dynamic_config_audit_entries',
+        'policy_engine_dynamic_runtime_snapshot_dict_nodes',
+        'policy_engine_dynamic_runtime_snapshot_tuple_nodes',
+        'policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen',
+        'policy_engine_dynamic_runtime_snapshot_dynamic_refs_unique',
+        'policy_engine_dynamic_runtime_snapshot_dynamic_ref_cache_hits',
     )
 
     for key in metric_keys:
