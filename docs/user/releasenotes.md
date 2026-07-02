@@ -50,20 +50,10 @@ monotonisessa merkityksessa.
 
 ## Configuration
 
-Kanoninen konfiguraatiomuoto on:
-
-```yaml
-ems:
-  policy_outputs:
-    device_policies: sensor.ems_device_policies_pyscript
-    dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
-    policy_state: sensor.ems_policy_state_pyscript
-
-  diagnostics_outputs:
-    policy_diagnostics: sensor.ems_policy_diagnostics_pyscript
-    actuator_writer_trace: sensor.ems_actuator_writer_trace
-    dispatch_state_applier_trace: sensor.ems_dispatch_state_applier_trace
-```
+`runtime.*` entity-id:t ovat edelleen kayttajan konfiguroitavia read target
+-pintoja. `policy_outputs` ja `diagnostics_outputs` eivat ole enaa
+kayttajakonfiguraatiota, vaan kiinteita canonical output- ja
+diagnostics-surfaceja koodissa.
 
 ## Upgrade note for HA users
 

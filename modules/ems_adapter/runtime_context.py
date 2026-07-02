@@ -15,6 +15,10 @@ from ems_core.domain.ev_power import (
     ev_min_current_a_from_min_absorb_w,
     ev_per_amp_w,
 )
+from ems_core.domain.constants import (
+    CANONICAL_DIAGNOSTICS_OUTPUTS,
+    CANONICAL_POLICY_OUTPUTS,
+)
 
 
 _GROUPED_CONFIG_DUAL_READ_STATUS = {
@@ -256,8 +260,6 @@ def build_runtime_entities_from_grouped_config(config):
     ems = config.get('ems', {})
     runtime = ems.get('runtime', {})
     state = ems.get('state', {})
-    outputs = ems.get('policy_outputs', {})
-    diagnostics = ems.get('diagnostics_outputs', {})
     haeo = ems.get('haeo', {})
     devices = ems.get('devices', {})
     if isinstance(runtime, dict):
@@ -269,14 +271,12 @@ def build_runtime_entities_from_grouped_config(config):
         ent['surplus_freeze_until'] = state.get('surplus_freeze_until')
         ent['active_surplus_devices'] = state.get('active_surplus_devices')
         ent['previous_device_state'] = state.get('previous_device_state')
-    if isinstance(outputs, dict):
-        ent['device_policies'] = outputs.get('device_policies')
-        ent['dispatch_command'] = outputs.get('dispatch_command')
-        ent['policy_state'] = outputs.get('policy_state')
-    if isinstance(diagnostics, dict):
-        ent['policy_diagnostics'] = diagnostics.get('policy_diagnostics')
-        ent['actuator_writer_trace'] = diagnostics.get('actuator_writer_trace')
-        ent['dispatch_state_applier_trace'] = diagnostics.get('dispatch_state_applier_trace')
+    ent['device_policies'] = CANONICAL_POLICY_OUTPUTS['device_policies']
+    ent['dispatch_command'] = CANONICAL_POLICY_OUTPUTS['dispatch_command']
+    ent['policy_state'] = CANONICAL_POLICY_OUTPUTS['policy_state']
+    ent['policy_diagnostics'] = CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    ent['actuator_writer_trace'] = CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    ent['dispatch_state_applier_trace'] = CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
     if isinstance(haeo, dict):
         ent['haeo_battery_power_active'] = haeo.get('battery_power_active')
         ent['haeo_ev_battery_power_active'] = haeo.get('ev_power_active')

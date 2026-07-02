@@ -4,6 +4,10 @@ import pytest
 
 from ems_adapter.config_loader import load_grouped_ems_config
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
+from ems_core.domain.constants import (
+    CANONICAL_DIAGNOSTICS_OUTPUTS,
+    CANONICAL_POLICY_OUTPUTS,
+)
 from tests.entity_ids import ENT
 
 
@@ -91,6 +95,22 @@ def test_unknown_state_defaults():
     assert ENT['policy_diagnostics'].startswith('sensor.')
     assert ENT['actuator_writer_trace'].startswith('sensor.')
     assert ENT['dispatch_state_applier_trace'].startswith('sensor.')
+
+
+@pytest.mark.unit
+def test_runtime_entity_registry_uses_canonical_outputs_without_yaml_sections(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    config['ems'].pop('policy_outputs', None)
+    config['ems'].pop('diagnostics_outputs', None)
+
+    entities = build_runtime_entities_from_grouped_config(config)
+
+    assert entities['device_policies'] == CANONICAL_POLICY_OUTPUTS['device_policies']
+    assert entities['dispatch_command'] == CANONICAL_POLICY_OUTPUTS['dispatch_command']
+    assert entities['policy_state'] == CANONICAL_POLICY_OUTPUTS['policy_state']
+    assert entities['policy_diagnostics'] == CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    assert entities['actuator_writer_trace'] == CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    assert entities['dispatch_state_applier_trace'] == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
 
 
 def _with_extra_relay_and_ev(config):

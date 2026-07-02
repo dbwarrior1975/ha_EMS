@@ -27,6 +27,10 @@ from ems_core.domain.models import (
     CoreRuntimeConfig,
     CoreStateConfig,
 )
+from ems_core.domain.constants import (
+    CANONICAL_DIAGNOSTICS_OUTPUTS,
+    CANONICAL_POLICY_OUTPUTS,
+)
 from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
     ev_max_current_a_from_max_absorb_w,
@@ -46,13 +50,17 @@ REQUIRED_TOP_LEVEL_SECTIONS = (
     'devices',
     'runtime',
     'state',
-    'policy_outputs',
-    'diagnostics_outputs',
 )
 OPTIONAL_TOP_LEVEL_SECTIONS = (
     'role_constraints',
     'haeo',
     'policy_engine',
+)
+REJECTED_TOP_LEVEL_SECTIONS = frozenset(
+    (
+        'policy_outputs',
+        'diagnostics_outputs',
+    )
 )
 SUPPORTED_DEVICE_KINDS = {
     'BATTERY',
@@ -71,20 +79,6 @@ ALLOWED_ROLE_KEYS = {
     'HOME_BATTERY_PRIMARY',
 }
 ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
-ALLOWED_POLICY_OUTPUT_KEYS = frozenset(
-    (
-        'device_policies',
-        'dispatch_command',
-        'policy_state',
-    )
-)
-ALLOWED_DIAGNOSTICS_OUTPUT_KEYS = frozenset(
-    (
-        'policy_diagnostics',
-        'actuator_writer_trace',
-        'dispatch_state_applier_trace',
-    )
-)
 ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds',))
 ALLOWED_RUNTIME_KEYS = frozenset(
     (
@@ -104,17 +98,6 @@ LEGACY_RUNTIME_REJECTIONS = {
     ),
     'pv_power_kw': 'runtime.pv_power_kw is no longer accepted; use runtime.pv_power_w.',
 }
-LEGACY_POLICY_OUTPUT_REJECTIONS = {
-    'decision_trace': 'Unsupported legacy policy_outputs field: decision_trace. Use diagnostics_outputs.policy_diagnostics instead.',
-    'actuator_writer_trace': 'Unsupported legacy policy_outputs field: actuator_writer_trace. Use diagnostics_outputs.actuator_writer_trace instead.',
-    'dispatch_state_applier_trace': 'Unsupported legacy policy_outputs field: dispatch_state_applier_trace. Use diagnostics_outputs.dispatch_state_applier_trace instead.',
-    'surplus_policy_active': 'Unsupported legacy policy_outputs field: surplus_policy_active. Standalone surplus summary sensors were removed.',
-    'surplus_next_target': 'Unsupported legacy policy_outputs field: surplus_next_target. Standalone surplus summary sensors were removed.',
-    'surplus_next_threshold': 'Unsupported legacy policy_outputs field: surplus_next_threshold. Standalone surplus summary sensors were removed.',
-    'surplus_release_candidate': 'Unsupported legacy policy_outputs field: surplus_release_candidate. Standalone surplus summary sensors were removed.',
-    'surplus_explanation': 'Unsupported legacy policy_outputs field: surplus_explanation. Standalone surplus summary sensors were removed.',
-}
-KNOWN_POLICY_OUTPUT_KEYS = frozenset(tuple(ALLOWED_POLICY_OUTPUT_KEYS) + tuple(LEGACY_POLICY_OUTPUT_REJECTIONS))
 ALLOWED_DEVICE_KEYS = frozenset(('kind', 'capabilities', 'policy', 'adapter', 'guard'))
 ALLOWED_CAPABILITIES_KEYS = frozenset(
     (
@@ -227,7 +210,13 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         issues.append(_issue('ems', SEVERITY_ERROR, 'missing or not a mapping'))
         return _validation_result(False, issues)
 
-    _validate_unknown_fields(ems, 'ems', ALLOWED_EMS_SECTION_KEYS, issues)
+    _validate_unknown_fields(
+        ems,
+        'ems',
+        frozenset(tuple(ALLOWED_EMS_SECTION_KEYS) + tuple(REJECTED_TOP_LEVEL_SECTIONS)),
+        issues,
+    )
+    _validate_rejected_top_level_sections(ems, issues)
 
     for section in REQUIRED_TOP_LEVEL_SECTIONS:
         if section not in ems:
@@ -298,42 +287,6 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             issues,
         )
 
-    if isinstance(ems.get('policy_outputs'), dict):
-        _validate_legacy_policy_output_fields(ems['policy_outputs'], issues)
-        _validate_unknown_fields(
-            ems['policy_outputs'],
-            'ems.policy_outputs',
-            KNOWN_POLICY_OUTPUT_KEYS,
-            issues,
-        )
-        _validate_required_entities(
-            ems['policy_outputs'],
-            'ems.policy_outputs',
-            (
-                'device_policies',
-                'dispatch_command',
-                'policy_state',
-            ),
-            issues,
-        )
-    if isinstance(ems.get('diagnostics_outputs'), dict):
-        _validate_unknown_fields(
-            ems['diagnostics_outputs'],
-            'ems.diagnostics_outputs',
-            ALLOWED_DIAGNOSTICS_OUTPUT_KEYS,
-            issues,
-        )
-        _validate_required_entities(
-            ems['diagnostics_outputs'],
-            'ems.diagnostics_outputs',
-            (
-                'policy_diagnostics',
-                'actuator_writer_trace',
-                'dispatch_state_applier_trace',
-            ),
-            issues,
-        )
-
     if isinstance(ems.get('haeo'), dict):
         _validate_required_entities(
             ems['haeo'],
@@ -369,13 +322,26 @@ def _validation_result(ok: bool, issues: list[ConfigValidationIssue]) -> ConfigV
     )
 
 
-def _validate_legacy_policy_output_fields(
-    policy_outputs: dict,
+def _validate_rejected_top_level_sections(
+    ems: dict,
     issues: list[ConfigValidationIssue],
 ) -> None:
-    for field_name, message in LEGACY_POLICY_OUTPUT_REJECTIONS.items():
-        if field_name in policy_outputs:
-            issues.append(_issue(f'ems.policy_outputs.{field_name}', SEVERITY_ERROR, message))
+    if 'policy_outputs' in ems:
+        issues.append(
+            _issue(
+                'ems.policy_outputs',
+                SEVERITY_ERROR,
+                'ems.policy_outputs is no longer user config. EMS canonical policy output entity IDs are fixed in code.',
+            )
+        )
+    if 'diagnostics_outputs' in ems:
+        issues.append(
+            _issue(
+                'ems.diagnostics_outputs',
+                SEVERITY_ERROR,
+                'ems.diagnostics_outputs is no longer user config. EMS diagnostics output entity IDs are fixed in code.',
+            )
+        )
 
 
 def _validate_legacy_runtime_fields(
@@ -620,14 +586,14 @@ def build_core_config_from_grouped_reader(
             previous_device_state=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), read_entity, ''),
         ),
         policy_outputs=CorePolicyOutputsConfig(
-            device_policies=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'device_policies'), read_entity, ''),
-            dispatch_command=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'dispatch_command'), read_entity, ''),
-            policy_state=_resolve_core_config_value(_require_mapping_value(ems.get('policy_outputs'), 'policy_state'), read_entity, ''),
+            device_policies=CANONICAL_POLICY_OUTPUTS['device_policies'],
+            dispatch_command=CANONICAL_POLICY_OUTPUTS['dispatch_command'],
+            policy_state=CANONICAL_POLICY_OUTPUTS['policy_state'],
         ),
         diagnostics_outputs=CoreDiagnosticsOutputsConfig(
-            policy_diagnostics=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'policy_diagnostics'), read_entity, ''),
-            actuator_writer_trace=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'actuator_writer_trace'), read_entity, ''),
-            dispatch_state_applier_trace=_resolve_core_config_value(_require_mapping_value(ems.get('diagnostics_outputs'), 'dispatch_state_applier_trace'), read_entity, ''),
+            policy_diagnostics=CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics'],
+            actuator_writer_trace=CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace'],
+            dispatch_state_applier_trace=CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace'],
         ),
         haeo=_build_core_haeo_config(ems.get('haeo'), read_entity),
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),

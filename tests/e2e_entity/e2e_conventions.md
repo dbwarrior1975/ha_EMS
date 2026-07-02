@@ -19,6 +19,10 @@ E2E-testien tulee todistaa nykyista tuotantoketjua:
 3. writerit lukevat device-policyja
 4. HA-actuatorit ja state-entityt paattyvat odotettuun lopputilaan
 
+Skenaario-YAML:n `runtime.*` entity-id:t ovat user-config read targetteja.
+Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa, joten
+`policy_outputs`- tai `diagnostics_outputs`-osioita ei kuulu skenaario-YAML:iin.
+
 ## Scenario and harness rules
 
 1. Rakenna harness aina skenaarion omasta `EMS_config.yaml`:sta, ellei testi

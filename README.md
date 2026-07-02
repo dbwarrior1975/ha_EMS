@@ -144,6 +144,10 @@ Canonical command/state -integraatiopinta on device-id-pohjainen:
 2. `sensor.ems_active_surplus_devices`
 3. `sensor.ems_surplus_dispatch_command_pyscript`
 
+Nama output-sensorit ovat EMS:n kiinteita canonical pintoja. Niita ei
+konfiguroida YAML:n `policy_outputs`- tai `diagnostics_outputs`-osioilla.
+Kayttajan YAML-konfiguroitavat entity-id:t kuuluvat `runtime.*`-pintaan.
+
 Diagnostiikka- ja selityspinnat:
 
 1. `sensor.ems_policy_decision_trace_pyscript`

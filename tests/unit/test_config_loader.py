@@ -15,6 +15,10 @@ from ems_adapter.config_loader import (
     load_and_validate_grouped_ems_config,
     validate_grouped_ems_config,
 )
+from ems_core.domain.constants import (
+    CANONICAL_DIAGNOSTICS_OUTPUTS,
+    CANONICAL_POLICY_OUTPUTS,
+)
 
 
 def _load_example(project_root):
@@ -229,23 +233,32 @@ def test_validate_rejects_unknown_relay_policy_field_generically(project_root):
 @pytest.mark.unit
 def test_validate_rejects_unknown_policy_output_field_generically(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_outputs']['unexpected_output'] = 'sensor.foo'
+    config['ems']['policy_outputs'] = {'unexpected_output': 'sensor.foo'}
 
     result = validate_grouped_ems_config(config)
 
     assert result.ok is False
-    assert _error_messages(result)['ems.policy_outputs.unexpected_output'] == (
-        'Unknown config field: ems.policy_outputs.unexpected_output'
+    assert _error_messages(result)['ems.policy_outputs'] == (
+        'ems.policy_outputs is no longer user config. EMS canonical policy output entity IDs are fixed in code.'
     )
 
 
 @pytest.mark.unit
-def test_validate_accepts_diagnostics_outputs_section(project_root):
+def test_policy_outputs_defaults_to_canonical_values_if_missing(project_root):
     config = _load_example(project_root)
+    config['ems'].pop('policy_outputs', None)
+    config['ems'].pop('diagnostics_outputs', None)
 
     result = validate_grouped_ems_config(config)
+    core = build_core_config_from_grouped_config(config, {})
 
     assert result.ok is True
+    assert core.policy_outputs.device_policies == CANONICAL_POLICY_OUTPUTS['device_policies']
+    assert core.policy_outputs.dispatch_command == CANONICAL_POLICY_OUTPUTS['dispatch_command']
+    assert core.policy_outputs.policy_state == CANONICAL_POLICY_OUTPUTS['policy_state']
+    assert core.diagnostics_outputs.policy_diagnostics == CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    assert core.diagnostics_outputs.actuator_writer_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    assert core.diagnostics_outputs.dispatch_state_applier_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
 
 
 @pytest.mark.unit
@@ -344,68 +357,103 @@ def test_parse_policy_engine_interval_seconds_accepts_int_and_float():
 
 
 @pytest.mark.unit
-def test_validate_rejects_legacy_policy_decision_trace_with_guidance(project_root):
+def test_policy_outputs_section_is_rejected_even_with_canonical_values(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_outputs']['decision_trace'] = 'sensor.legacy_trace'
+    config['ems']['policy_outputs'] = dict(CANONICAL_POLICY_OUTPUTS)
 
     result = validate_grouped_ems_config(config)
 
     assert result.ok is False
-    assert _error_messages(result)['ems.policy_outputs.decision_trace'] == (
-        'Unsupported legacy policy_outputs field: decision_trace. '
-        'Use diagnostics_outputs.policy_diagnostics instead.'
+    assert _error_messages(result)['ems.policy_outputs'] == (
+        'ems.policy_outputs is no longer user config. EMS canonical policy output entity IDs are fixed in code.'
     )
 
 
 @pytest.mark.unit
-def test_validate_rejects_legacy_actuator_writer_trace_with_guidance(project_root):
+def test_policy_outputs_section_is_rejected_with_custom_values(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_outputs']['actuator_writer_trace'] = 'sensor.legacy_writer_trace'
+    config['ems']['policy_outputs'] = {
+        'device_policies': 'sensor.custom_device_policies',
+    }
 
     result = validate_grouped_ems_config(config)
 
     assert result.ok is False
-    assert _error_messages(result)['ems.policy_outputs.actuator_writer_trace'] == (
-        'Unsupported legacy policy_outputs field: actuator_writer_trace. '
-        'Use diagnostics_outputs.actuator_writer_trace instead.'
+    assert _error_messages(result)['ems.policy_outputs'] == (
+        'ems.policy_outputs is no longer user config. EMS canonical policy output entity IDs are fixed in code.'
     )
 
 
 @pytest.mark.unit
-def test_validate_rejects_legacy_dispatch_state_applier_trace_with_guidance(project_root):
+def test_policy_outputs_section_is_rejected_with_unknown_key(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_outputs']['dispatch_state_applier_trace'] = 'sensor.legacy_dispatch_trace'
+    config['ems']['policy_outputs'] = {
+        'unexpected': 'sensor.foo',
+    }
 
     result = validate_grouped_ems_config(config)
 
     assert result.ok is False
-    assert _error_messages(result)['ems.policy_outputs.dispatch_state_applier_trace'] == (
-        'Unsupported legacy policy_outputs field: dispatch_state_applier_trace. '
-        'Use diagnostics_outputs.dispatch_state_applier_trace instead.'
+    assert _error_messages(result)['ems.policy_outputs'] == (
+        'ems.policy_outputs is no longer user config. EMS canonical policy output entity IDs are fixed in code.'
     )
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ('field_name', 'entity_id'),
-    (
-        ('surplus_policy_active', 'binary_sensor.legacy_surplus_policy_active'),
-        ('surplus_next_target', 'sensor.legacy_surplus_next_target'),
-        ('surplus_next_threshold', 'sensor.legacy_surplus_next_threshold'),
-        ('surplus_release_candidate', 'sensor.legacy_surplus_release_candidate'),
-        ('surplus_explanation', 'sensor.legacy_surplus_explanation'),
-    ),
-)
-def test_validate_rejects_removed_standalone_surplus_summary_outputs(project_root, field_name, entity_id):
+def test_diagnostics_outputs_defaults_to_canonical_values_if_missing(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_outputs'][field_name] = entity_id
+    config['ems'].pop('diagnostics_outputs', None)
+    config['ems'].pop('policy_outputs', None)
+
+    result = validate_grouped_ems_config(config)
+    core = build_core_config_from_grouped_config(config, {})
+
+    assert result.ok is True
+    assert core.diagnostics_outputs.policy_diagnostics == CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    assert core.diagnostics_outputs.actuator_writer_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    assert core.diagnostics_outputs.dispatch_state_applier_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
+
+
+@pytest.mark.unit
+def test_diagnostics_outputs_section_is_rejected_even_with_canonical_values(project_root):
+    config = _load_example(project_root)
+    config['ems']['diagnostics_outputs'] = dict(CANONICAL_DIAGNOSTICS_OUTPUTS)
 
     result = validate_grouped_ems_config(config)
 
     assert result.ok is False
-    assert _error_messages(result)[f'ems.policy_outputs.{field_name}'] == (
-        f'Unsupported legacy policy_outputs field: {field_name}. '
-        'Standalone surplus summary sensors were removed.'
+    assert _error_messages(result)['ems.diagnostics_outputs'] == (
+        'ems.diagnostics_outputs is no longer user config. EMS diagnostics output entity IDs are fixed in code.'
+    )
+
+
+@pytest.mark.unit
+def test_diagnostics_outputs_section_is_rejected_with_custom_values(project_root):
+    config = _load_example(project_root)
+    config['ems']['diagnostics_outputs'] = {
+        'policy_diagnostics': 'sensor.custom_policy_diagnostics',
+    }
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.diagnostics_outputs'] == (
+        'ems.diagnostics_outputs is no longer user config. EMS diagnostics output entity IDs are fixed in code.'
+    )
+
+
+@pytest.mark.unit
+def test_diagnostics_outputs_section_is_rejected_with_unknown_key(project_root):
+    config = _load_example(project_root)
+    config['ems']['diagnostics_outputs'] = {
+        'unexpected': 'sensor.foo',
+    }
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.diagnostics_outputs'] == (
+        'ems.diagnostics_outputs is no longer user config. EMS diagnostics output entity IDs are fixed in code.'
     )
 
 

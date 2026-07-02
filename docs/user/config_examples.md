@@ -20,6 +20,10 @@ Canonical odotus kaikissa esimerkeissa:
 6. `sensor.ems_actuator_writer_trace` raportoi writer-toteuman `devices`-mapissa
 7. vanhat yksittaiskentat tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
 
+`runtime.*` entity-id:t ovat kayttajan konfiguroitavia read target -pintoja.
+`policy_outputs` ja `diagnostics_outputs` eivat kuulu kayttajakonfigiin, vaan
+ne ovat EMS:n kiinteita canonical output- ja diagnostics-pintoja koodissa.
+
 Kaikissa tuotanto- ja testiesimerkeissa policy enginein ajastus kuuluu
 `ems.policy_engine`-osioon:
 

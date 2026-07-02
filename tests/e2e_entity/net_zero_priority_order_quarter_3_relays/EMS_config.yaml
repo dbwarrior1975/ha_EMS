@@ -139,13 +139,3 @@ ems:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices
     previous_device_state: sensor.ems_previous_device_state
-
-  policy_outputs:
-    device_policies: sensor.ems_device_policies_pyscript
-    dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
-    policy_state: sensor.ems_policy_state_pyscript
-
-  diagnostics_outputs:
-    policy_diagnostics: sensor.ems_policy_diagnostics_pyscript
-    actuator_writer_trace: sensor.ems_actuator_writer_trace
-    dispatch_state_applier_trace: sensor.ems_dispatch_state_applier_trace

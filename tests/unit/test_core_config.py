@@ -1,6 +1,14 @@
 import pytest
 
-from ems_adapter.config_loader import build_core_config_from_grouped_config, load_grouped_ems_config
+from ems_adapter.config_loader import (
+    build_core_config_from_grouped_config,
+    load_grouped_ems_config,
+    validate_grouped_ems_config,
+)
+from ems_core.domain.constants import (
+    CANONICAL_DIAGNOSTICS_OUTPUTS,
+    CANONICAL_POLICY_OUTPUTS,
+)
 
 
 def _load_example(project_root):
@@ -39,12 +47,6 @@ def _core_entity_values():
         'sensor.ev_akut_active_power': 'sensor.ev_akut_active_power',
         'input_datetime.ems_surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
         'sensor.ems_previous_device_state': 'sensor.ems_previous_device_state',
-        'sensor.ems_device_policies_pyscript': 'sensor.ems_device_policies_pyscript',
-        'sensor.ems_surplus_dispatch_command_pyscript': 'sensor.ems_surplus_dispatch_command_pyscript',
-        'sensor.ems_policy_state_pyscript': 'sensor.ems_policy_state_pyscript',
-        'sensor.ems_policy_diagnostics_pyscript': 'sensor.ems_policy_diagnostics_pyscript',
-        'sensor.ems_actuator_writer_trace': 'sensor.ems_actuator_writer_trace',
-        'sensor.ems_dispatch_state_applier_trace': 'sensor.ems_dispatch_state_applier_trace',
         'sensor.ems_active_surplus_devices': 'sensor.ems_active_surplus_devices',
         'sensor.average_active_power_2': 'sensor.average_active_power_2',
         'sensor.hourly_energy_balance': 'sensor.hourly_energy_balance',
@@ -84,6 +86,8 @@ def _core_entity_values():
 @pytest.mark.unit
 def test_build_core_config_from_grouped_config_maps_top_level_sections(project_root):
     config = _load_example(project_root)
+    config['ems'].pop('policy_outputs', None)
+    config['ems'].pop('diagnostics_outputs', None)
 
     core = build_core_config_from_grouped_config(config, _core_entity_values())
 
@@ -95,12 +99,12 @@ def test_build_core_config_from_grouped_config_maps_top_level_sections(project_r
     assert core.state.surplus_freeze_until == 'input_datetime.ems_surplus_freeze_until'
     assert core.state.active_surplus_devices == 'sensor.ems_active_surplus_devices'
     assert core.state.previous_device_state == 'sensor.ems_previous_device_state'
-    assert core.policy_outputs.device_policies == 'sensor.ems_device_policies_pyscript'
-    assert core.policy_outputs.dispatch_command == 'sensor.ems_surplus_dispatch_command_pyscript'
-    assert core.policy_outputs.policy_state == 'sensor.ems_policy_state_pyscript'
-    assert core.diagnostics_outputs.policy_diagnostics == 'sensor.ems_policy_diagnostics_pyscript'
-    assert core.diagnostics_outputs.actuator_writer_trace == 'sensor.ems_actuator_writer_trace'
-    assert core.diagnostics_outputs.dispatch_state_applier_trace == 'sensor.ems_dispatch_state_applier_trace'
+    assert core.policy_outputs.device_policies == CANONICAL_POLICY_OUTPUTS['device_policies']
+    assert core.policy_outputs.dispatch_command == CANONICAL_POLICY_OUTPUTS['dispatch_command']
+    assert core.policy_outputs.policy_state == CANONICAL_POLICY_OUTPUTS['policy_state']
+    assert core.diagnostics_outputs.policy_diagnostics == CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    assert core.diagnostics_outputs.actuator_writer_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    assert core.diagnostics_outputs.dispatch_state_applier_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
 
 
 @pytest.mark.unit
@@ -208,3 +212,33 @@ def test_build_core_config_from_grouped_config_does_not_expose_ev_scalar_mirrors
         'ev_priority',
     ):
         assert not hasattr(core, attr_name)
+
+
+@pytest.mark.unit
+def test_build_core_config_from_grouped_config_uses_canonical_outputs_without_yaml_sections(project_root):
+    config = _load_example(project_root)
+    config['ems'].pop('policy_outputs', None)
+    config['ems'].pop('diagnostics_outputs', None)
+
+    core = build_core_config_from_grouped_config(config, _core_entity_values())
+
+    assert core.policy_outputs.device_policies == CANONICAL_POLICY_OUTPUTS['device_policies']
+    assert core.policy_outputs.dispatch_command == CANONICAL_POLICY_OUTPUTS['dispatch_command']
+    assert core.policy_outputs.policy_state == CANONICAL_POLICY_OUTPUTS['policy_state']
+    assert core.diagnostics_outputs.policy_diagnostics == CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics']
+    assert core.diagnostics_outputs.actuator_writer_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace']
+    assert core.diagnostics_outputs.dispatch_state_applier_trace == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
+
+
+@pytest.mark.unit
+def test_validate_grouped_config_rejects_output_sections_as_user_config(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_outputs'] = dict(CANONICAL_POLICY_OUTPUTS)
+    config['ems']['diagnostics_outputs'] = dict(CANONICAL_DIAGNOSTICS_OUTPUTS)
+
+    result = validate_grouped_ems_config(config)
+    paths = {issue.path for issue in result.errors}
+
+    assert result.ok is False
+    assert 'ems.policy_outputs' in paths
+    assert 'ems.diagnostics_outputs' in paths

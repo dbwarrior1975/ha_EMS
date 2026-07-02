@@ -42,6 +42,11 @@ Policy lukee juuri naita tiloja stepin alussa. Jos dispatch state muuttaa niita
 saman stepin aikana, uusi vaikutus `device_policies`-ulostuloon nakyy
 tavallisesti vasta seuraavalla kierroksella.
 
+Huomio konfiguraatiosopimuksesta: `runtime.*`-entityt ovat kayttajan
+konfiguroitavia input-pintoja, mutta `device_policies`, `dispatch_command`,
+`policy_state` ja diagnostiikkasensorit ovat kiinteita canonical output
+surfaceja koodissa.
+
 ## EV-esimerkki
 
 Tyypillinen EV-polku:

@@ -126,6 +126,10 @@ Keskeiset contract-kohteet:
 Kaytannollinen painotus on grouped-configissa, runtime-registryssa ja
 runtime-parityssa.
 
+Grouped-config contract testaa nyt myos sen, etta `runtime.*` on aktiivinen
+user-config surface, mutta `policy_outputs` ja `diagnostics_outputs` ovat
+kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
+
 ## Mita on oikeasti testattu
 
 ### Guard-logiikka

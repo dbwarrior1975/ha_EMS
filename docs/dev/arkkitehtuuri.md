@@ -16,18 +16,22 @@ EMS:n tuotantopolku on kolmevaiheinen:
 
 Kanoniset runtime-outputit ovat:
 
-1. `policy_outputs.device_policies`
-2. `policy_outputs.dispatch_command`
-3. `policy_outputs.policy_state`
+1. `sensor.ems_device_policies_pyscript`
+2. `sensor.ems_surplus_dispatch_command_pyscript`
+3. `sensor.ems_policy_state_pyscript`
 
 Diagnostiikka-outputit ovat:
 
-1. `diagnostics_outputs.policy_diagnostics`
-2. `diagnostics_outputs.actuator_writer_trace`
-3. `diagnostics_outputs.dispatch_state_applier_trace`
+1. `sensor.ems_policy_diagnostics_pyscript`
+2. `sensor.ems_actuator_writer_trace`
+3. `sensor.ems_dispatch_state_applier_trace`
 
 `policy_diagnostics` on vain selitys- ja debug-pinta. Sita ei saa kayttaa
 command/state-lahteena.
+
+`runtime.*` entity-id:t ovat kayttajan konfiguroitavia read target -pintoja.
+`policy_outputs` ja `diagnostics_outputs` eivat ole enaa kayttajakonfiguraatiota,
+vaan EMS:n kiinteita canonical output bus- ja diagnostics-pintoja.
 
 ## Kokonaiskuva
 
@@ -126,27 +130,12 @@ registryssa.
 
 ## Konfiguraatiosopimus
 
-Kanoninen grouped config -muoto:
+Kanoninen grouped config -sopimus erottaa read targetit ja output-pinnat:
 
-```yaml
-ems:
-  policy_outputs:
-    device_policies: sensor.ems_device_policies_pyscript
-    dispatch_command: sensor.ems_surplus_dispatch_command_pyscript
-    policy_state: sensor.ems_policy_state_pyscript
-
-  diagnostics_outputs:
-    policy_diagnostics: sensor.ems_policy_diagnostics_pyscript
-    actuator_writer_trace: sensor.ems_actuator_writer_trace
-    dispatch_state_applier_trace: sensor.ems_dispatch_state_applier_trace
-```
-
-Seuraavat legacy-kentat hylataan eksplisiittisesti:
-
-1. legacy policy trace -alias
-2. `policy_outputs.actuator_writer_trace`
-3. `policy_outputs.dispatch_state_applier_trace`
-4. standalone surplus summary -kentat
+1. `runtime.*` entity-id:t ovat kayttajan konfiguroitavia read target -pintoja
+2. canonical policy output -sensorit ovat kiinteasti koodissa
+3. canonical diagnostics-outputit ovat kiinteasti koodissa
+4. `ems.policy_outputs` ja `ems.diagnostics_outputs` hylataan eksplisiittisesti
 
 ## Diagnostiikkamoduuli
 

@@ -29,6 +29,10 @@ Kanoninen runtime-pinta on device-id-pohjainen:
 5. `sensor.ems_active_surplus_devices`
 6. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
+`runtime.*` entity-id:t ovat kayttajan konfiguroitavia read target -pintoja.
+`policy_outputs` ja `diagnostics_outputs` eivat ole kayttajakonfiguraatiota,
+vaan EMS:n kiinteita canonical output- ja diagnostics-pintoja.
+
 ### Releen lisaaminen
 
 Lisa uusi rele `ems.devices`-mapin alle. Esimerkki:
