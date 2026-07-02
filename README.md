@@ -89,6 +89,18 @@ Tarkeä rajaus:
    `can_absorb_w=false` estaa positiivisen `target_w`:n ja `can_produce_w=false`
    estaa negatiivisen `target_w`:n
 
+Policy enginein ajastus on osa samaa grouped-configia:
+
+```yaml
+ems:
+  policy_engine:
+    interval_seconds: 5
+```
+
+`interval_seconds` oletus on `5` ja minimi `2`. Tuotannossa policy engine
+ajetaan kiintealla `2s` scheduler-tickilla, jonka sisalla tarkistetaan onko
+konfiguroitu minimi elapsed interval kulunut.
+
 ## Config examples and test fixtures
 
 Kayttajan ensisijainen lahtopohja on root-tason `example_EMS_config.yaml`.

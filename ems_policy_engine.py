@@ -11,6 +11,12 @@ from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
+_POLICY_ENGINE_TIMER_STATE = {
+    'last_run_ts': None,
+    'ticks_seen': 0,
+    'runs_seen': 0,
+    'skipped_ticks': 0,
+}
 
 
 def _enum(allowed_cls, value, default):
@@ -342,20 +348,38 @@ def _policy_state_payload(entities, attrs):
     }
 
 
-@time_trigger('period(now, 30s)')
-@state_trigger(
-    'input_select.ems_control_profile '
-    'or input_select.ems_goal_profile '
-    'or input_select.ems_guard_profile '
-    'or input_select.ems_forecast_profile '
-    'or sensor.average_active_power_2 '
-    'or sensor.hourly_energy_balance '
-    'or sensor.pv_instant_power_2'
-)
-def ems_policy_engine_loop():
-    import time
-    now_ts = time.time()
-    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+def _policy_engine_interval_seconds(cfg):
+    policy_engine_cfg = getattr(cfg, 'policy_engine', None)
+    if policy_engine_cfg is None:
+        return 5.0
+    interval_seconds = getattr(policy_engine_cfg, 'interval_seconds', 5.0)
+    if interval_seconds in (None, '', False):
+        return 5.0
+    return float(interval_seconds)
+
+
+def _policy_engine_interval_elapsed(now_ts, interval_seconds):
+    last_run_ts = _POLICY_ENGINE_TIMER_STATE.get('last_run_ts')
+    if last_run_ts is None:
+        return True
+    return (now_ts - float(last_run_ts)) >= float(interval_seconds)
+
+
+def _note_policy_tick(now_ts):
+    _POLICY_ENGINE_TIMER_STATE['ticks_seen'] = int(_POLICY_ENGINE_TIMER_STATE.get('ticks_seen', 0) or 0) + 1
+    _POLICY_ENGINE_TIMER_STATE['last_tick_ts'] = now_ts
+
+
+def _note_policy_skip():
+    _POLICY_ENGINE_TIMER_STATE['skipped_ticks'] = int(_POLICY_ENGINE_TIMER_STATE.get('skipped_ticks', 0) or 0) + 1
+
+
+def _note_policy_run(now_ts):
+    _POLICY_ENGINE_TIMER_STATE['last_run_ts'] = now_ts
+    _POLICY_ENGINE_TIMER_STATE['runs_seen'] = int(_POLICY_ENGINE_TIMER_STATE.get('runs_seen', 0) or 0) + 1
+
+
+def run_policy_loop(now_ts, cfg, entities, trigger_reason):
     profiles = read_profiles(entities)
     m = read_measurements(now_ts, cfg, entities)
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
@@ -415,6 +439,14 @@ def ems_policy_engine_loop():
             'rpnz_w': derived.rpnz_w,
             'required_power_w': derived.required_power_w,
             'required_power_consumption_kw': derived.required_power_consumption_kw,
+            'policy_engine_trigger_mode': 'timer',
+            'policy_engine_scheduler_tick_seconds': 2,
+            'policy_engine_interval_seconds': _policy_engine_interval_seconds(cfg),
+            'policy_engine_last_tick_ts': _POLICY_ENGINE_TIMER_STATE.get('last_tick_ts', now_ts),
+            'policy_engine_last_run_reason': trigger_reason,
+            'policy_engine_ticks_seen': int(_POLICY_ENGINE_TIMER_STATE.get('ticks_seen', 0) or 0),
+            'policy_engine_runs_seen': int(_POLICY_ENGINE_TIMER_STATE.get('runs_seen', 0) or 0),
+            'policy_engine_skipped_ticks': int(_POLICY_ENGINE_TIMER_STATE.get('skipped_ticks', 0) or 0),
         }
     )
     device_policies_hash = _device_policies_hash(attrs)
@@ -432,3 +464,27 @@ def ems_policy_engine_loop():
     publish_sensor(entities['dispatch_command'], dispatch_command_attrs['dispatch_command_hash'], dispatch_command_attrs)
     publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
     publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), attrs)
+
+
+@time_trigger('period(now, 2s)')
+def ems_policy_engine_tick():
+    import time
+    now_ts = time.time()
+    _note_policy_tick(now_ts)
+    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    interval_seconds = _policy_engine_interval_seconds(cfg)
+    if not _policy_engine_interval_elapsed(now_ts, interval_seconds):
+        _note_policy_skip()
+        return
+    _note_policy_run(now_ts)
+    run_policy_loop(now_ts, cfg, entities, 'timer')
+
+
+def ems_policy_engine_loop(trigger_reason='manual'):
+    import time
+    now_ts = time.time()
+    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    if str(trigger_reason) == 'timer':
+        _note_policy_tick(now_ts)
+    _note_policy_run(now_ts)
+    run_policy_loop(now_ts, cfg, entities, trigger_reason)

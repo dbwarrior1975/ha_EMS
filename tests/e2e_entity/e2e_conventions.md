@@ -26,6 +26,8 @@ E2E-testien tulee todistaa nykyista tuotantoketjua:
 2. Hae globaalit entityt `h.ent`-registrysta.
 3. Hae laitekohtaiset entityt `h.device_entity(device_id, field)`-helperilla.
 4. Ala importtaa `tests.entity_ids.ENT`:a e2e-polkuun.
+5. Yksi harness-step simuloi yhden policy-sampling-ajon kutsumalla
+   `ems_policy_engine_loop(trigger_reason='e2e')`.
 
 ## Preferred assertions
 

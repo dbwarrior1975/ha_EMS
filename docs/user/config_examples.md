@@ -20,6 +20,19 @@ Canonical odotus kaikissa esimerkeissa:
 6. `sensor.ems_actuator_writer_trace` raportoi writer-toteuman `devices`-mapissa
 7. vanhat yksittaiskentat tai `relay1`/`relay2`-nimet eivat ole uusi integraatiosopimus
 
+Kaikissa tuotanto- ja testiesimerkeissa policy enginein ajastus kuuluu
+`ems.policy_engine`-osioon:
+
+```yaml
+ems:
+  policy_engine:
+    interval_seconds: 5
+```
+
+Oletus on `5` sekuntia ja minimi `2` sekuntia. Tuotannossa runtime kayttaa
+kiinteaa `2s` tickia ja ajaa policy-loopin ensimmaisella tickilla sen jalkeen,
+kun `interval_seconds` on kulunut.
+
 ## Only HOME_BATTERY
 
 Kayttotarkoitus: pelkka akku ilman EV-laturia tai relekuormia.

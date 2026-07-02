@@ -6,7 +6,7 @@ Tama muistio kuvaa, miten nykyinen EMS-ketju etenee yhdessa skenaariostepissa ja
 
 Yksi `QuarterScenarioHarness.step(...)` ajaa aina samat kolme komponenttia tassa jarjestyksessa:
 
-1. `ems_policy_engine_loop()`
+1. `ems_policy_engine_loop(trigger_reason='e2e')`
 2. `ems_dispatch_state_applier_loop()`
 3. `ems_actuator_writers_loop()`
 
@@ -15,6 +15,9 @@ Tasta seuraa perusmalli:
 1. Policy laskee paatokset stepin alun tilasta.
 2. Dispatch state applier toteuttaa dispatch-paatoksen ja paivittaa surplus-active/freezen.
 3. Actuator writer loop kirjoittaa actuatorit policy-outputtien perusteella.
+
+E2E ei odota oikeaa seinakellotimeria. Harness kutsuu policy-loopin wrapperia
+suoraan, jotta yksi step simuloi yhden deterministisen sampling-ajon.
 
 ## Tarkein seuraus
 

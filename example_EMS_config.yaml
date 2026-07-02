@@ -11,6 +11,9 @@ ems:
     forecast: input_select.ems_forecast_profile
     guard: input_select.ems_guard_profile
 
+  policy_engine:
+    interval_seconds: 5
+
   global_config:
     deadband_w: input_number.ems_deadband_w
     ramp_w: input_number.ems_ramp_max_w

@@ -17,6 +17,7 @@ from ems_core.domain.models import (
     CoreEvPolicyConfig,
     CoreGlobalConfig,
     CoreHaeoConfig,
+    CorePolicyEngineConfig,
     CorePolicyOutputsConfig,
     CoreProfilesConfig,
     CoreRelayAdapterConfig,
@@ -51,6 +52,7 @@ REQUIRED_TOP_LEVEL_SECTIONS = (
 OPTIONAL_TOP_LEVEL_SECTIONS = (
     'role_constraints',
     'haeo',
+    'policy_engine',
 )
 SUPPORTED_DEVICE_KINDS = {
     'BATTERY',
@@ -83,6 +85,7 @@ ALLOWED_DIAGNOSTICS_OUTPUT_KEYS = frozenset(
         'dispatch_state_applier_trace',
     )
 )
+ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds',))
 ALLOWED_RUNTIME_KEYS = frozenset(
     (
         'grid_power_w',
@@ -273,6 +276,19 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             ('grid_power_w', 'quarter_energy_balance_kwh', 'pv_power_w'),
             issues,
         )
+
+    if isinstance(ems.get('policy_engine'), dict):
+        _validate_unknown_fields(
+            ems['policy_engine'],
+            'ems.policy_engine',
+            ALLOWED_POLICY_ENGINE_KEYS,
+            issues,
+        )
+        raw_interval = ems['policy_engine'].get('interval_seconds', 5.0)
+        try:
+            _parse_policy_engine_interval_seconds(raw_interval)
+        except ValueError as exc:
+            issues.append(_issue('ems.policy_engine.interval_seconds', SEVERITY_ERROR, str(exc)))
 
     if isinstance(ems.get('state'), dict):
         _validate_required_entities(
@@ -557,6 +573,7 @@ def build_core_config_from_grouped_reader(
     ems = config.get('ems', {})
     devices = ems.get('devices', {})
     role_constraints = ems.get('role_constraints', {})
+    policy_engine = ems.get('policy_engine', {})
     core_devices = _build_core_devices_map(devices, read_entity)
     home_battery = _build_core_battery_device(
         'HOME_BATTERY',
@@ -571,6 +588,11 @@ def build_core_config_from_grouped_reader(
             goal=_resolve_core_config_value(_require_mapping_value(ems.get('profiles'), 'goal'), read_entity, ''),
             forecast=_resolve_core_config_value(_require_mapping_value(ems.get('profiles'), 'forecast'), read_entity, ''),
             guard=_resolve_core_config_value(_require_mapping_value(ems.get('profiles'), 'guard'), read_entity, ''),
+        ),
+        policy_engine=CorePolicyEngineConfig(
+            interval_seconds=_parse_policy_engine_interval_seconds(
+                policy_engine.get('interval_seconds', 5.0) if isinstance(policy_engine, dict) else 5.0
+            ),
         ),
         global_config=CoreGlobalConfig(
             deadband_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'deadband_w'), read_entity, 50),
@@ -663,6 +685,19 @@ def _first_ev_priority(core_devices: dict[str, object]) -> object:
         if str(getattr(device, 'kind', '')) == 'EV_CHARGER':
             return getattr(getattr(device, 'policy', None), 'priority', 3)
     return 3
+
+
+def _parse_policy_engine_interval_seconds(raw_value):
+    if raw_value is None:
+        return 5.0
+    if isinstance(raw_value, bool):
+        raise ValueError('policy_engine.interval_seconds must be numeric')
+    if not isinstance(raw_value, (int, float)):
+        raise ValueError('policy_engine.interval_seconds must be numeric')
+    interval_seconds = float(raw_value)
+    if interval_seconds < 2.0:
+        raise ValueError('policy_engine.interval_seconds must be >= 2 seconds')
+    return interval_seconds
 
 
 def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> None:

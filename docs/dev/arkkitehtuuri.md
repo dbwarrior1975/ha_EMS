@@ -63,6 +63,13 @@ Vastuut:
 5. julkaisee `device_policies`, `dispatch_command` ja `policy_state`
 6. julkaisee `policy_diagnostics`-selityspayloadin
 
+Ajastusmalli:
+
+1. Pyscript scheduler kutsuu policy-engine tickia kiinteasti `2s` valein
+2. `ems.policy_engine.interval_seconds` maarittaa minimi elapsed intervalin
+3. runtime-inputit luetaan aina ajon alussa grouped-configin entity-id:ista
+4. raw runtime entityt eivat ole enaa policy-enginen `@state_trigger`-sopimus
+
 Julkaisusopimus:
 
 1. `device_policies` sensorin `state` on `device_policies_hash`

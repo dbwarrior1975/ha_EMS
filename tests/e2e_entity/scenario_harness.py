@@ -596,7 +596,7 @@ class QuarterScenarioHarness:
                 self.policy_mod['derive_net_zero_inputs'] = self._derive_net_zero_inputs_for_test
             else:
                 self.policy_mod['derive_net_zero_inputs'] = self._real_derive_net_zero_inputs
-            self.policy_mod['ems_policy_engine_loop']()
+            self.policy_mod['ems_policy_engine_loop'](trigger_reason='e2e')
 
     def _run_dispatch_state_applier_loop(self):
         self.dispatch_state_applier_mod['ems_dispatch_state_applier_loop']()

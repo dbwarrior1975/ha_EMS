@@ -93,6 +93,8 @@ Nykyinen e2e-malli:
    `h.device_entity(device_id, field)` -pintaa
 4. root-tason `EMS_config.yaml` ei saa vaikuttaa e2e-skenaarion device
    registryyn, entity-id -hakuun tai seedaukseen
+5. harness kutsuu `ems_policy_engine_loop(trigger_reason='e2e')`, ei oikeaa
+   Pyscript-timeria
 
 Root YAML -kytkenta on erikseen regressiosuojattu testissa
 `tests/contract/test_grouped_config_runtime_parity.py::
@@ -180,6 +182,12 @@ runtime-parityssa.
 
 `tests/unit/test_policy_diagnostics.py` tarkistaa, etta keskeiset kentat ja
 `battery_write_enabled` valittyvat diagnostiikka-attribuutteihin.
+
+`tests/unit/test_policy_engine_timer.py` lukitsee timer-gaten:
+
+1. kiintea `@time_trigger('period(now, 2s)')`
+2. ei raw runtime `@state_trigger` -entityja
+3. interval-gaten counter- ja elapsed-semantiiikka
 
 ### Quarter-skenaariot
 

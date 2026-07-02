@@ -12,6 +12,7 @@ from ems_core.domain.models import (
     CoreEvChargerDeviceConfig,
     CoreEvPolicyConfig,
     CoreGlobalConfig,
+    CorePolicyEngineConfig,
     CorePolicyOutputsConfig,
     CoreProfilesConfig,
     CoreRelayAdapterConfig,
@@ -192,6 +193,7 @@ def make_cfg(**overrides):
             forecast=ForecastProfile.NONE,
             guard=GuardProfile.NORMAL_LIMITS,
         ),
+        policy_engine=CorePolicyEngineConfig(interval_seconds=5.0),
         global_config=CoreGlobalConfig(
             deadband_w=float(data['deadband_w']),
             ramp_w=float(data['ramp_max_w']),

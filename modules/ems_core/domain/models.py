@@ -214,6 +214,11 @@ class CoreRoleConstraintsConfig:
             self.by_role = {}
 
 
+@dataclass
+class CorePolicyEngineConfig:
+    interval_seconds: float = 5.0
+
+
 CoreDeviceConfig = Union[
     'CoreBatteryDeviceConfig',
     'CoreEvChargerDeviceConfig',
@@ -224,6 +229,7 @@ CoreDeviceConfig = Union[
 @dataclass
 class CoreConfig:
     profiles: CoreProfilesConfig
+    policy_engine: Optional[CorePolicyEngineConfig]
     global_config: CoreGlobalConfig
     home_battery: CoreBatteryDeviceConfig
     runtime: CoreRuntimeConfig
@@ -255,6 +261,8 @@ class CoreConfig:
     adjustable_surplus_load_priority: Optional[ScalarRef] = None
 
     def __post_init__(self):
+        if self.policy_engine is None:
+            self.policy_engine = CorePolicyEngineConfig()
         if self.role_constraints is None:
             self.role_constraints = CoreRoleConstraintsConfig()
         if self.devices is None:
