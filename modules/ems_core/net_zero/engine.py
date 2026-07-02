@@ -879,6 +879,26 @@ def _apply_force_rising_edge_freeze_for_devices(
     return freeze_until, tuple(sorted(current_force_on_device_ids))
 
 
+def _canonical_surplus_freeze_until_ts_for_output(
+    dispatch_action,
+    dispatch_decision,
+    combo_change_freeze_until_ts,
+    decision_freeze_until_ts,
+    effective_freeze_until_ts,
+):
+    if combo_change_freeze_until_ts is not None:
+        return combo_change_freeze_until_ts
+    action = str(dispatch_action or '')
+    decision = str(dispatch_decision or '')
+    if action == 'CLEAR_ALL' and decision == 'CLEAR_ALL':
+        return None
+    if action == 'NOOP':
+        return effective_freeze_until_ts
+    if decision_freeze_until_ts is not None:
+        return decision_freeze_until_ts
+    return effective_freeze_until_ts
+
+
 def compute_net_zero_engine_outputs(
     profiles, cfg, m, haeo, nz, now_ts, *,
     freeze_until_ts,
@@ -1274,14 +1294,12 @@ def compute_net_zero_engine_outputs(
             'device_policies': _device_policy_payloads(device_policies),
             'capability_blocked_devices': capability_blocked_devices,
             'surplus_primary_target': primary_release_target,
-            'surplus_freeze_until_ts': (
-                combo_change_freeze_until_ts
-                if combo_change_freeze_until_ts is not None
-                else (
-                    surplus_device_decision.freeze_until_ts
-                    if surplus_device_decision.freeze_until_ts is not None
-                    else effective_freeze_until_ts
-                )
+            'surplus_freeze_until_ts': _canonical_surplus_freeze_until_ts_for_output(
+                surplus_device_action,
+                surplus_device_decision_text,
+                combo_change_freeze_until_ts,
+                surplus_device_decision.freeze_until_ts,
+                effective_freeze_until_ts,
             ),
             'surplus_state_clear_reason': surplus_state_clear_reason,
             'surplus_rpc_kw': nz.required_power_consumption_kw,

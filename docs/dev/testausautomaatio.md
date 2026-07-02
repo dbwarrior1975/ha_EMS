@@ -95,6 +95,8 @@ Nykyinen e2e-malli:
    registryyn, entity-id -hakuun tai seedaukseen
 5. harness kutsuu `ems_policy_engine_loop(trigger_reason='e2e')`, ei oikeaa
    Pyscript-timeria
+6. `trigger_reason='e2e'` pakottaa `policy_diagnostics`-julkaisun, vaikka
+   tuotannon timer-ajossa diagnostiikka olisi throttlatty
 
 Root YAML -kytkenta on erikseen regressiosuojattu testissa
 `tests/contract/test_grouped_config_runtime_parity.py::
@@ -192,6 +194,9 @@ kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
 1. kiintea `@time_trigger('period(now, 2s)')`
 2. ei raw runtime `@state_trigger` -entityja
 3. interval-gaten counter- ja elapsed-semantiiikka
+4. skip-polku ei lue runtime-contextia eika julkaise sensoreita
+5. `policy_diagnostics` throttlautuu timer-ajossa, mutta manual/e2e-ajot
+   julkaisevat sen aina
 
 ### Quarter-skenaariot
 

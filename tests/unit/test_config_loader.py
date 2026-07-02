@@ -7,6 +7,7 @@ import pytest
 from ems_adapter.config_loader import (
     SEVERITY_ERROR,
     SEVERITY_WARNING,
+    _parse_policy_engine_diagnostics_interval_seconds,
     _parse_policy_engine_interval_seconds,
     build_core_config_from_grouped_config,
     build_core_config_from_grouped_reader,
@@ -271,6 +272,7 @@ def test_policy_engine_interval_defaults_to_5(project_root):
 
     assert result.ok is True
     assert core.policy_engine.interval_seconds == 5.0
+    assert core.policy_engine.diagnostics_interval_seconds == 30.0
 
 
 @pytest.mark.unit
@@ -340,7 +342,11 @@ def test_policy_engine_interval_rejects_entity_ref(project_root):
 @pytest.mark.unit
 def test_policy_engine_interval_rejects_unknown_field(project_root):
     config = _load_example(project_root)
-    config['ems']['policy_engine'] = {'interval_seconds': 5, 'unexpected': 1}
+    config['ems']['policy_engine'] = {
+        'interval_seconds': 5,
+        'diagnostics_interval_seconds': 30,
+        'unexpected': 1,
+    }
 
     result = validate_grouped_ems_config(config)
 
@@ -354,6 +360,112 @@ def test_policy_engine_interval_rejects_unknown_field(project_root):
 def test_parse_policy_engine_interval_seconds_accepts_int_and_float():
     assert _parse_policy_engine_interval_seconds(5) == 5.0
     assert _parse_policy_engine_interval_seconds(2.5) == 2.5
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_defaults_to_30(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'interval_seconds': 5}
+
+    result = validate_grouped_ems_config(config)
+    core = build_core_config_from_grouped_config(config, {})
+
+    assert result.ok is True
+    assert core.policy_engine.diagnostics_interval_seconds == 30.0
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_accepts_30(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'interval_seconds': 5, 'diagnostics_interval_seconds': 30}
+
+    result = validate_grouped_ems_config(config)
+    core = build_core_config_from_grouped_config(config, {})
+
+    assert result.ok is True
+    assert core.policy_engine.diagnostics_interval_seconds == 30.0
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_accepts_minimum_5(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': 5}
+
+    result = validate_grouped_ems_config(config)
+    core = build_core_config_from_grouped_config(config, {})
+
+    assert result.ok is True
+    assert core.policy_engine.diagnostics_interval_seconds == 5.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', [2, 0, -1])
+def test_policy_engine_diagnostics_interval_rejects_values_below_5(project_root, value):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': value}
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_engine.diagnostics_interval_seconds'] == (
+        'policy_engine.diagnostics_interval_seconds must be >= 5 seconds'
+    )
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_rejects_non_numeric(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': '30'}
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_engine.diagnostics_interval_seconds'] == (
+        'policy_engine.diagnostics_interval_seconds must be a numeric config constant'
+    )
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_rejects_bool(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': True}
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_engine.diagnostics_interval_seconds'] == (
+        'policy_engine.diagnostics_interval_seconds must be a numeric config constant'
+    )
+
+
+@pytest.mark.unit
+def test_policy_engine_diagnostics_interval_rejects_entity_ref(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': 'input_number.ems_diagnostics_interval'}
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert _error_messages(result)['ems.policy_engine.diagnostics_interval_seconds'] == (
+        'policy_engine.diagnostics_interval_seconds must be a numeric config constant'
+    )
+
+
+@pytest.mark.unit
+def test_diagnostics_interval_invalid_yaml_does_not_default_silently(project_root):
+    config = _load_example(project_root)
+    config['ems']['policy_engine'] = {'diagnostics_interval_seconds': 'bad-yaml-value'}
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.policy_engine.diagnostics_interval_seconds' in _error_paths(result)
+
+
+@pytest.mark.unit
+def test_parse_policy_engine_diagnostics_interval_seconds_accepts_int_and_float():
+    assert _parse_policy_engine_diagnostics_interval_seconds(30) == 30.0
+    assert _parse_policy_engine_diagnostics_interval_seconds(7.5) == 7.5
 
 
 @pytest.mark.unit

@@ -32,6 +32,8 @@ Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa, joten
 4. Ala importtaa `tests.entity_ids.ENT`:a e2e-polkuun.
 5. Yksi harness-step simuloi yhden policy-sampling-ajon kutsumalla
    `ems_policy_engine_loop(trigger_reason='e2e')`.
+6. E2E-triggeri julkaisee `policy_diagnostics`-payloadin aina, vaikka
+   tuotannon timer-ajossa diagnostiikka olisi throttlatty.
 
 ## Preferred assertions
 

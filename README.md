@@ -95,11 +95,19 @@ Policy enginein ajastus on osa samaa grouped-configia:
 ems:
   policy_engine:
     interval_seconds: 5
+    diagnostics_interval_seconds: 30
 ```
 
-`interval_seconds` oletus on `5` ja minimi `2`. Tuotannossa policy engine
-ajetaan kiintealla `2s` scheduler-tickilla, jonka sisalla tarkistetaan onko
-konfiguroitu minimi elapsed interval kulunut.
+`interval_seconds` oletus on `5` ja minimi `2`; se maarittaa policy-laskennan
+cadencen. `diagnostics_interval_seconds` oletus on `30` ja minimi `5`; se
+rajoittaa `policy_diagnostics`-attribuuttipayloadin timer-julkaisuja silloin,
+kun canonical outputit ja warning/input-quality-tila eivat muutu. Manual- ja
+E2E-ajot julkaisevat diagnostiikan aina.
+
+Tuotannossa policy engine ajetaan kiintealla `2s` scheduler-tickilla. Kevyt
+skip-polku tarkistaa vain muistissa olevan intervalin eika lue config/runtime-
+kontekstia; config-muutokset voivat siksi tulla voimaan seuraavassa oikeassa
+policy-ajossa tai manual/reload-ajossa.
 
 ## Config examples and test fixtures
 

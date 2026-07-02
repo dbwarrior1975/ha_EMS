@@ -18,6 +18,8 @@ Tasta seuraa perusmalli:
 
 E2E ei odota oikeaa seinakellotimeria. Harness kutsuu policy-loopin wrapperia
 suoraan, jotta yksi step simuloi yhden deterministisen sampling-ajon.
+Tama ohittaa tuotannon `2s` scheduler-skip-polun ja pakottaa
+`policy_diagnostics`-julkaisun `trigger_reason='e2e'`-arvolla.
 
 ## Tarkein seuraus
 

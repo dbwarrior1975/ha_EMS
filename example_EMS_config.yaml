@@ -13,6 +13,7 @@ ems:
 
   policy_engine:
     interval_seconds: 5
+    diagnostics_interval_seconds: 30
 
   global_config:
     deadband_w: input_number.ems_deadband_w

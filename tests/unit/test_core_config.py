@@ -93,6 +93,7 @@ def test_build_core_config_from_grouped_config_maps_top_level_sections(project_r
 
     assert core.profiles.control == 'AUTOMATIC'
     assert core.policy_engine.interval_seconds == 5.0
+    assert core.policy_engine.diagnostics_interval_seconds == 30.0
     assert core.global_config.deadband_w == 50
     assert core.runtime.grid_power_w == 'sensor.average_active_power_2'
     assert core.runtime.quarter_energy_balance_kwh == 'sensor.hourly_energy_balance'

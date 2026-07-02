@@ -13,9 +13,17 @@ from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
 _POLICY_ENGINE_TIMER_STATE = {
     'last_run_ts': None,
+    'last_diagnostics_publish_ts': None,
+    'effective_interval_seconds': 5.0,
+    'effective_diagnostics_interval_seconds': 30.0,
+    'scheduler_tick_seconds': 2.0,
     'ticks_seen': 0,
     'runs_seen': 0,
     'skipped_ticks': 0,
+    'previous_device_policies_hash': None,
+    'previous_dispatch_command_hash': None,
+    'previous_policy_state_hash': None,
+    'previous_warning_signature': None,
 }
 
 
@@ -301,14 +309,25 @@ def _device_policies_hash(attrs):
     })
 
 
+def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
+    action = str(attrs.get('surplus_device_dispatch_action') or '')
+    decision = str(attrs.get('surplus_device_dispatch_decision') or '')
+    clear_reason = str(attrs.get('surplus_state_clear_reason') or '')
+    freeze_until_ts = attrs.get('surplus_freeze_until_ts')
+    if action == 'CLEAR_ALL' and decision == 'CLEAR_ALL' and clear_reason != 'HAEO_COMBO_CHANGED':
+        return None
+    return freeze_until_ts
+
+
 def _dispatch_command_attrs(attrs):
+    freeze_until_ts = _canonical_surplus_freeze_until_ts_for_dispatch(attrs)
     command_hash = _payload_hash({
         'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
         'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
         'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
         'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
         'surplus_device_targets': attrs.get('surplus_device_targets', ()),
-        'surplus_freeze_until_ts': attrs.get('surplus_freeze_until_ts'),
+        'surplus_freeze_until_ts': freeze_until_ts,
         'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
     })
     return {
@@ -320,7 +339,7 @@ def _dispatch_command_attrs(attrs):
         'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
         'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
         'surplus_device_targets': attrs.get('surplus_device_targets', ()),
-        'surplus_freeze_until_ts': attrs.get('surplus_freeze_until_ts'),
+        'surplus_freeze_until_ts': freeze_until_ts,
         'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
         'surplus_explanation': attrs.get('surplus_explanation', ''),
     }
@@ -358,11 +377,64 @@ def _policy_engine_interval_seconds(cfg):
     return float(interval_seconds)
 
 
+def _policy_engine_diagnostics_interval_seconds(cfg):
+    policy_engine_cfg = getattr(cfg, 'policy_engine', None)
+    if policy_engine_cfg is None:
+        return 30.0
+    interval_seconds = getattr(policy_engine_cfg, 'diagnostics_interval_seconds', 30.0)
+    if interval_seconds in (None, ''):
+        return 30.0
+    if isinstance(interval_seconds, bool):
+        return 30.0
+    return float(interval_seconds)
+
+
 def _policy_engine_interval_elapsed(now_ts, interval_seconds):
     last_run_ts = _POLICY_ENGINE_TIMER_STATE.get('last_run_ts')
     if last_run_ts is None:
         return True
     return (now_ts - float(last_run_ts)) >= float(interval_seconds)
+
+
+def _policy_engine_interval_elapsed_fast(now_ts):
+    interval_seconds = float(_POLICY_ENGINE_TIMER_STATE.get('effective_interval_seconds', 5.0) or 5.0)
+    return _policy_engine_interval_elapsed(now_ts, interval_seconds)
+
+
+def _update_policy_engine_effective_intervals(cfg):
+    _POLICY_ENGINE_TIMER_STATE['effective_interval_seconds'] = _policy_engine_interval_seconds(cfg)
+    _POLICY_ENGINE_TIMER_STATE['effective_diagnostics_interval_seconds'] = _policy_engine_diagnostics_interval_seconds(cfg)
+
+
+def _policy_warning_signature(attrs):
+    return _payload_hash({
+        'net_zero_input_quality': attrs.get('net_zero_input_quality', ''),
+        'net_zero_input_warnings': attrs.get('net_zero_input_warnings', ()),
+    })
+
+
+def _should_publish_policy_diagnostics(
+    now_ts,
+    trigger_reason,
+    diagnostics_interval_seconds,
+    canonical_changed,
+    warning_state_changed,
+):
+    reason = str(trigger_reason or '')
+    if reason == 'e2e':
+        return True, 'e2e'
+    if reason == 'manual':
+        return True, 'manual'
+    if _POLICY_ENGINE_TIMER_STATE.get('last_diagnostics_publish_ts') is None:
+        return True, 'startup'
+    if canonical_changed:
+        return True, 'canonical_changed'
+    if warning_state_changed:
+        return True, 'warning_changed'
+    last_ts = float(_POLICY_ENGINE_TIMER_STATE.get('last_diagnostics_publish_ts') or 0.0)
+    if now_ts - last_ts >= float(diagnostics_interval_seconds):
+        return True, 'interval'
+    return False, 'throttled'
 
 
 def _note_policy_tick(now_ts):
@@ -380,6 +452,8 @@ def _note_policy_run(now_ts):
 
 
 def run_policy_loop(now_ts, cfg, entities, trigger_reason):
+    import time
+    run_started_ts = time.time()
     profiles = read_profiles(entities)
     m = read_measurements(now_ts, cfg, entities)
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
@@ -440,7 +514,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
             'required_power_w': derived.required_power_w,
             'required_power_consumption_kw': derived.required_power_consumption_kw,
             'policy_engine_trigger_mode': 'timer',
-            'policy_engine_scheduler_tick_seconds': 2,
+            'policy_engine_scheduler_tick_seconds': _POLICY_ENGINE_TIMER_STATE.get('scheduler_tick_seconds', 2.0),
             'policy_engine_interval_seconds': _policy_engine_interval_seconds(cfg),
             'policy_engine_last_tick_ts': _POLICY_ENGINE_TIMER_STATE.get('last_tick_ts', now_ts),
             'policy_engine_last_run_reason': trigger_reason,
@@ -455,15 +529,59 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
     attrs['device_policies_version'] = device_policies_hash
     dispatch_command_attrs = _dispatch_command_attrs(attrs)
     policy_state_hash, policy_state_attrs = _policy_state_payload(entities, attrs)
+    dispatch_command_hash = dispatch_command_attrs['dispatch_command_hash']
+    warning_signature = _policy_warning_signature(attrs)
+    canonical_changed = (
+        device_policies_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_device_policies_hash')
+        or dispatch_command_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_dispatch_command_hash')
+        or policy_state_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_policy_state_hash')
+    )
+    warning_state_changed = warning_signature != _POLICY_ENGINE_TIMER_STATE.get('previous_warning_signature')
+    diagnostics_interval_seconds = _policy_engine_diagnostics_interval_seconds(cfg)
+    publish_diagnostics, diagnostics_publish_reason = _should_publish_policy_diagnostics(
+        now_ts,
+        trigger_reason,
+        diagnostics_interval_seconds,
+        canonical_changed,
+        warning_state_changed,
+    )
+    publish_started_ts = time.time()
+    published_device_policies = False
+    published_dispatch_command = False
+    published_policy_state = False
     publish_sensor(
         entities['previous_device_state'],
         _selected_previous_device_state_for_outputs(outputs)['mode'],
         _previous_device_state_attrs_from_outputs(outputs),
     )
     publish_sensor(entities['device_policies'], device_policies_hash, attrs)
-    publish_sensor(entities['dispatch_command'], dispatch_command_attrs['dispatch_command_hash'], dispatch_command_attrs)
+    published_device_policies = True
+    publish_sensor(entities['dispatch_command'], dispatch_command_hash, dispatch_command_attrs)
+    published_dispatch_command = True
     publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
-    publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), attrs)
+    published_policy_state = True
+    publish_ms = int(round((time.time() - publish_started_ts) * 1000.0))
+    if publish_diagnostics:
+        diagnostics_attrs = dict(attrs)
+        diagnostics_attrs.update(
+            {
+                'policy_engine_run_duration_ms': int(round((time.time() - run_started_ts) * 1000.0)),
+                'policy_engine_publish_ms': publish_ms,
+                'policy_engine_published_device_policies': published_device_policies,
+                'policy_engine_published_dispatch_command': published_dispatch_command,
+                'policy_engine_published_policy_state': published_policy_state,
+                'policy_engine_published_policy_diagnostics': True,
+                'policy_engine_diagnostics_publish_reason': diagnostics_publish_reason,
+                'policy_engine_last_diagnostics_publish_ts': now_ts,
+                'policy_engine_diagnostics_interval_seconds': diagnostics_interval_seconds,
+            }
+        )
+        publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), diagnostics_attrs)
+        _POLICY_ENGINE_TIMER_STATE['last_diagnostics_publish_ts'] = now_ts
+    _POLICY_ENGINE_TIMER_STATE['previous_device_policies_hash'] = device_policies_hash
+    _POLICY_ENGINE_TIMER_STATE['previous_dispatch_command_hash'] = dispatch_command_hash
+    _POLICY_ENGINE_TIMER_STATE['previous_policy_state_hash'] = policy_state_hash
+    _POLICY_ENGINE_TIMER_STATE['previous_warning_signature'] = warning_signature
 
 
 @time_trigger('period(now, 2s)')
@@ -471,9 +589,12 @@ def ems_policy_engine_tick():
     import time
     now_ts = time.time()
     _note_policy_tick(now_ts)
+    if not _policy_engine_interval_elapsed_fast(now_ts):
+        _note_policy_skip()
+        return
     cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
-    interval_seconds = _policy_engine_interval_seconds(cfg)
-    if not _policy_engine_interval_elapsed(now_ts, interval_seconds):
+    _update_policy_engine_effective_intervals(cfg)
+    if not _policy_engine_interval_elapsed(now_ts, _POLICY_ENGINE_TIMER_STATE['effective_interval_seconds']):
         _note_policy_skip()
         return
     _note_policy_run(now_ts)
@@ -484,6 +605,7 @@ def ems_policy_engine_loop(trigger_reason='manual'):
     import time
     now_ts = time.time()
     cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    _update_policy_engine_effective_intervals(cfg)
     if str(trigger_reason) == 'timer':
         _note_policy_tick(now_ts)
     _note_policy_run(now_ts)

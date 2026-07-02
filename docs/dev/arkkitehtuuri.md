@@ -65,21 +65,25 @@ Vastuut:
 3. arvioi guard-tilan
 4. laskee `NetZeroOutputs`-ulostulon
 5. julkaisee `device_policies`, `dispatch_command` ja `policy_state`
-6. julkaisee `policy_diagnostics`-selityspayloadin
+6. julkaisee `policy_diagnostics`-selityspayloadin throttlatulla timer-cadencella
 
 Ajastusmalli:
 
 1. Pyscript scheduler kutsuu policy-engine tickia kiinteasti `2s` valein
 2. `ems.policy_engine.interval_seconds` maarittaa minimi elapsed intervalin
-3. runtime-inputit luetaan aina ajon alussa grouped-configin entity-id:ista
-4. raw runtime entityt eivat ole enaa policy-enginen `@state_trigger`-sopimus
+3. kevyt skip-polku ei lue configia, runtime-contextia tai entityja
+4. runtime-inputit luetaan oikean policy-ajon alussa grouped-configin entity-id:ista
+5. config interval -muutos voi tulla voimaan seuraavassa oikeassa ajossa tai manual/reload-ajossa
+6. raw runtime entityt eivat ole enaa policy-enginen `@state_trigger`-sopimus
 
 Julkaisusopimus:
 
 1. `device_policies` sensorin `state` on `device_policies_hash`
 2. `dispatch_command` sensorin `state` on `dispatch_command_hash`
 3. `policy_state` sensorin `state` on `policy_state_hash`
-4. varsinainen payload on attribuuteissa
+4. `policy_diagnostics` julkaistaan timer-ajossa heti canonical outputin tai warning/input-quality-tilan muuttuessa, muuten enintaan `ems.policy_engine.diagnostics_interval_seconds`-cadencella
+5. manual- ja E2E-ajot julkaisevat `policy_diagnostics`-payloadin aina
+6. varsinainen payload on attribuuteissa
 
 ### Dispatch State Applier
 

@@ -764,6 +764,34 @@ def test_engine_force_without_rising_edge_allows_activation_without_new_freeze()
 
 
 @pytest.mark.unit
+def test_policy_inactive_clear_all_freeze_until_is_stable_across_now_ts():
+    profiles = make_profiles(control=ControlProfile.MANUAL, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(surplus_freeze_s=30)
+    m = make_m()
+    nz = make_nz(rpnz_w=1000, required_power_consumption_kw=10.0)
+
+    first = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 100.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(),
+    )
+    second = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 105.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(),
+    )
+
+    assert first.attrs['surplus_device_dispatch_action'] == 'CLEAR_ALL'
+    assert first.attrs['surplus_device_dispatch_decision'] == 'CLEAR_ALL'
+    assert second.attrs['surplus_device_dispatch_action'] == 'CLEAR_ALL'
+    assert second.attrs['surplus_device_dispatch_decision'] == 'CLEAR_ALL'
+    assert first.attrs['surplus_freeze_until_ts'] is None
+    assert second.attrs['surplus_freeze_until_ts'] is None
+
+
+@pytest.mark.unit
 def test_engine_home_battery_adjustable_uses_rpnz_controller_when_not_primary_ev():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(adjustable_surplus_load='HOME_BATTERY', max_solar_charge_w=2000)

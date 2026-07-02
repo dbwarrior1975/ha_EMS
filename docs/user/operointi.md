@@ -26,6 +26,27 @@ Kaytannollinen tulkinta:
 6. `actuator_writer_trace` kertoo mita writer teki
 7. `dispatch_state_applier_trace` kertoo miten dispatch-komento sovellettiin
 
+## Ajastus ja diagnostiikan kuorma
+
+Policy engine laskee paatokset `ems.policy_engine.interval_seconds`-cadencella
+kiintean `2s` scheduler-tickin sisalla. `policy_diagnostics` julkaistaan
+timer-ajossa heti, jos canonical output tai warning/input-quality-tila muuttuu;
+muuten se julkaistaan enintaan
+`ems.policy_engine.diagnostics_interval_seconds`-cadencella. Manual- ja E2E-ajot
+pakottavat diagnostiikan julkaisun.
+
+Kuormanvahennykseksi Home Assistant recorderista voi rajata diagnostiikan pois:
+
+```yaml
+recorder:
+  exclude:
+    entities:
+      - sensor.ems_policy_diagnostics_pyscript
+```
+
+Tama ei ole correctness-vaatimus. Canonical outputit ovat
+`device_policies`, `dispatch_command` ja `policy_state`.
+
 ## Hash-state semantiikka
 
 Kolmen kanonisen output-sensorin `state` on sisaltopohjainen hash:

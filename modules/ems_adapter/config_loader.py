@@ -79,7 +79,7 @@ ALLOWED_ROLE_KEYS = {
     'HOME_BATTERY_PRIMARY',
 }
 ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
-ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds',))
+ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds', 'diagnostics_interval_seconds'))
 ALLOWED_RUNTIME_KEYS = frozenset(
     (
         'grid_power_w',
@@ -278,6 +278,11 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             _parse_policy_engine_interval_seconds(raw_interval)
         except ValueError as exc:
             issues.append(_issue('ems.policy_engine.interval_seconds', SEVERITY_ERROR, str(exc)))
+        raw_diagnostics_interval = ems['policy_engine'].get('diagnostics_interval_seconds', 30.0)
+        try:
+            _parse_policy_engine_diagnostics_interval_seconds(raw_diagnostics_interval)
+        except ValueError as exc:
+            issues.append(_issue('ems.policy_engine.diagnostics_interval_seconds', SEVERITY_ERROR, str(exc)))
 
     if isinstance(ems.get('state'), dict):
         _validate_required_entities(
@@ -559,6 +564,9 @@ def build_core_config_from_grouped_reader(
             interval_seconds=_parse_policy_engine_interval_seconds(
                 policy_engine.get('interval_seconds', 5.0) if isinstance(policy_engine, dict) else 5.0
             ),
+            diagnostics_interval_seconds=_parse_policy_engine_diagnostics_interval_seconds(
+                policy_engine.get('diagnostics_interval_seconds', 30.0) if isinstance(policy_engine, dict) else 30.0
+            ),
         ),
         global_config=CoreGlobalConfig(
             deadband_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'deadband_w'), read_entity, 50),
@@ -663,6 +671,19 @@ def _parse_policy_engine_interval_seconds(raw_value):
     interval_seconds = float(raw_value)
     if interval_seconds < 2.0:
         raise ValueError('policy_engine.interval_seconds must be >= 2 seconds')
+    return interval_seconds
+
+
+def _parse_policy_engine_diagnostics_interval_seconds(raw_value):
+    if raw_value is None:
+        return 30.0
+    if isinstance(raw_value, bool):
+        raise ValueError('policy_engine.diagnostics_interval_seconds must be a numeric config constant')
+    if not isinstance(raw_value, (int, float)):
+        raise ValueError('policy_engine.diagnostics_interval_seconds must be a numeric config constant')
+    interval_seconds = float(raw_value)
+    if interval_seconds < 5.0:
+        raise ValueError('policy_engine.diagnostics_interval_seconds must be >= 5 seconds')
     return interval_seconds
 
 

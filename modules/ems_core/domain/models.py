@@ -217,6 +217,7 @@ class CoreRoleConstraintsConfig:
 @dataclass
 class CorePolicyEngineConfig:
     interval_seconds: float = 5.0
+    diagnostics_interval_seconds: float = 30.0
 
 
 CoreDeviceConfig = Union[

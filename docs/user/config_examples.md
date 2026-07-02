@@ -31,11 +31,20 @@ Kaikissa tuotanto- ja testiesimerkeissa policy enginein ajastus kuuluu
 ems:
   policy_engine:
     interval_seconds: 5
+    diagnostics_interval_seconds: 30
 ```
 
-Oletus on `5` sekuntia ja minimi `2` sekuntia. Tuotannossa runtime kayttaa
-kiinteaa `2s` tickia ja ajaa policy-loopin ensimmaisella tickilla sen jalkeen,
-kun `interval_seconds` on kulunut.
+`interval_seconds` oletus on `5` sekuntia ja minimi `2` sekuntia.
+`diagnostics_interval_seconds` oletus on `30` sekuntia ja minimi `5`
+sekuntia. Policy-laskenta kay `interval_seconds`-cadencella; timer-ajojen
+`policy_diagnostics` julkaistaan heti canonical outputin tai
+warning/input-quality-tilan muuttuessa, muuten enintaan
+`diagnostics_interval_seconds`-cadencella. Manual- ja E2E-ajot julkaisevat
+diagnostiikan aina.
+
+Tuotannossa runtime kayttaa kiinteaa `2s` tickia. Skip-polku ei lue
+config/runtime-kontekstia, joten interval-configin muutos voi tulla voimaan
+vasta seuraavassa oikeassa policy-ajossa tai manual/reload-ajossa.
 
 ## Only HOME_BATTERY
 
