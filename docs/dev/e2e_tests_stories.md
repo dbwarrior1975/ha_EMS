@@ -2,7 +2,11 @@
 
 Tama dokumentti kuvaa nykyiset `tests/e2e_entity`-hakemiston story-kansiot. Vanhat monoliittiset `tests/e2e_entity/test_*.py`-tiedostot on korvattu vaiheistetuilla kansioilla.
 
-Jokaisessa story-kansiossa on oma `scenario_overview.md`, joka on tarkin paikka yksityiskohtaiselle vaihejaolle.
+NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
+`tests/e2e_entity/net_zero_fixture_conventions.md`.
+
+Yksityiskohtainen vaiheistus loytyy testitiedostoista ja skenaariokohtaisista
+helper-moduleista.
 
 Kanoninen e2e-semanttiikka:
 

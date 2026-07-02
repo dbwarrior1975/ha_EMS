@@ -29,6 +29,22 @@ def runtime_inputs_for_net_zero_intent(
     pv_power_w=None,
     pv_power_kw=None,
 ):
+    """Build production-equivalent raw EMS runtime inputs for a NET_ZERO fixture intent.
+
+    The caller describes the intended derived business situation with `rpnz_w`
+    and `required_power_consumption_kw`, but those values are not written to
+    EMS runtime entities directly. This helper instead calculates the raw
+    production inputs that EMS actually reads at runtime:
+
+    - `quarter_energy_balance_kwh`
+    - `grid_power_w`
+    - optional `pv_power_w`
+
+    The paired `expect_derived_for_net_zero_intent()` assertion documents the
+    expected outcome of production `derive_net_zero_inputs()`. Together the
+    helper and the assertion prove that the raw fixture values encode the same
+    NET_ZERO intent as the shorthand RPNZ/RPC arguments.
+    """
     remaining_s = seconds_until_next_quarter(at_s)
     remaining_min = float(remaining_template_minutes(at_s))
     quarter_energy_balance_kwh = balance_for_rpnz_w(rpnz_w, remaining_s)
@@ -64,6 +80,14 @@ def expect_derived_for_net_zero_intent(
     required_power_consumption_kw,
     at_s,
 ):
+    """Return the expected derived NET_ZERO values for the fixture intent.
+
+    The E2E runner compares this mapping against production
+    `derive_net_zero_inputs()` output after the raw runtime entities from
+    `runtime_inputs_for_net_zero_intent()` have been applied. A mismatch points
+    first to fixture-construction drift or unit/conversion errors, not
+    immediately to a surplus-policy regression.
+    """
     return {
         'rpnz_w': int(round(float(rpnz_w))),
         'required_power_w': int(round(float(required_power_consumption_kw) * 1000.0)),

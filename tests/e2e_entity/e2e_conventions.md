@@ -6,6 +6,9 @@ Tama tiedosto kokoaa nykyiset e2e-kaytannot yhteen.
 Historiallinen suunnitelmamateriaali on poistettu, mutta seuraavat nykyiset
 saannot ja guardit jaavat voimaan.
 
+NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
+`tests/e2e_entity/net_zero_fixture_conventions.md`.
+
 ## Canonical e2e contract
 
 E2E-testien tulee todistaa nykyista tuotantoketjua:

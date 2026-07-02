@@ -11,5 +11,8 @@ skenaariodokumentit.
 6. `e2e_tests_stories.md`
 7. `e2e/`
 
+NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
+`tests/e2e_entity/net_zero_fixture_conventions.md`.
+
 Historialliset suunnitelma- ja tarkistuslistadokumentit on siirretty
 `docs/archive/`-kansioon.

@@ -64,7 +64,7 @@ Keskeisia aidosti toteutettuja kohteita ovat myos:
 Hakemistot:
 
 1. `tests/e2e_entity/`
-2. `tests/scenarios/`
+2. `tests/scenarios/test_regressions.py` (kevyt historiallinen regressiopinta)
 
 Keskeinen infrastruktuuri:
 
@@ -79,6 +79,9 @@ tuotantoketjua suoraan tiedostotasolla:
 
 `tests/scenarios/` sisaltaa kevyempia regressio-/semantiikkatesteja, mutta ei
 ole enaa projektin ensisijainen e2e-pinta.
+
+NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
+`tests/e2e_entity/net_zero_fixture_conventions.md`.
 
 Nykyinen e2e-malli:
 
@@ -195,8 +198,9 @@ Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 11. `tests/e2e_entity/system_degraded_safe_mode/`
 12. `tests/scenarios/test_regressions.py`
 
-Jokaisessa splitatussa e2e-kansiossa on oma `EMS_config.yaml`, ja useimmissa
-myos `scenario_overview.md`, joka kertoo vaihejakojen tarkoituksen.
+Jokaisessa splitatussa e2e-kansiossa on oma `EMS_config.yaml`. Vaihejako ja
+tarinakuvaus loytyvat itse testitiedostoista, scenario-helperista seka
+`docs/dev/e2e_tests_stories.md`:sta.
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 

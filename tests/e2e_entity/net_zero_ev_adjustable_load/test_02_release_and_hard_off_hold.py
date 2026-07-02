@@ -28,7 +28,7 @@ def test_02_release_and_hard_off_hold(project_root):
     steps = [
         {
             'at_s': 135,
-            'note': 't135 PV 1.7 kW: low RPNZ triggers RELEASE_RELAY1 and adjustable path remains active.',
+            'note': 't135 intent: RPNZ=-10 W, RPC=-3.4 kW, PV=1.7 kW. Low RPNZ triggers RELEASE_RELAY1 and adjustable path remains active.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=-10.0,

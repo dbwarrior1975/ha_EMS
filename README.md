@@ -126,16 +126,22 @@ Paikallinen quarter-balancing -tila.
 3. selected-single EV tai kotiakku voi toimia adjustable-surplus-roolissa konfiguraation mukaan
 4. EV voi menna low-PV-tilanteessa `hard_off`-polkuun nykyisen policy-attribuutin kautta
 
-Canonical integraatiopinta on device-id-pohjainen:
+Canonical command/state -integraatiopinta on device-id-pohjainen:
 
 1. `sensor.ems_device_policies_pyscript`
 2. `sensor.ems_active_surplus_devices`
-3. `sensor.ems_policy_decision_trace_pyscript`
-4. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
+3. `sensor.ems_surplus_dispatch_command_pyscript`
+
+Diagnostiikka- ja selityspinnat:
+
+1. `sensor.ems_policy_decision_trace_pyscript`
+2. `sensor.ems_dispatch_state_applier_trace`
+3. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
 Decision-tracessa voi nakya nimiarvoja kuten `RELAY1`, `RELAY2`,
 `EV_CHARGER` ja `ADJUSTABLE`, mutta uudet dashboardit ja automaatiot kannattaa
-sitouttaa device-id-pohjaisiin payload-kenttiin.
+sitouttaa `device_policies`-, `dispatch_command`- ja
+`active_surplus_devices`-payload-kenttiin.
 
 Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
 
@@ -309,23 +315,20 @@ HAEO freshness arvioidaan seka battery- etta EV-freshness-lahteiden iasta. Molem
 Keskeiset policy-ulostuloavaimet (EMS):
 
 1. `device_policies`
-2. `policy_decision_trace`
-3. `surplus_policy_active_pys`
-4. `surplus_next_target_pys`
-5. `surplus_next_threshold_pys`
-6. `surplus_release_candidate_pys`
-7. `surplus_explanation_pys`
-8. `active_surplus_devices`
-9. `previous_device_state`
+2. `dispatch_command`
+3. `active_surplus_devices`
+4. `previous_device_state`
+5. `policy_decision_trace` (diagnostiikkapeili)
 
 Oleellinen tulkinta:
 
 1. `device_policies` on writerin kanoninen ohjausrajapinta
-2. `policy_decision_trace` on kanoninen decision trace; erilliset yksittaiskentat
-   eivat kuulu tuotantosopimukseen
-3. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
+2. `dispatch_command` on dispatch state applierin kanoninen komentorajapinta
+3. `policy_decision_trace` on diagnostiikka- ja selityspinta, ei writerin tai
+   dispatch-applierin kanoninen command/state-lahde
+4. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
    actuator-rajan `target_current_a`-kenttiin
-4. `policy_decision_trace`-kentista johdetut yksittaisjulkaisut eivat ole
+5. `policy_decision_trace`-kentista johdetut yksittaisjulkaisut eivat ole
    release-contractin osa
 
 Capability-semantiiikka:
@@ -449,9 +452,11 @@ Suositeltu ensikayttoonottojarjestys:
 
 Tarkeimmat seurattavat entiteetit:
 
-1. `sensor.ems_policy_decision_trace_pyscript`
-2. `sensor.ems_dispatch_state_applier_trace`
-3. `sensor.ems_actuator_writer_trace`
+1. `sensor.ems_device_policies_pyscript`
+2. `sensor.ems_surplus_dispatch_command_pyscript`
+3. `sensor.ems_policy_decision_trace_pyscript`
+4. `sensor.ems_dispatch_state_applier_trace`
+5. `sensor.ems_actuator_writer_trace`
 
 Erityisen hyodyllisia attribuutteja:
 

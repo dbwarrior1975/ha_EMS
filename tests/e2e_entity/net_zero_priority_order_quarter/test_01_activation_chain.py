@@ -14,7 +14,7 @@ def test_01_activation_chain(project_root):
     steps = [
         {
             'at_s': 0,
-            'note': 't0 raw RPC crosses RELAY1 threshold so first activation decision targets RELAY1',
+            'note': 't0 intent: RPNZ=500 W, RPC=3.5 kW. Raw RPC crosses RELAY1 threshold so first activation decision targets RELAY1',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=3.5, at_s=0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=3.5, at_s=0),
             'expect_policy': {
