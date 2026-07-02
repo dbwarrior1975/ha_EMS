@@ -1,7 +1,9 @@
 import os
+import time
 
 from ems_adapter.config_loader import (
-    build_core_config_from_grouped_reader,
+    compile_core_config_plan_from_grouped_config,
+    materialize_core_config_from_plan,
     runtime_alias_index,
     load_and_validate_grouped_ems_config,
 )
@@ -35,6 +37,20 @@ _RUNTIME_CONTEXT_CONFIG_CACHE = {
     'size': None,
     'config': None,
     'validation': None,
+    'grouped_entities': None,
+    'core_config_plan': None,
+    'hits': 0,
+    'misses': 0,
+}
+_RUNTIME_CONTEXT_LAST_METRICS = {
+    'policy_engine_config_signature_ms': 0,
+    'policy_engine_static_context_cache_hit': False,
+    'policy_engine_static_context_cache_hits': 0,
+    'policy_engine_static_context_cache_misses': 0,
+    'policy_engine_static_context_build_ms': 0,
+    'policy_engine_dynamic_config_reads_ms': 0,
+    'policy_engine_runtime_entity_registry_ms': 0,
+    'policy_engine_core_config_build_ms': 0,
 }
 
 
@@ -47,6 +63,27 @@ def _reset_runtime_context_config_cache():
             'size': None,
             'config': None,
             'validation': None,
+            'grouped_entities': None,
+            'core_config_plan': None,
+            'hits': 0,
+            'misses': 0,
+        }
+    )
+    _reset_runtime_context_metrics()
+
+
+def _reset_runtime_context_metrics():
+    _RUNTIME_CONTEXT_LAST_METRICS.clear()
+    _RUNTIME_CONTEXT_LAST_METRICS.update(
+        {
+            'policy_engine_config_signature_ms': 0,
+            'policy_engine_static_context_cache_hit': False,
+            'policy_engine_static_context_cache_hits': 0,
+            'policy_engine_static_context_cache_misses': 0,
+            'policy_engine_static_context_build_ms': 0,
+            'policy_engine_dynamic_config_reads_ms': 0,
+            'policy_engine_runtime_entity_registry_ms': 0,
+            'policy_engine_core_config_build_ms': 0,
         }
     )
 
@@ -64,14 +101,32 @@ def _load_grouped_config_cached(path):
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('size') == size
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('config') is not None
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('validation') is not None
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('grouped_entities') is not None
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('core_config_plan') is not None
     ):
+        _RUNTIME_CONTEXT_CONFIG_CACHE['hits'] = int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('hits', 0) or 0) + 1
         return (
             _RUNTIME_CONTEXT_CONFIG_CACHE['config'],
             _RUNTIME_CONTEXT_CONFIG_CACHE['validation'],
+            _RUNTIME_CONTEXT_CONFIG_CACHE['grouped_entities'],
+            _RUNTIME_CONTEXT_CONFIG_CACHE['core_config_plan'],
             True,
+            0,
+            0,
         )
 
+    build_started_ts = time.time()
     grouped_config, validation = load_and_validate_grouped_ems_config(path)
+    grouped_entities = None
+    core_config_plan = None
+    runtime_entity_registry_ms = 0
+    if validation.ok:
+        registry_started_ts = time.time()
+        grouped_entities = build_runtime_entities_from_grouped_config(grouped_config)
+        runtime_entity_registry_ms = _elapsed_ms(registry_started_ts, time.time())
+        core_config_plan = compile_core_config_plan_from_grouped_config(grouped_config)
+    static_context_build_ms = _elapsed_ms(build_started_ts, time.time())
+    _RUNTIME_CONTEXT_CONFIG_CACHE['misses'] = int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('misses', 0) or 0) + 1
     _RUNTIME_CONTEXT_CONFIG_CACHE.update(
         {
             'path': path,
@@ -79,9 +134,19 @@ def _load_grouped_config_cached(path):
             'size': size,
             'config': grouped_config,
             'validation': validation,
+            'grouped_entities': grouped_entities,
+            'core_config_plan': core_config_plan,
         }
     )
-    return grouped_config, validation, False
+    return grouped_config, validation, grouped_entities, core_config_plan, False, static_context_build_ms, runtime_entity_registry_ms
+
+
+def _elapsed_ms(started_ts, ended_ts):
+    return int(round((ended_ts - started_ts) * 1000.0))
+
+
+def runtime_context_metrics_attrs():
+    return dict(_RUNTIME_CONTEXT_LAST_METRICS)
 
 def _read_grouped_entity(entity_id, default, read_bool, read_float, read_int, read_str):
     if isinstance(default, bool):
@@ -156,8 +221,18 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
     if not path:
         path = _DEFAULT_GROUPED_CONFIG_PATH
     try:
-        grouped_config, validation, cache_hit = _load_grouped_config_cached(path)
+        signature_started_ts = time.time()
+        grouped_config, validation, grouped_entities, core_config_plan, cache_hit, static_context_build_ms, runtime_entity_registry_ms = _load_grouped_config_cached(path)
+        config_signature_ms = _elapsed_ms(signature_started_ts, time.time()) - max(0, int(static_context_build_ms))
+        config_signature_ms = max(0, config_signature_ms)
     except Exception as exc:
+        _RUNTIME_CONTEXT_LAST_METRICS.update(
+            {
+                'policy_engine_static_context_cache_hit': False,
+                'policy_engine_static_context_cache_hits': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('hits', 0) or 0),
+                'policy_engine_static_context_cache_misses': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('misses', 0) or 0),
+            }
+        )
         status = {
             'enabled': True,
             'ok': False,
@@ -185,8 +260,11 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         detail_text = '; '.join(issue_details) if issue_details else 'unknown validation error'
         raise ValueError(f'Grouped EMS config validation failed: {detail_text}')
 
+    dynamic_read_time_s = {'value': 0.0}
+
     def grouped_reader(entity_id, default):
-        return _read_grouped_entity(
+        started_ts = time.time()
+        value = _read_grouped_entity(
             entity_id,
             default,
             read_bool,
@@ -194,9 +272,26 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
             read_int,
             read_str,
         )
+        dynamic_read_time_s['value'] += max(0.0, time.time() - started_ts)
+        return value
 
-    grouped_cfg = build_core_config_from_grouped_reader(grouped_config, grouped_reader)
-    grouped_entities = build_runtime_entities_from_grouped_config(grouped_config)
+    core_config_started_ts = time.time()
+    grouped_cfg = materialize_core_config_from_plan(core_config_plan, grouped_reader)
+    total_core_config_ms = _elapsed_ms(core_config_started_ts, time.time())
+    dynamic_config_reads_ms = int(round(dynamic_read_time_s['value'] * 1000.0))
+    core_config_build_ms = max(0, total_core_config_ms - dynamic_config_reads_ms)
+    _RUNTIME_CONTEXT_LAST_METRICS.update(
+        {
+            'policy_engine_config_signature_ms': config_signature_ms,
+            'policy_engine_static_context_cache_hit': bool(cache_hit),
+            'policy_engine_static_context_cache_hits': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('hits', 0) or 0),
+            'policy_engine_static_context_cache_misses': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('misses', 0) or 0),
+            'policy_engine_static_context_build_ms': max(0, int(static_context_build_ms)),
+            'policy_engine_dynamic_config_reads_ms': max(0, int(dynamic_config_reads_ms)),
+            'policy_engine_runtime_entity_registry_ms': max(0, int(runtime_entity_registry_ms)),
+            'policy_engine_core_config_build_ms': max(0, int(core_config_build_ms)),
+        }
+    )
     return grouped_cfg, grouped_entities, {
         'enabled': True,
         'ok': None,

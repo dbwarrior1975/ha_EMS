@@ -46,6 +46,7 @@ def _load_policy_module(project_root):
         '_GROUPED_CONFIG_DUAL_READ_STATUS': {},
         'config_trace_attrs': lambda: {},
         'read_runtime_context': lambda *args, **kwargs: (None, {}),
+        'runtime_context_metrics_attrs': lambda: {},
         '_TEST_TRIGGER_CALLS': trigger_calls,
     }
     code = compile(src, str(path), 'exec')
@@ -393,6 +394,189 @@ def test_timing_fields_are_diagnostics_only(project_root):
 
 
 @pytest.mark.unit
+def test_policy_diagnostics_contains_phase_timing_fields(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](
+        100.0,
+        cfg,
+        entities,
+        'timer',
+        {
+            'policy_engine_total_tick_started_ts': 100.0,
+            'policy_engine_read_runtime_context_ms': 7,
+        },
+    )
+
+    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+    timing_fields = (
+        'policy_engine_total_tick_duration_ms',
+        'policy_engine_read_runtime_context_ms',
+        'policy_engine_read_measurements_ms',
+        'policy_engine_derive_inputs_ms',
+        'policy_engine_policy_compute_ms',
+        'policy_engine_build_attrs_ms',
+        'policy_engine_hash_ms',
+        'policy_engine_canonical_publish_ms',
+        'policy_engine_diagnostics_decision_ms',
+        'policy_engine_diagnostics_build_ms',
+        'policy_engine_diagnostics_publish_ms',
+        'policy_engine_unaccounted_ms',
+    )
+
+    for field in timing_fields:
+        assert field in diagnostics_attrs
+        assert isinstance(diagnostics_attrs[field], int)
+        assert diagnostics_attrs[field] >= 0
+    assert diagnostics_attrs['policy_engine_read_runtime_context_ms'] == 7
+
+
+@pytest.mark.unit
+def test_policy_diagnostics_contains_policy_compute_subtiming_fields(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
+
+    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+
+    assert diagnostics_attrs['policy_engine_guard_compute_ms'] >= 0
+    assert diagnostics_attrs['policy_engine_haeo_plan_compute_ms'] >= 0
+    assert diagnostics_attrs['policy_engine_net_zero_compute_ms'] >= 0
+    assert diagnostics_attrs['policy_engine_policy_compute_ms'] >= (
+        diagnostics_attrs['policy_engine_guard_compute_ms']
+        + diagnostics_attrs['policy_engine_haeo_plan_compute_ms']
+        + diagnostics_attrs['policy_engine_net_zero_compute_ms']
+    )
+
+
+@pytest.mark.unit
+def test_policy_diagnostics_contains_hash_subtiming_fields(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
+
+    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+
+    sub_ms = (
+        diagnostics_attrs['policy_engine_device_policies_hash_ms']
+        + diagnostics_attrs['policy_engine_dispatch_command_hash_ms']
+        + diagnostics_attrs['policy_engine_policy_state_hash_ms']
+        + diagnostics_attrs['policy_engine_warning_signature_hash_ms']
+    )
+    assert diagnostics_attrs['policy_engine_hash_ms'] == sub_ms
+
+
+@pytest.mark.unit
+def test_previous_diagnostics_publish_ms_reports_last_completed_publish(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
+    first_diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+    assert first_diagnostics_attrs['policy_engine_previous_diagnostics_publish_ms'] == 0
+    assert first_diagnostics_attrs['policy_engine_last_diagnostics_publish_attempted'] is True
+
+    published.clear()
+    _install_minimal_policy_loop_stubs(
+        mod,
+        attrs={'device_policies': ({'device_id': 'HOME_BATTERY', 'target_w': 200},)},
+    )
+    mod['run_policy_loop'](110.0, cfg, entities, 'timer')
+
+    second_diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+    assert second_diagnostics_attrs['policy_engine_previous_diagnostics_publish_ms'] >= 0
+
+
+@pytest.mark.unit
+def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    mod['runtime_context_metrics_attrs'] = lambda: {
+        'policy_engine_config_signature_ms': 4,
+        'policy_engine_static_context_cache_hit': True,
+        'policy_engine_static_context_cache_hits': 8,
+        'policy_engine_static_context_cache_misses': 1,
+        'policy_engine_static_context_build_ms': 0,
+        'policy_engine_dynamic_config_reads_ms': 0,
+        'policy_engine_runtime_entity_registry_ms': 0,
+        'policy_engine_core_config_build_ms': 12,
+    }
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
+
+    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+    assert diagnostics_attrs['policy_engine_config_signature_ms'] == 4
+    assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
+    assert diagnostics_attrs['policy_engine_static_context_cache_hits'] == 8
+    assert diagnostics_attrs['policy_engine_static_context_cache_misses'] == 1
+    assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
+
+
+@pytest.mark.unit
+def test_context_cache_timing_fields_are_diagnostics_only(project_root):
+    mod = _load_policy_module(project_root)
+    _install_minimal_policy_loop_stubs(mod)
+    mod['runtime_context_metrics_attrs'] = lambda: {
+        'policy_engine_config_signature_ms': 4,
+        'policy_engine_static_context_cache_hit': True,
+        'policy_engine_static_context_cache_hits': 8,
+        'policy_engine_static_context_cache_misses': 1,
+        'policy_engine_static_context_build_ms': 0,
+        'policy_engine_dynamic_config_reads_ms': 0,
+        'policy_engine_runtime_entity_registry_ms': 0,
+        'policy_engine_core_config_build_ms': 12,
+    }
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    entities = _minimal_entities()
+    published = []
+
+    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
+
+    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
+
+    canonical_attrs = [
+        attrs
+        for entity, _value, attrs in published
+        if entity in (entities['device_policies'], entities['dispatch_command'], entities['policy_state'])
+    ]
+    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+
+    for attrs in canonical_attrs:
+        assert 'policy_engine_static_context_cache_hit' not in attrs
+        assert 'policy_engine_core_config_build_ms' not in attrs
+    assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
+    assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
+
+
+@pytest.mark.unit
 def test_policy_engine_hash_boundary_ignores_timer_diagnostics(project_root):
     mod = _load_policy_module(project_root)
     attrs = {
@@ -409,6 +593,52 @@ def test_policy_engine_hash_boundary_ignores_timer_diagnostics(project_root):
     second_hash = mod['_device_policies_hash'](attrs)
 
     assert first_hash == second_hash
+
+
+@pytest.mark.unit
+def test_phase_timing_fields_do_not_change_canonical_hashes(project_root):
+    mod = _load_policy_module(project_root)
+    attrs = {
+        'device_policies': (
+            {'device_id': 'HOME_BATTERY', 'target_w': 100, 'mode': 'net_zero'},
+        ),
+        'surplus_device_dispatch_action': 'ACTIVATE',
+        'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
+        'surplus_device_dispatch_device_id': 'EV_CHARGER',
+        'surplus_device_dispatch_target': 'ADJUSTABLE',
+        'surplus_device_targets': ({'device_id': 'EV_CHARGER', 'enabled': True},),
+        'surplus_freeze_until_ts': 130.0,
+        'surplus_state_clear_reason': '',
+        'haeo_nz_quarter_key': '2026-07-02T10:00',
+        'haeo_nz_primary_device_id': 'HOME_BATTERY',
+        'prev_force_on_device_ids': ('EV_CHARGER',),
+    }
+    entities = {'policy_state': ''}
+
+    first_device_hash = mod['_device_policies_hash'](attrs)
+    first_dispatch_hash = mod['_dispatch_command_attrs'](attrs)['dispatch_command_hash']
+    first_policy_state_hash = mod['_policy_state_payload'](entities, attrs)[0]
+
+    attrs.update(
+        {
+            'policy_engine_total_tick_duration_ms': 123,
+            'policy_engine_read_runtime_context_ms': 7,
+            'policy_engine_read_measurements_ms': 8,
+            'policy_engine_derive_inputs_ms': 1,
+            'policy_engine_policy_compute_ms': 22,
+            'policy_engine_build_attrs_ms': 9,
+            'policy_engine_hash_ms': 3,
+            'policy_engine_canonical_publish_ms': 4,
+            'policy_engine_diagnostics_decision_ms': 1,
+            'policy_engine_diagnostics_build_ms': 2,
+            'policy_engine_diagnostics_publish_ms': 5,
+            'policy_engine_unaccounted_ms': 58,
+        }
+    )
+
+    assert mod['_device_policies_hash'](attrs) == first_device_hash
+    assert mod['_dispatch_command_attrs'](attrs)['dispatch_command_hash'] == first_dispatch_hash
+    assert mod['_policy_state_payload'](entities, attrs)[0] == first_policy_state_hash
 
 
 @pytest.mark.unit

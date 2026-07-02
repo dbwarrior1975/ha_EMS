@@ -173,6 +173,19 @@ class RuntimeAlias:
     unit_transform: str = 'identity'
 
 
+@dataclass
+class DynamicConfigRef:
+    path: str
+    entity_id: str
+    value_type: str
+    default: object
+
+
+@dataclass
+class CompiledCoreConfigPlan:
+    grouped_config_plan: dict
+
+
 def load_grouped_ems_config(path: Union[str, Path]) -> dict:
     config_path = Path(path)
     if not config_path.exists():
@@ -514,9 +527,358 @@ def build_core_config_from_grouped_config(config: dict, entity_values: Optional[
     return build_core_config_from_grouped_reader(config, _entity_values_reader(entity_values or {}))
 
 
+def _dynamic_value_type_for_default(default: object) -> str:
+    if isinstance(default, bool):
+        return 'bool'
+    if isinstance(default, int) and not isinstance(default, bool):
+        return 'int'
+    if isinstance(default, float):
+        return 'float'
+    return 'str'
+
+
+def _compile_dynamic_value(value: object, path: str, default: object) -> object:
+    if value in (None, 'unknown', 'unavailable', 'none', ''):
+        return default
+    if _is_valid_entity_id(value):
+        return DynamicConfigRef(
+            path=path,
+            entity_id=str(value),
+            value_type=_dynamic_value_type_for_default(default),
+            default=default,
+        )
+    return value
+
+
+def _materialize_dynamic_value(value: object, read_entity: Callable[[str, object], object]) -> object:
+    if isinstance(value, DynamicConfigRef):
+        raw_value = read_entity(value.entity_id, value.default)
+        if raw_value in (None, 'unknown', 'unavailable', 'none', ''):
+            return value.default
+        return raw_value
+    if isinstance(value, dict):
+        materialized = {}
+        for key, item in value.items():
+            materialized[key] = _materialize_dynamic_value(item, read_entity)
+        return materialized
+    if isinstance(value, list):
+        materialized = []
+        for item in value:
+            materialized.append(_materialize_dynamic_value(item, read_entity))
+        return materialized
+    if isinstance(value, tuple):
+        materialized = []
+        for item in value:
+            materialized.append(_materialize_dynamic_value(item, read_entity))
+        return tuple(materialized)
+    return value
+
+
+def _resolved_first_ev_priority(materialized_config: dict) -> object:
+    devices = (((materialized_config.get('ems') or {}).get('devices')) or {})
+    for device in devices.values():
+        if not isinstance(device, dict):
+            continue
+        if str(device.get('kind') or '') != 'EV_CHARGER':
+            continue
+        policy = device.get('policy') or {}
+        return policy.get('priority', 3)
+    return 3
+
+
+def _apply_dynamic_default_overrides(
+    materialized_config: dict,
+    grouped_config_plan: dict,
+) -> dict:
+    plan_devices = (((grouped_config_plan.get('ems') or {}).get('devices')) or {})
+    materialized_devices = (((materialized_config.get('ems') or {}).get('devices')) or {})
+    battery_plan = (plan_devices.get('HOME_BATTERY') or {}).get('policy', {})
+    battery_ref = battery_plan.get('priority')
+    if isinstance(battery_ref, DynamicConfigRef):
+        battery_policy = (materialized_devices.get('HOME_BATTERY') or {}).get('policy', {})
+        if battery_policy.get('priority') == battery_ref.default:
+            battery_policy['priority'] = _resolved_first_ev_priority(materialized_config)
+    return materialized_config
+
+
+def _compile_core_capabilities_plan(
+    device: object,
+    *,
+    device_path: str,
+    default_min_absorb_w: object = 0,
+    default_max_absorb_w: object = 0,
+    default_step_w: object = 1,
+    default_max_produce_w: Optional[object] = None,
+) -> dict[str, object]:
+    capabilities = _require_mapping_value(device, 'capabilities')
+    compiled = {
+        'can_absorb_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'can_absorb_w'),
+            f'{device_path}.capabilities.can_absorb_w',
+            False,
+        ),
+        'can_produce_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'can_produce_w'),
+            f'{device_path}.capabilities.can_produce_w',
+            False,
+        ),
+        'min_absorb_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'min_absorb_w'),
+            f'{device_path}.capabilities.min_absorb_w',
+            default_min_absorb_w,
+        ),
+        'max_absorb_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'max_absorb_w'),
+            f'{device_path}.capabilities.max_absorb_w',
+            default_max_absorb_w,
+        ),
+        'step_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'step_w'),
+            f'{device_path}.capabilities.step_w',
+            default_step_w,
+        ) if 'step_w' in capabilities else default_step_w,
+        'max_produce_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'max_produce_w'),
+            f'{device_path}.capabilities.max_produce_w',
+            default_max_produce_w,
+        ) if 'max_produce_w' in capabilities else None,
+    }
+    return compiled
+
+
+def _compile_core_battery_device_plan(
+    device_id: str,
+    device: object,
+    *,
+    default_priority: object = 3,
+) -> dict[str, object]:
+    device_path = f'ems.devices.{device_id}'
+    policy = _require_mapping_value(device, 'policy')
+    guard = _require_mapping_value(device, 'guard')
+    adapter = _require_mapping_value(device, 'adapter')
+    return {
+        'device_id': str(device_id),
+        'kind': _compile_dynamic_value(_require_mapping_value(device, 'kind'), f'{device_path}.kind', 'BATTERY'),
+        'capabilities': _compile_core_capabilities_plan(
+            device,
+            device_path=device_path,
+            default_min_absorb_w=0,
+            default_max_absorb_w=3700,
+            default_step_w=50,
+            default_max_produce_w=4600,
+        ),
+        'policy': {
+            'priority': _compile_dynamic_value(
+                _require_mapping_value(policy, 'priority'),
+                f'{device_path}.policy.priority',
+                default_priority,
+            ),
+            'default_min_absorb_w': _compile_dynamic_value(
+                _require_mapping_value(policy, 'default_min_absorb_w'),
+                f'{device_path}.policy.default_min_absorb_w',
+                0.0,
+            ) if 'default_min_absorb_w' in policy else None,
+        },
+        'guard': {
+            'soc': _compile_dynamic_value(_require_mapping_value(guard, 'soc'), f'{device_path}.guard.soc', ''),
+            'min_cell_voltage_v': _compile_dynamic_value(_require_mapping_value(guard, 'min_cell_voltage_v'), f'{device_path}.guard.min_cell_voltage_v', ''),
+            'heartbeat': _compile_dynamic_value(_require_mapping_value(guard, 'heartbeat'), f'{device_path}.guard.heartbeat', ''),
+            'protect_soc': _compile_dynamic_value(_require_mapping_value(guard, 'protect_soc'), f'{device_path}.guard.protect_soc', 2),
+            'protect_soc_recovery_margin': _compile_dynamic_value(_require_mapping_value(guard, 'protect_soc_recovery_margin'), f'{device_path}.guard.protect_soc_recovery_margin', 1),
+            'protect_min_cell_voltage_v': _compile_dynamic_value(_require_mapping_value(guard, 'protect_min_cell_voltage_v'), f'{device_path}.guard.protect_min_cell_voltage_v', 3.030),
+            'protect_min_absorb_w': _compile_dynamic_value(_require_mapping_value(guard, 'protect_min_absorb_w'), f'{device_path}.guard.protect_min_absorb_w', 0),
+        },
+        'adapter': {
+            'target_w': _compile_dynamic_value(_require_mapping_value(adapter, 'target_w'), f'{device_path}.adapter.target_w', ''),
+            'measured_power_w': _compile_dynamic_value(_require_mapping_value(adapter, 'measured_power_w'), f'{device_path}.adapter.measured_power_w', ''),
+        },
+    }
+
+
+def _compile_core_ev_device_plan(device_id: str, device: object) -> dict[str, object]:
+    device_path = f'ems.devices.{device_id}'
+    policy = _require_mapping_value(device, 'policy')
+    adapter = _require_mapping_value(device, 'adapter')
+    return {
+        'device_id': str(device_id),
+        'kind': _compile_dynamic_value(_require_mapping_value(device, 'kind'), f'{device_path}.kind', 'EV_CHARGER'),
+        'capabilities': _compile_core_capabilities_plan(
+            device,
+            device_path=device_path,
+            default_min_absorb_w=0,
+            default_max_absorb_w=0,
+            default_step_w=1,
+            default_max_produce_w=None,
+        ),
+        'policy': {
+            'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', 3),
+            'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
+            'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
+            'low_pv_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'low_pv_threshold_w'), f'{device_path}.policy.low_pv_threshold_w', 1.6),
+            'hard_off_low_pv_cycles': _compile_dynamic_value(_require_mapping_value(policy, 'hard_off_low_pv_cycles'), f'{device_path}.policy.hard_off_low_pv_cycles', 2),
+            'hard_off_release_cycles': _compile_dynamic_value(_require_mapping_value(policy, 'hard_off_release_cycles'), f'{device_path}.policy.hard_off_release_cycles', 2),
+        },
+        'adapter': {
+            'enabled': _compile_dynamic_value(_require_mapping_value(adapter, 'enabled'), f'{device_path}.adapter.enabled', False),
+            'current_a': _compile_dynamic_value(_require_mapping_value(adapter, 'current_a'), f'{device_path}.adapter.current_a', 0),
+            'current_step_a': _compile_dynamic_value(_require_mapping_value(adapter, 'current_step_a'), f'{device_path}.adapter.current_step_a', 4),
+            'phases': _compile_dynamic_value(_require_mapping_value(adapter, 'phases'), f'{device_path}.adapter.phases', 1),
+            'voltage_v': _compile_dynamic_value(_require_mapping_value(adapter, 'voltage_v'), f'{device_path}.adapter.voltage_v', 230),
+        },
+    }
+
+
+def _compile_core_relay_device_plan(device_id: str, device: object) -> dict[str, object]:
+    device_path = f'ems.devices.{device_id}'
+    policy = _require_mapping_value(device, 'policy')
+    adapter = _require_mapping_value(device, 'adapter')
+    relay_default = 2 if device_id == 'RELAY1' else 1
+    relay_power_default = 2.5 if device_id == 'RELAY1' else 5.0
+    return {
+        'device_id': str(device_id),
+        'kind': _compile_dynamic_value(_require_mapping_value(device, 'kind'), f'{device_path}.kind', 'RELAY'),
+        'capabilities': _compile_core_capabilities_plan(
+            device,
+            device_path=device_path,
+            default_min_absorb_w=relay_power_default,
+            default_max_absorb_w=relay_power_default,
+            default_step_w=relay_power_default,
+            default_max_produce_w=None,
+        ),
+        'policy': {
+            'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', relay_default),
+            'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
+            'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
+        },
+        'adapter': {
+            'enabled': _compile_dynamic_value(_require_mapping_value(adapter, 'enabled'), f'{device_path}.adapter.enabled', ''),
+        },
+    }
+
+
+def _compile_core_devices_plan(devices: object) -> dict[str, dict[str, object]]:
+    if not isinstance(devices, dict):
+        return {}
+    compiled = {}
+    for device_id, device in devices.items():
+        if not isinstance(device, dict):
+            continue
+        kind = str(device.get('kind') or '')
+        if kind == 'BATTERY':
+            compiled[str(device_id)] = _compile_core_battery_device_plan(str(device_id), device)
+        elif kind == 'EV_CHARGER':
+            compiled[str(device_id)] = _compile_core_ev_device_plan(str(device_id), device)
+        elif kind == 'RELAY':
+            compiled[str(device_id)] = _compile_core_relay_device_plan(str(device_id), device)
+    return compiled
+
+
+def _compile_core_haeo_plan(haeo: object) -> Optional[dict[str, object]]:
+    if not isinstance(haeo, dict):
+        return None
+    return {
+        'battery_power_active': _compile_dynamic_value(_require_mapping_value(haeo, 'battery_power_active'), 'ems.haeo.battery_power_active', ''),
+        'ev_power_active': _compile_dynamic_value(_require_mapping_value(haeo, 'ev_power_active'), 'ems.haeo.ev_power_active', ''),
+        'battery_fresh_source': _compile_dynamic_value(_require_mapping_value(haeo, 'battery_fresh_source'), 'ems.haeo.battery_fresh_source', ''),
+        'ev_fresh_source': _compile_dynamic_value(_require_mapping_value(haeo, 'ev_fresh_source'), 'ems.haeo.ev_fresh_source', ''),
+    }
+
+
+def _compile_core_role_constraints_plan(role_constraints: object) -> dict[str, object]:
+    if not isinstance(role_constraints, dict):
+        return {}
+    compiled_default = {}
+    raw_default = role_constraints.get('default', {})
+    if isinstance(raw_default, dict):
+        for key, value in raw_default.items():
+            compiled_default[str(key)] = _compile_dynamic_value(value, f'ems.role_constraints.default.{key}', value)
+    compiled = {}
+    if compiled_default:
+        compiled['default'] = compiled_default
+    for role_key, role_value in role_constraints.items():
+        if role_key == 'default' or not isinstance(role_value, dict):
+            continue
+        role_devices = {}
+        for device_id, device_fields in role_value.items():
+            if not isinstance(device_fields, dict):
+                continue
+            compiled_fields = {}
+            for field_name, field_value in device_fields.items():
+                compiled_fields[str(field_name)] = _compile_dynamic_value(
+                    field_value,
+                    f'ems.role_constraints.{role_key}.{device_id}.{field_name}',
+                    field_value,
+                )
+            role_devices[str(device_id)] = compiled_fields
+        compiled[str(role_key)] = role_devices
+    return compiled
+
+
+def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreConfigPlan:
+    ems = config.get('ems', {})
+    devices = ems.get('devices', {})
+    role_constraints = ems.get('role_constraints', {})
+    policy_engine = ems.get('policy_engine', {})
+    compiled = {
+        'ems': {
+            'profiles': {
+                'control': _compile_dynamic_value(_require_mapping_value(ems.get('profiles'), 'control'), 'ems.profiles.control', ''),
+                'goal': _compile_dynamic_value(_require_mapping_value(ems.get('profiles'), 'goal'), 'ems.profiles.goal', ''),
+                'forecast': _compile_dynamic_value(_require_mapping_value(ems.get('profiles'), 'forecast'), 'ems.profiles.forecast', ''),
+                'guard': _compile_dynamic_value(_require_mapping_value(ems.get('profiles'), 'guard'), 'ems.profiles.guard', ''),
+            },
+            'policy_engine': {
+                'interval_seconds': _parse_policy_engine_interval_seconds(
+                    policy_engine.get('interval_seconds', 5.0) if isinstance(policy_engine, dict) else 5.0
+                ),
+                'diagnostics_interval_seconds': _parse_policy_engine_diagnostics_interval_seconds(
+                    policy_engine.get('diagnostics_interval_seconds', 30.0) if isinstance(policy_engine, dict) else 30.0
+                ),
+            },
+            'global_config': {
+                'deadband_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'deadband_w'), 'ems.global_config.deadband_w', 50),
+                'ramp_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'ramp_w'), 'ems.global_config.ramp_w', 1000),
+                'strict_limit_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'strict_limit_w'), 'ems.global_config.strict_limit_w', 4600),
+                'default_sp_w': _compile_dynamic_value(ems.get('global_config', {}).get('default_sp_w', 100.0), 'ems.global_config.default_sp_w', 100.0),
+                'surplus_freeze_s': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'surplus_freeze_s'), 'ems.global_config.surplus_freeze_s', 30),
+                'battery_heartbeat_timeout_s': _compile_dynamic_value(ems.get('global_config', {}).get('battery_heartbeat_timeout_s', 360.0), 'ems.global_config.battery_heartbeat_timeout_s', 360.0),
+                'haeo_stale_timeout_s': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), 'ems.global_config.haeo_stale_timeout_s', 300),
+                'nz_battery_floor_default_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), 'ems.global_config.nz_battery_floor_default_w', 100.0),
+                'nz_battery_floor_ev_active_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), 'ems.global_config.nz_battery_floor_ev_active_w', 0.0),
+                'adjustable_surplus_load': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_load'), 'ems.global_config.adjustable_surplus_load', 'HOME_BATTERY'),
+                'adjustable_primary_load': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), 'ems.global_config.adjustable_primary_load', ''),
+                'adjustable_surplus_activation_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_activation_w'), 'ems.global_config.adjustable_surplus_activation_w', 0.0),
+            },
+            'runtime': {
+                'grid_power_w': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), 'ems.runtime.grid_power_w', 0),
+                'quarter_energy_balance_kwh': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'quarter_energy_balance_kwh'), 'ems.runtime.quarter_energy_balance_kwh', 0),
+                'pv_power_w': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'pv_power_w'), 'ems.runtime.pv_power_w', 0),
+            },
+            'state': {
+                'surplus_freeze_until': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'surplus_freeze_until'), 'ems.state.surplus_freeze_until', ''),
+                'active_surplus_devices': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'active_surplus_devices'), 'ems.state.active_surplus_devices', ''),
+                'previous_device_state': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), 'ems.state.previous_device_state', ''),
+            },
+            'devices': _compile_core_devices_plan(devices),
+            'haeo': _compile_core_haeo_plan(ems.get('haeo')),
+            'role_constraints': _compile_core_role_constraints_plan(role_constraints),
+        }
+    }
+    return CompiledCoreConfigPlan(grouped_config_plan=compiled)
+
+
+def materialize_core_config_from_plan(
+    plan: CompiledCoreConfigPlan,
+    read_entity: Callable[[str, object], object],
+) -> CoreConfig:
+    resolved_config = _materialize_dynamic_value(plan.grouped_config_plan, read_entity)
+    resolved_config = _apply_dynamic_default_overrides(resolved_config, plan.grouped_config_plan)
+    return _build_core_config_from_grouped_value_config(resolved_config)
+
+
 def _build_core_devices_map(
     devices: object,
-    read_entity: Callable[[str, object], object],
+    read_entity: Optional[Callable[[str, object], object]],
 ) -> dict[str, object]:
     if not isinstance(devices, dict):
         return {}
@@ -541,10 +903,16 @@ def build_core_config_from_grouped_reader(
     config: dict,
     read_entity: Callable[[str, object], object],
 ) -> CoreConfig:
+    plan = compile_core_config_plan_from_grouped_config(config)
+    return materialize_core_config_from_plan(plan, read_entity)
+
+
+def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
     ems = config.get('ems', {})
     devices = ems.get('devices', {})
     role_constraints = ems.get('role_constraints', {})
     policy_engine = ems.get('policy_engine', {})
+    read_entity = None
     core_devices = _build_core_devices_map(devices, read_entity)
     home_battery = _build_core_battery_device(
         'HOME_BATTERY',
@@ -1067,7 +1435,7 @@ def _require_mapping_value(section: object, field: str) -> object:
 
 def _build_core_capabilities(
     device: object,
-    read_entity: Callable[[str, object], object],
+    read_entity: Optional[Callable[[str, object], object]],
     *,
     default_min_absorb_w: object = 0,
     default_max_absorb_w: object = 0,
@@ -1091,7 +1459,7 @@ def _build_core_capabilities(
 def _build_core_battery_device(
     device_id: str,
     device: object,
-    read_entity: Callable[[str, object], object],
+    read_entity: Optional[Callable[[str, object], object]],
     default_priority: object = 3,
 ) -> CoreBatteryDeviceConfig:
     return CoreBatteryDeviceConfig(
@@ -1131,7 +1499,7 @@ def _build_core_battery_device(
     )
 
 
-def _build_core_ev_device(device_id: str, device: object, read_entity: Callable[[str, object], object]) -> CoreEvChargerDeviceConfig:
+def _build_core_ev_device(device_id: str, device: object, read_entity: Optional[Callable[[str, object], object]]) -> CoreEvChargerDeviceConfig:
     policy_section = _require_mapping_value(device, 'policy')
     adapter_section = _require_mapping_value(device, 'adapter')
     return CoreEvChargerDeviceConfig(
@@ -1163,7 +1531,7 @@ def _build_core_ev_device(device_id: str, device: object, read_entity: Callable[
     )
 
 
-def _build_core_relay_device(device_id: str, device: object, read_entity: Callable[[str, object], object]) -> CoreRelayDeviceConfig:
+def _build_core_relay_device(device_id: str, device: object, read_entity: Optional[Callable[[str, object], object]]) -> CoreRelayDeviceConfig:
     return CoreRelayDeviceConfig(
         device_id=device_id,
         kind=str(_resolve_core_config_value(_require_mapping_value(device, 'kind'), read_entity, 'RELAY')),
@@ -1190,7 +1558,7 @@ def _build_core_relay_device(device_id: str, device: object, read_entity: Callab
     )
 
 
-def _build_core_haeo_config(haeo: object, read_entity: Callable[[str, object], object]) -> Optional[CoreHaeoConfig]:
+def _build_core_haeo_config(haeo: object, read_entity: Optional[Callable[[str, object], object]]) -> Optional[CoreHaeoConfig]:
     if not isinstance(haeo, dict):
         return None
     return CoreHaeoConfig(
@@ -1201,7 +1569,7 @@ def _build_core_haeo_config(haeo: object, read_entity: Callable[[str, object], o
     )
 
 
-def _build_core_role_constraints(role_constraints: object, read_entity: Callable[[str, object], object]) -> CoreRoleConstraintsConfig:
+def _build_core_role_constraints(role_constraints: object, read_entity: Optional[Callable[[str, object], object]]) -> CoreRoleConstraintsConfig:
     if not isinstance(role_constraints, dict):
         return CoreRoleConstraintsConfig(default={}, by_role={})
 
@@ -1257,12 +1625,14 @@ def _read_grouped_value(
 
 def _resolve_core_config_value(
     value: object,
-    read_entity: Callable[[str, object], object],
+    read_entity: Optional[Callable[[str, object], object]],
     default: object,
 ) -> object:
     if value in (None, 'unknown', 'unavailable', 'none', ''):
         return default
     if _is_valid_entity_id(value):
+        if read_entity is None:
+            return value
         entity_value = read_entity(value, default)
         if entity_value in (None, 'unknown', 'unavailable', 'none', ''):
             return default

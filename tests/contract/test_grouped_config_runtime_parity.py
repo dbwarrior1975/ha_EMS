@@ -1,5 +1,6 @@
 import pytest
 import yaml
+import time
 
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_config,
@@ -84,6 +85,15 @@ def _stub_entity_readers():
         lambda _entity_id, default=0.0: default,
         lambda _entity_id, default=0: default,
         lambda _entity_id, default='': default,
+    )
+
+
+def _mutable_entity_readers(values):
+    return (
+        lambda entity_id: bool(values.get(entity_id, False)),
+        lambda entity_id, default=0.0: values.get(entity_id, default),
+        lambda entity_id, default=0: values.get(entity_id, default),
+        lambda entity_id, default='': values.get(entity_id, default),
     )
 
 
@@ -444,6 +454,242 @@ def test_read_runtime_context_caches_grouped_config_until_file_signature_changes
     read_runtime_context(read_bool, read_float, read_int, read_str)
 
     assert calls == [str(grouped_path), str(grouped_path)]
+
+
+@pytest.mark.unit
+def test_runtime_context_metrics_are_numeric_and_non_negative(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    numeric_fields = (
+        'policy_engine_config_signature_ms',
+        'policy_engine_static_context_cache_hits',
+        'policy_engine_static_context_cache_misses',
+        'policy_engine_static_context_build_ms',
+        'policy_engine_dynamic_config_reads_ms',
+        'policy_engine_runtime_entity_registry_ms',
+        'policy_engine_core_config_build_ms',
+    )
+    for field in numeric_fields:
+        assert isinstance(metrics[field], int)
+        assert metrics[field] >= 0
+    assert isinstance(metrics['policy_engine_static_context_cache_hit'], bool)
+
+
+@pytest.mark.unit
+def test_runtime_context_metrics_report_cache_hit_and_miss(project_root, tmp_path, monkeypatch):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_path = tmp_path / 'grouped_metrics_cache.yaml'
+    grouped_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    first_metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    second_metrics = runtime_context_mod.runtime_context_metrics_attrs()
+
+    assert first_metrics['policy_engine_static_context_cache_hit'] is False
+    assert first_metrics['policy_engine_static_context_cache_misses'] == 1
+    assert second_metrics['policy_engine_static_context_cache_hit'] is True
+    assert second_metrics['policy_engine_static_context_cache_hits'] == 1
+
+
+@pytest.mark.unit
+def test_runtime_context_static_cache_miss_on_first_read(project_root, tmp_path, monkeypatch):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_path = tmp_path / 'grouped_static_cache.yaml'
+    grouped_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert metrics['policy_engine_static_context_cache_hit'] is False
+    assert metrics['policy_engine_static_context_cache_misses'] == 1
+
+
+@pytest.mark.unit
+def test_runtime_context_static_cache_hit_when_config_signature_unchanged(project_root, tmp_path, monkeypatch):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_path = tmp_path / 'grouped_static_cache_hit.yaml'
+    grouped_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    _cfg, entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+    assert metrics['policy_engine_static_context_cache_hits'] == 1
+    assert str(entities['device_policies']).startswith('sensor.ems_device_policies')
+
+
+@pytest.mark.unit
+def test_runtime_context_static_cache_invalidates_when_config_signature_changes(project_root, tmp_path, monkeypatch):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped_path = tmp_path / 'grouped_static_cache_invalidate.yaml'
+    grouped_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    signatures = iter(((1, 100), (1, 100), (2, 100)))
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: next(signatures))
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert metrics['policy_engine_static_context_cache_hit'] is False
+    assert metrics['policy_engine_static_context_cache_hits'] == 1
+    assert metrics['policy_engine_static_context_cache_misses'] == 2
+
+
+@pytest.mark.unit
+def test_runtime_context_cache_reset_for_tests(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    read_bool, read_float, read_int, read_str = _stub_entity_readers()
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    runtime_context_mod._reset_runtime_context_config_cache()
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    cache = runtime_context_mod._RUNTIME_CONTEXT_CONFIG_CACHE
+    assert cache['config'] is None
+    assert cache['grouped_entities'] is None
+    assert cache['hits'] == 0
+    assert cache['misses'] == 0
+    assert metrics['policy_engine_static_context_cache_hits'] == 0
+    assert metrics['policy_engine_static_context_cache_misses'] == 0
+
+
+@pytest.mark.unit
+def test_dynamic_control_profile_value_updates_with_static_context_cache_hit(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    values = {
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+    }
+    read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    values[ENT['adjustable_surplus_load']] = 'HOME_BATTERY'
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert first_cfg.adjustable_surplus_load == 'EV_CHARGER'
+    assert second_cfg.adjustable_surplus_load == 'HOME_BATTERY'
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+
+
+@pytest.mark.unit
+def test_dynamic_input_number_threshold_updates_with_static_context_cache_hit(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    values = {
+        ENT['battery_protect_soc']: 7,
+    }
+    read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    values[ENT['battery_protect_soc']] = 11
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert first_cfg.battery_protect_soc == 7
+    assert second_cfg.battery_protect_soc == 11
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+
+
+@pytest.mark.unit
+def test_dynamic_input_boolean_force_on_updates_with_static_context_cache_hit(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    values = {
+        ENT['ev_force_on']: False,
+    }
+    read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    values[ENT['ev_force_on']] = True
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert first_cfg.ev_charger.policy.force_on is False
+    assert second_cfg.ev_charger.policy.force_on is True
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+
+
+@pytest.mark.unit
+def test_dynamic_priority_value_updates_with_static_context_cache_hit(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    values = {
+        ENT['devices']['EV_CHARGER']['priority']: 4,
+    }
+    read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    values[ENT['devices']['EV_CHARGER']['priority']] = 9
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert first_cfg.ev_charger.policy.priority == 4
+    assert second_cfg.ev_charger.policy.priority == 9
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+
+
+@pytest.mark.unit
+def test_runtime_context_metrics_measure_dynamic_reads_separately_from_core_config_build(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    values = {
+        ENT['battery_protect_soc']: 7,
+        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['devices']['EV_CHARGER']['priority']: 4,
+        ENT['ev_force_on']: False,
+    }
+
+    def slow_bool(entity_id):
+        time.sleep(0.002)
+        return bool(values.get(entity_id, False))
+
+    def slow_float(entity_id, default=0.0):
+        time.sleep(0.002)
+        return values.get(entity_id, default)
+
+    def slow_int(entity_id, default=0):
+        time.sleep(0.002)
+        return values.get(entity_id, default)
+
+    def slow_str(entity_id, default=''):
+        time.sleep(0.002)
+        return values.get(entity_id, default)
+
+    read_runtime_context(slow_bool, slow_float, slow_int, slow_str)
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+
+    assert metrics['policy_engine_dynamic_config_reads_ms'] > 0
+    assert metrics['policy_engine_core_config_build_ms'] >= 0
 
 
 @pytest.mark.unit

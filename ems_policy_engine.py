@@ -9,7 +9,7 @@ from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_befor
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
-from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context
+from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context, runtime_context_metrics_attrs
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
 _POLICY_ENGINE_TIMER_STATE = {
     'last_run_ts': None,
@@ -24,6 +24,7 @@ _POLICY_ENGINE_TIMER_STATE = {
     'previous_dispatch_command_hash': None,
     'previous_policy_state_hash': None,
     'previous_warning_signature': None,
+    'previous_diagnostics_publish_ms': 0,
 }
 
 
@@ -451,26 +452,79 @@ def _note_policy_run(now_ts):
     _POLICY_ENGINE_TIMER_STATE['runs_seen'] = int(_POLICY_ENGINE_TIMER_STATE.get('runs_seen', 0) or 0) + 1
 
 
-def run_policy_loop(now_ts, cfg, entities, trigger_reason):
+def _elapsed_ms(started_ts, ended_ts):
+    return int(round((ended_ts - started_ts) * 1000.0))
+
+
+def _timed_read_runtime_context():
     import time
+    started_ts = time.time()
+    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    return cfg, entities, _elapsed_ms(started_ts, time.time())
+
+
+def _phase_timing_attrs(timing, total_ms):
+    phase_keys = (
+        'policy_engine_read_runtime_context_ms',
+        'policy_engine_read_measurements_ms',
+        'policy_engine_derive_inputs_ms',
+        'policy_engine_policy_compute_ms',
+        'policy_engine_build_attrs_ms',
+        'policy_engine_hash_ms',
+        'policy_engine_canonical_publish_ms',
+        'policy_engine_diagnostics_decision_ms',
+        'policy_engine_diagnostics_build_ms',
+        'policy_engine_diagnostics_publish_ms',
+    )
+    sub_phase_keys = (
+        'policy_engine_guard_compute_ms',
+        'policy_engine_haeo_plan_compute_ms',
+        'policy_engine_net_zero_compute_ms',
+        'policy_engine_device_policies_hash_ms',
+        'policy_engine_dispatch_command_hash_ms',
+        'policy_engine_policy_state_hash_ms',
+        'policy_engine_warning_signature_hash_ms',
+    )
+    attrs = {'policy_engine_total_tick_duration_ms': max(0, int(total_ms))}
+    measured_ms = 0
+    for key in phase_keys:
+        value = max(0, int(timing.get(key, 0) or 0))
+        attrs[key] = value
+        measured_ms += value
+    for key in sub_phase_keys:
+        attrs[key] = max(0, int(timing.get(key, 0) or 0))
+    attrs['policy_engine_unaccounted_ms'] = max(0, attrs['policy_engine_total_tick_duration_ms'] - measured_ms)
+    return attrs
+
+
+def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
+    import time
+    timing = dict(timing_context or {})
     run_started_ts = time.time()
+    total_started_ts = timing.get('policy_engine_total_tick_started_ts', run_started_ts)
+    timing.setdefault('policy_engine_read_runtime_context_ms', 0)
+
+    phase_started_ts = time.time()
     profiles = read_profiles(entities)
     m = read_measurements(now_ts, cfg, entities)
+    timing['policy_engine_read_measurements_ms'] = _elapsed_ms(phase_started_ts, time.time())
+
+    phase_started_ts = time.time()
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
     profiles = Profiles(profiles.control, profiles.goal, profiles.forecast, guard_decision.guard)
+    timing['policy_engine_guard_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    timing['policy_engine_policy_compute_ms'] = timing['policy_engine_guard_compute_ms']
+
+    phase_started_ts = time.time()
     haeo = read_haeo(now_ts, profiles, cfg, entities)
-    haeo_nz_plan = compute_haeo_net_zero_plan(
-        profiles,
-        cfg,
-        haeo,
-        now_ts,
-        previous_quarter_key=_policy_state_attr(entities, 'haeo_nz_quarter_key', ''),
-        previous_primary_load='',
-        previous_primary_device_id=_policy_state_attr(entities, 'haeo_nz_primary_device_id', ''),
-    )
+    previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
+    previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
     active_surplus_device_ids = _read_active_surplus_device_ids(entities)
     previous_device_state = _read_previous_device_state(entities)
     previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
+    timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
+
+    phase_started_ts = time.time()
     derived = derive_net_zero_inputs(
         quarter_energy_balance_kwh=m.quarter_energy_balance_kwh,
         grid_power_w=m.grid_power_w,
@@ -481,6 +535,20 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
         required_power_consumption_kw=derived.required_power_consumption_kw,
     )
     pv_power_kw = None if m.pv_power_w is None else m.pv_power_w / 1000.0
+    timing['policy_engine_derive_inputs_ms'] = _elapsed_ms(phase_started_ts, time.time())
+
+    phase_started_ts = time.time()
+    haeo_nz_plan = compute_haeo_net_zero_plan(
+        profiles,
+        cfg,
+        haeo,
+        now_ts,
+        previous_quarter_key=previous_quarter_key,
+        previous_primary_load='',
+        previous_primary_device_id=previous_primary_device_id,
+    )
+    timing['policy_engine_haeo_plan_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    phase_started_ts = time.time()
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=parse_input_datetime_ts(entities['surplus_freeze_until']),
@@ -495,6 +563,13 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
     )
+    timing['policy_engine_net_zero_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    timing['policy_engine_policy_compute_ms'] += (
+        timing['policy_engine_haeo_plan_compute_ms']
+        + timing['policy_engine_net_zero_compute_ms']
+    )
+
+    phase_started_ts = time.time()
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     attrs.update(config_trace_attrs())
     attrs.update(_policy_output_contract_attrs())
@@ -523,14 +598,24 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
             'policy_engine_skipped_ticks': int(_POLICY_ENGINE_TIMER_STATE.get('skipped_ticks', 0) or 0),
         }
     )
+    timing['policy_engine_build_attrs_ms'] = _elapsed_ms(phase_started_ts, time.time())
+
+    phase_started_ts = time.time()
     device_policies_hash = _device_policies_hash(attrs)
+    timing['policy_engine_device_policies_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
     attrs['device_policies_hash'] = device_policies_hash
     attrs['device_policies_state_kind'] = 'content_hash'
     attrs['device_policies_version'] = device_policies_hash
+    phase_started_ts = time.time()
     dispatch_command_attrs = _dispatch_command_attrs(attrs)
+    timing['policy_engine_dispatch_command_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    phase_started_ts = time.time()
     policy_state_hash, policy_state_attrs = _policy_state_payload(entities, attrs)
+    timing['policy_engine_policy_state_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
     dispatch_command_hash = dispatch_command_attrs['dispatch_command_hash']
+    phase_started_ts = time.time()
     warning_signature = _policy_warning_signature(attrs)
+    timing['policy_engine_warning_signature_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
     canonical_changed = (
         device_policies_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_device_policies_hash')
         or dispatch_command_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_dispatch_command_hash')
@@ -538,6 +623,14 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
     )
     warning_state_changed = warning_signature != _POLICY_ENGINE_TIMER_STATE.get('previous_warning_signature')
     diagnostics_interval_seconds = _policy_engine_diagnostics_interval_seconds(cfg)
+    timing['policy_engine_hash_ms'] = (
+        timing['policy_engine_device_policies_hash_ms']
+        + timing['policy_engine_dispatch_command_hash_ms']
+        + timing['policy_engine_policy_state_hash_ms']
+        + timing['policy_engine_warning_signature_hash_ms']
+    )
+
+    phase_started_ts = time.time()
     publish_diagnostics, diagnostics_publish_reason = _should_publish_policy_diagnostics(
         now_ts,
         trigger_reason,
@@ -545,6 +638,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
         canonical_changed,
         warning_state_changed,
     )
+    timing['policy_engine_diagnostics_decision_ms'] = _elapsed_ms(phase_started_ts, time.time())
+
     publish_started_ts = time.time()
     published_device_policies = False
     published_dispatch_command = False
@@ -561,7 +656,11 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
     publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
     published_policy_state = True
     publish_ms = int(round((time.time() - publish_started_ts) * 1000.0))
+    timing['policy_engine_canonical_publish_ms'] = publish_ms
+    timing.setdefault('policy_engine_diagnostics_build_ms', 0)
+    timing.setdefault('policy_engine_diagnostics_publish_ms', 0)
     if publish_diagnostics:
+        phase_started_ts = time.time()
         diagnostics_attrs = dict(attrs)
         diagnostics_attrs.update(
             {
@@ -574,9 +673,18 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
                 'policy_engine_diagnostics_publish_reason': diagnostics_publish_reason,
                 'policy_engine_last_diagnostics_publish_ts': now_ts,
                 'policy_engine_diagnostics_interval_seconds': diagnostics_interval_seconds,
+                'policy_engine_previous_diagnostics_publish_ms': int(
+                    _POLICY_ENGINE_TIMER_STATE.get('previous_diagnostics_publish_ms', 0) or 0
+                ),
+                'policy_engine_last_diagnostics_publish_attempted': True,
             }
         )
+        diagnostics_attrs.update(runtime_context_metrics_attrs())
+        timing['policy_engine_diagnostics_build_ms'] = _elapsed_ms(phase_started_ts, time.time())
+        diagnostics_attrs.update(_phase_timing_attrs(timing, _elapsed_ms(total_started_ts, time.time())))
+        phase_started_ts = time.time()
         publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), diagnostics_attrs)
+        _POLICY_ENGINE_TIMER_STATE['previous_diagnostics_publish_ms'] = _elapsed_ms(phase_started_ts, time.time())
         _POLICY_ENGINE_TIMER_STATE['last_diagnostics_publish_ts'] = now_ts
     _POLICY_ENGINE_TIMER_STATE['previous_device_policies_hash'] = device_policies_hash
     _POLICY_ENGINE_TIMER_STATE['previous_dispatch_command_hash'] = dispatch_command_hash
@@ -588,25 +696,45 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason):
 def ems_policy_engine_tick():
     import time
     now_ts = time.time()
+    tick_started_ts = time.time()
     _note_policy_tick(now_ts)
     if not _policy_engine_interval_elapsed_fast(now_ts):
         _note_policy_skip()
         return
-    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
     _update_policy_engine_effective_intervals(cfg)
     if not _policy_engine_interval_elapsed(now_ts, _POLICY_ENGINE_TIMER_STATE['effective_interval_seconds']):
         _note_policy_skip()
         return
     _note_policy_run(now_ts)
-    run_policy_loop(now_ts, cfg, entities, 'timer')
+    run_policy_loop(
+        now_ts,
+        cfg,
+        entities,
+        'timer',
+        {
+            'policy_engine_total_tick_started_ts': tick_started_ts,
+            'policy_engine_read_runtime_context_ms': read_runtime_context_ms,
+        },
+    )
 
 
 def ems_policy_engine_loop(trigger_reason='manual'):
     import time
     now_ts = time.time()
-    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    tick_started_ts = time.time()
+    cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
     _update_policy_engine_effective_intervals(cfg)
     if str(trigger_reason) == 'timer':
         _note_policy_tick(now_ts)
     _note_policy_run(now_ts)
-    run_policy_loop(now_ts, cfg, entities, trigger_reason)
+    run_policy_loop(
+        now_ts,
+        cfg,
+        entities,
+        trigger_reason,
+        {
+            'policy_engine_total_tick_started_ts': tick_started_ts,
+            'policy_engine_read_runtime_context_ms': read_runtime_context_ms,
+        },
+    )

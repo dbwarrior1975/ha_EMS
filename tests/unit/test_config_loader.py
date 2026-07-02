@@ -5,12 +5,14 @@ import sys
 import pytest
 
 from ems_adapter.config_loader import (
+    DynamicConfigRef,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
     _parse_policy_engine_diagnostics_interval_seconds,
     _parse_policy_engine_interval_seconds,
     build_core_config_from_grouped_config,
     build_core_config_from_grouped_reader,
+    compile_core_config_plan_from_grouped_config,
     runtime_alias_index,
     load_grouped_ems_config,
     load_and_validate_grouped_ems_config,
@@ -693,3 +695,27 @@ def test_build_core_config_from_grouped_reader_builds_core_config(project_root):
 
     assert cfg.deadband_w == 80
     assert cfg.ramp_max_w == 900
+
+
+@pytest.mark.unit
+def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_root):
+    config = _load_example(project_root)
+
+    plan = compile_core_config_plan_from_grouped_config(config)
+    deadband_ref = plan.grouped_config_plan['ems']['global_config']['deadband_w']
+    adjustable_ref = plan.grouped_config_plan['ems']['global_config']['adjustable_surplus_load']
+    ev_force_on_ref = plan.grouped_config_plan['ems']['devices']['EV_CHARGER']['policy']['force_on']
+
+    assert isinstance(deadband_ref, DynamicConfigRef)
+    assert deadband_ref.path == 'ems.global_config.deadband_w'
+    assert deadband_ref.entity_id == 'input_number.ems_deadband_w'
+    assert deadband_ref.value_type == 'int'
+    assert deadband_ref.default == 50
+
+    assert isinstance(adjustable_ref, DynamicConfigRef)
+    assert adjustable_ref.value_type == 'str'
+    assert adjustable_ref.default == 'HOME_BATTERY'
+
+    assert isinstance(ev_force_on_ref, DynamicConfigRef)
+    assert ev_force_on_ref.path == 'ems.devices.EV_CHARGER.policy.force_on'
+    assert ev_force_on_ref.value_type == 'str'
