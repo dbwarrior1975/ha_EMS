@@ -2,11 +2,36 @@ from ems_core.domain.ev_power import ev_max_power_w, ev_min_power_w
 from ems_core.domain.models import SurplusDeviceTarget
 
 
-def _ev_incremental_surplus_threshold_w(cfg, device):
+def _device_kind(cfg, device_id):
+    if hasattr(cfg, 'device_kind'):
+        return str(cfg.device_kind(device_id) or '')
+    device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
+    if device is None:
+        return ''
+    return str(getattr(device, 'kind', '') or '')
+
+
+def _device_capability(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_capability'):
+        return cfg.device_capability(device_id, field, default)
+    device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
+    if device is None:
+        return default
+    capabilities = getattr(device, 'capabilities', None)
+    if capabilities is None:
+        return default
+    return getattr(capabilities, field, default)
+
+
+def _ev_incremental_surplus_threshold_w(cfg, device_id, device):
     if device is not None and str(getattr(device, 'kind', '')) == 'EV_CHARGER':
         capabilities = device.capabilities
         min_absorb_w = float(getattr(capabilities, 'min_absorb_w', 0) or 0)
         max_absorb_w = float(getattr(capabilities, 'max_absorb_w', 0) or 0)
+        return max(int(round(max_absorb_w - min_absorb_w)), 0)
+    if _device_kind(cfg, device_id) == 'EV_CHARGER':
+        min_absorb_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0) or 0)
+        max_absorb_w = float(_device_capability(cfg, device_id, 'max_absorb_w', 0) or 0)
         return max(int(round(max_absorb_w - min_absorb_w)), 0)
     return max(int(ev_max_power_w(cfg) - ev_min_power_w(cfg)), 0)
 
@@ -16,13 +41,16 @@ def _adjustable_threshold_w(cfg, adjustable_device_id):
     if configured_activation_w > 0.0:
         threshold_w = max(int(round(configured_activation_w)), 0)
         return threshold_w, 'configured_adjustable_surplus_activation_w', None
-    device = cfg.device_by_id(adjustable_device_id) if hasattr(cfg, 'device_by_id') else None
+    device = None
+    if not hasattr(cfg, 'device_kind') and hasattr(cfg, 'device_by_id'):
+        device = cfg.device_by_id(adjustable_device_id)
     is_ev = (
-        adjustable_device_id == 'EV_CHARGER'
+        _device_kind(cfg, adjustable_device_id) == 'EV_CHARGER'
+        or adjustable_device_id == 'EV_CHARGER'
         or (device is not None and str(getattr(device, 'kind', '')) == 'EV_CHARGER')
     )
     if is_ev:
-        threshold_w = _ev_incremental_surplus_threshold_w(cfg, device)
+        threshold_w = _ev_incremental_surplus_threshold_w(cfg, adjustable_device_id, device)
         return threshold_w, 'ev_incremental_max_minus_min_absorb_w', threshold_w
     threshold_w = max(int(round(float(cfg.max_solar_charge_w))), 0)
     return threshold_w, 'max_solar_charge_w', None

@@ -8,9 +8,14 @@ from ems_adapter.config_loader import (
     load_grouped_ems_config,
     validate_grouped_ems_config,
 )
+from ems_adapter import config_loader as config_loader_mod
 from ems_adapter.device_read_model import build_device_configs
 from ems_adapter import runtime_context as runtime_context_mod
-from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config, read_runtime_context
+from ems_adapter.runtime_context import (
+    build_runtime_entities_from_grouped_config,
+    read_runtime_context,
+    runtime_context_dynamic_read_audit,
+)
 from tests.entity_ids import ENT
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 from tests.helpers import ev_w
@@ -24,6 +29,19 @@ def _write_grouped_config_with_override(project_root, tmp_path, dotted_path, val
         node = node[part]
     node[parts[-1]] = value
     path = tmp_path / 'grouped_override.yaml'
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
+    return path
+
+
+def _write_grouped_config_with_overrides(project_root, tmp_path, overrides):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    for dotted_path, value in overrides.items():
+        node = config
+        parts = dotted_path.split('.')
+        for part in parts[:-1]:
+            node = node[part]
+        node[parts[-1]] = value
+    path = tmp_path / 'grouped_overrides.yaml'
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
     return path
 
@@ -95,6 +113,22 @@ def _mutable_entity_readers(values):
         lambda entity_id, default=0: values.get(entity_id, default),
         lambda entity_id, default='': values.get(entity_id, default),
     )
+
+
+def _assert_dynamic_value_updates_on_static_cache_hit(project_root, monkeypatch, values, update_fn, extract_fn):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+    read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    update_fn(values)
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+    assert metrics['policy_engine_static_context_cache_hit'] is True
+    assert extract_fn(first_cfg) != extract_fn(second_cfg)
+    return first_cfg, second_cfg
 
 
 @pytest.mark.unit
@@ -457,6 +491,27 @@ def test_read_runtime_context_caches_grouped_config_until_file_signature_changes
 
 
 @pytest.mark.unit
+def test_runtime_context_production_path_does_not_call_eager_materializers(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    def _fail(*_args, **_kwargs):
+        raise AssertionError('production runtime path must not call eager core-config materializer')
+
+    monkeypatch.setattr(config_loader_mod, 'materialize_core_config_from_plan', _fail)
+    monkeypatch.setattr(config_loader_mod, '_materialize_core_config_direct', _fail)
+    monkeypatch.setattr(config_loader_mod, '_materialize_core_devices_from_plan', _fail)
+    monkeypatch.setattr(config_loader_mod, '_materialize_home_battery_from_plan', _fail)
+    monkeypatch.setattr(config_loader_mod, '_populate_core_config_derived_fields', _fail)
+
+    cfg, _entities = read_runtime_context(*_stub_entity_readers())
+
+    assert cfg is not None
+    assert cfg.ev_charger is not None
+
+
+@pytest.mark.unit
 def test_runtime_context_metrics_are_numeric_and_non_negative(project_root, monkeypatch):
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
     runtime_context_mod._reset_runtime_context_config_cache()
@@ -478,6 +533,163 @@ def test_runtime_context_metrics_are_numeric_and_non_negative(project_root, monk
         assert isinstance(metrics[field], int)
         assert metrics[field] >= 0
     assert isinstance(metrics['policy_engine_static_context_cache_hit'], bool)
+
+
+@pytest.mark.unit
+def test_runtime_context_dynamic_read_audit_collapses_duplicate_reads_within_single_run(project_root, tmp_path, monkeypatch):
+    grouped_path = _write_grouped_config_with_overrides(
+        project_root,
+        tmp_path,
+        {
+            'ems.profiles.control': 'input_select.ems_shared_profile',
+            'ems.profiles.goal': 'input_select.ems_shared_profile',
+        },
+    )
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    read_counts = {'shared': 0}
+
+    def read_bool(_entity_id):
+        return False
+
+    def read_float(_entity_id, default=0.0):
+        return default
+
+    def read_int(_entity_id, default=0):
+        return default
+
+    def read_str(entity_id, default=''):
+        if entity_id == 'input_select.ems_shared_profile':
+            read_counts['shared'] += 1
+            return 'AUTOMATIC'
+        return default
+
+    cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    audit = runtime_context_dynamic_read_audit()
+
+    assert cfg.profiles.control == 'AUTOMATIC'
+    assert cfg.profiles.goal == 'AUTOMATIC'
+    assert read_counts['shared'] == 1
+    assert audit['total_reads'] >= audit['underlying_reads']
+    assert audit['cache_hits'] >= 1
+    shared_entries = [
+        entry for entry in audit['entries']
+        if entry['entity_id'] == 'input_select.ems_shared_profile'
+    ]
+    assert len(shared_entries) == 1
+    assert shared_entries[0]['count'] == 2
+    assert shared_entries[0]['underlying_reads'] == 1
+    assert shared_entries[0]['cache_hits'] == 1
+
+
+@pytest.mark.unit
+def test_runtime_context_dynamic_read_audit_cache_is_per_run_and_values_refresh_next_run(project_root, tmp_path, monkeypatch):
+    grouped_path = _write_grouped_config_with_overrides(
+        project_root,
+        tmp_path,
+        {
+            'ems.profiles.control': 'input_select.ems_shared_profile',
+            'ems.profiles.goal': 'input_select.ems_shared_profile',
+        },
+    )
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    values = {'shared': 'AUTOMATIC'}
+    read_counts = {'shared': 0}
+
+    def read_bool(_entity_id):
+        return False
+
+    def read_float(_entity_id, default=0.0):
+        return default
+
+    def read_int(_entity_id, default=0):
+        return default
+
+    def read_str(entity_id, default=''):
+        if entity_id == 'input_select.ems_shared_profile':
+            read_counts['shared'] += 1
+            return values['shared']
+        return default
+
+    first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    values['shared'] = 'MANUAL_SAFE'
+    second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
+    audit = runtime_context_dynamic_read_audit()
+
+    assert first_cfg.profiles.control == 'AUTOMATIC'
+    assert second_cfg.profiles.control == 'MANUAL_SAFE'
+    assert second_cfg.profiles.goal == 'MANUAL_SAFE'
+    assert read_counts['shared'] == 2
+    shared_entries = [
+        entry for entry in audit['entries']
+        if entry['entity_id'] == 'input_select.ems_shared_profile'
+    ]
+    assert len(shared_entries) == 1
+    assert shared_entries[0]['count'] == 2
+    assert shared_entries[0]['underlying_reads'] == 1
+    assert shared_entries[0]['cache_hits'] == 1
+
+
+@pytest.mark.unit
+def test_runtime_context_dynamic_read_audit_sort_is_pyscript_safe(project_root, tmp_path, monkeypatch):
+    grouped_path = _write_grouped_config_with_overrides(
+        project_root,
+        tmp_path,
+        {
+            'ems.profiles.control': 'input_select.ems_shared_profile',
+            'ems.profiles.goal': 'input_select.ems_shared_profile',
+            'ems.profiles.forecast': 'input_select.ems_forecast_profile',
+        },
+    )
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    def read_bool(_entity_id):
+        return False
+
+    def read_float(_entity_id, default=0.0):
+        return default
+
+    def read_int(_entity_id, default=0):
+        return default
+
+    def read_str(entity_id, default=''):
+        if entity_id == 'input_select.ems_shared_profile':
+            return 'AUTOMATIC'
+        if entity_id == 'input_select.ems_forecast_profile':
+            return 'NONE'
+        return default
+
+    read_runtime_context(read_bool, read_float, read_int, read_str)
+    audit = runtime_context_dynamic_read_audit()
+    source = (project_root / 'modules' / 'ems_adapter' / 'runtime_context.py').read_text(encoding='utf-8')
+
+    assert hasattr(runtime_context_mod, '_dynamic_read_audit_sort_key') is False
+    assert 'sort(key=' not in source
+    assert audit['entries']
+    shared_entries = [
+        entry for entry in audit['entries']
+        if entry['entity_id'] == 'input_select.ems_shared_profile'
+    ]
+    assert len(shared_entries) == 1
+    assert shared_entries[0]['count'] == 2
+    previous_sort_key = None
+    for entry in audit['entries']:
+        sort_key = (
+            -int(entry['count']),
+            -int(entry['cache_hits']),
+            str(entry['entity_id']),
+            str(entry['default_repr']),
+        )
+        if previous_sort_key is not None:
+            assert previous_sort_key <= sort_key
+        previous_sort_key = sort_key
 
 
 @pytest.mark.unit
@@ -658,6 +870,99 @@ def test_dynamic_priority_value_updates_with_static_context_cache_hit(project_ro
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('initial_values', 'update_fn', 'extract_fn', 'expected_first', 'expected_second'),
+    (
+        (
+            {'input_select.ems_control_profile': 'AUTOMATIC'},
+            lambda values: values.__setitem__('input_select.ems_control_profile', 'MANUAL'),
+            lambda cfg: cfg.profiles.control,
+            'AUTOMATIC',
+            'MANUAL',
+        ),
+        (
+            {'input_select.ems_goal_profile': 'NET_ZERO'},
+            lambda values: values.__setitem__('input_select.ems_goal_profile', 'MAX_EXPORT'),
+            lambda cfg: cfg.profiles.goal,
+            'NET_ZERO',
+            'MAX_EXPORT',
+        ),
+        (
+            {'input_select.ems_forecast_profile': 'NONE'},
+            lambda values: values.__setitem__('input_select.ems_forecast_profile', 'HAEO'),
+            lambda cfg: cfg.profiles.forecast,
+            'NONE',
+            'HAEO',
+        ),
+        (
+            {'input_select.ems_guard_profile': 'NORMAL_LIMITS'},
+            lambda values: values.__setitem__('input_select.ems_guard_profile', 'STRICT_LIMITS'),
+            lambda cfg: cfg.profiles.guard,
+            'NORMAL_LIMITS',
+            'STRICT_LIMITS',
+        ),
+        (
+            {ENT['deadband_w']: 25},
+            lambda values: values.__setitem__(ENT['deadband_w'], 60),
+            lambda cfg: cfg.deadband_w,
+            25,
+            60,
+        ),
+        (
+            {'switch.charger_control': False},
+            lambda values: values.__setitem__('switch.charger_control', True),
+            lambda cfg: cfg.ev_charger.adapter.enabled,
+            False,
+            True,
+        ),
+        (
+            {ENT['devices']['RELAY1']['force_on']: False},
+            lambda values: values.__setitem__(ENT['devices']['RELAY1']['force_on'], True),
+            lambda cfg: cfg.devices['RELAY1'].policy.force_on,
+            False,
+            True,
+        ),
+    ),
+)
+def test_dynamic_fields_refresh_with_static_context_cache_hit(
+    project_root,
+    monkeypatch,
+    initial_values,
+    update_fn,
+    extract_fn,
+    expected_first,
+    expected_second,
+):
+    first_cfg, second_cfg = _assert_dynamic_value_updates_on_static_cache_hit(
+        project_root,
+        monkeypatch,
+        dict(initial_values),
+        update_fn,
+        extract_fn,
+    )
+
+    assert extract_fn(first_cfg) == expected_first
+    assert extract_fn(second_cfg) == expected_second
+
+
+@pytest.mark.unit
+def test_dynamic_default_override_battery_priority_updates_on_cache_hit_when_ev_priority_changes(project_root, monkeypatch):
+    first_cfg, second_cfg = _assert_dynamic_value_updates_on_static_cache_hit(
+        project_root,
+        monkeypatch,
+        {
+            'input_number.ems_adjustable_surplus_load_priority': 3,
+            ENT['devices']['EV_CHARGER']['priority']: 4,
+        },
+        lambda values: values.__setitem__(ENT['devices']['EV_CHARGER']['priority'], 9),
+        lambda cfg: cfg.home_battery.policy.priority,
+    )
+
+    assert first_cfg.home_battery.policy.priority == 4
+    assert second_cfg.home_battery.policy.priority == 9
+
+
+@pytest.mark.unit
 def test_runtime_context_metrics_measure_dynamic_reads_separately_from_core_config_build(project_root, monkeypatch):
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
     runtime_context_mod._reset_runtime_context_config_cache()
@@ -690,6 +995,40 @@ def test_runtime_context_metrics_measure_dynamic_reads_separately_from_core_conf
 
     assert metrics['policy_engine_dynamic_config_reads_ms'] > 0
     assert metrics['policy_engine_core_config_build_ms'] >= 0
+    assert metrics['policy_engine_core_config_materialize_total_ms'] >= metrics['policy_engine_dynamic_config_reads_ms']
+    assert abs(
+        (
+            metrics['policy_engine_core_config_build_ms']
+            + metrics['policy_engine_dynamic_config_reads_ms']
+        )
+        - metrics['policy_engine_core_config_materialize_total_ms']
+    ) <= 5
+
+
+@pytest.mark.unit
+def test_core_config_materialization_submetrics_are_numeric_and_non_negative(project_root, monkeypatch):
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
+    runtime_context_mod._reset_runtime_context_config_cache()
+    monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
+
+    read_runtime_context(*_stub_entity_readers())
+    metrics = runtime_context_mod.runtime_context_metrics_attrs()
+
+    metric_keys = (
+        'policy_engine_core_config_materialize_total_ms',
+        'policy_engine_core_config_profiles_global_runtime_state_ms',
+        'policy_engine_core_config_devices_ms',
+        'policy_engine_core_config_home_battery_ms',
+        'policy_engine_core_config_haeo_ms',
+        'policy_engine_core_config_role_constraints_ms',
+        'policy_engine_core_config_derived_fields_ms',
+        'policy_engine_dynamic_runtime_snapshot_ms',
+        'policy_engine_policy_context_view_ms',
+    )
+
+    for key in metric_keys:
+        assert isinstance(metrics[key], int)
+        assert metrics[key] >= 0
 
 
 @pytest.mark.unit

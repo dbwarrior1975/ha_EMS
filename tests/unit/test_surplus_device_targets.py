@@ -1,5 +1,6 @@
 import pytest
 
+from ems_adapter.config_loader import build_policy_context_view, compile_core_config_plan_from_grouped_config, load_grouped_ems_config
 from ems_core.net_zero.surplus_device_targets import build_surplus_device_targets
 from tests.helpers import ev_w, make_cfg
 
@@ -153,3 +154,70 @@ def test_relay_target_is_disabled_when_device_cannot_absorb():
 
     assert targets[1].device_id == 'RELAY1'
     assert targets[1].enabled is False
+
+
+@pytest.mark.unit
+def test_core_config_view_second_ev_adjustable_target_does_not_materialize_selected_ev(project_root, monkeypatch):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    grouped['ems']['devices']['EV_GARAGE'] = {
+        'kind': 'EV_CHARGER',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': False,
+            'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
+            'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
+            'step_w': 'input_number.ems_ev_garage_power_step_w',
+        },
+        'policy': {
+            'priority': 'input_number.ems_surplus_ev_garage_priority',
+            'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'force_on': 'input_boolean.ems_ev_garage_force_on',
+            'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
+            'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
+            'hard_off_release_cycles': 'input_number.ems_ev_garage_release_cycles',
+        },
+        'adapter': {
+            'enabled': 'switch.ev_garage_enabled',
+            'current_a': 'number.ev_garage_current_a',
+            'current_step_a': 'input_number.ems_ev_garage_current_step_a',
+            'phases': 'input_number.ems_ev_garage_phases',
+            'voltage_v': 'input_number.ems_ev_garage_voltage_v',
+        },
+    }
+    plan = compile_core_config_plan_from_grouped_config(grouped)
+    values = {
+        'input_number.ems_ev_garage_min_power_w': 1380,
+        'input_number.ems_ev_garage_max_power_w': 3680,
+        'input_number.ems_ev_garage_power_step_w': 460,
+        'input_number.ems_surplus_ev_garage_priority': 4,
+        'input_boolean.ems_ev_garage_surplus_allowed': True,
+        'input_boolean.ems_ev_garage_force_on': False,
+        'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
+        'input_number.ems_ev_garage_low_pv_cycles': 2,
+        'input_number.ems_ev_garage_release_cycles': 2,
+        'input_number.ems_ev_garage_current_step_a': 2,
+        'input_number.ems_ev_garage_phases': 1,
+        'input_number.ems_ev_garage_voltage_v': 230,
+    }
+    call_counts = {}
+
+    def counting_build_ev(plan_arg, values_arg):
+        device_id = str(plan_arg.device_id)
+        call_counts[device_id] = int(call_counts.get(device_id, 0) or 0) + 1
+        return real_build_ev(plan_arg, values_arg)
+
+    real_build_ev = __import__('ems_adapter.config_loader', fromlist=['_build_view_ev_device'])._build_view_ev_device
+    monkeypatch.setattr('ems_adapter.config_loader._build_view_ev_device', counting_build_ev)
+
+    cfg = build_policy_context_view(plan, lambda entity_id, default: values.get(entity_id, default))
+    targets = build_surplus_device_targets(
+        cfg,
+        adjustable_device_id='EV_GARAGE',
+        adjustable_priority=4,
+        adjustable_active=False,
+        relay_candidates=(),
+    )
+
+    assert targets[0].device_id == 'EV_GARAGE'
+    assert targets[0].threshold_w == 2300
+    assert call_counts == {}

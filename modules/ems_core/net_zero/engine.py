@@ -85,6 +85,9 @@ def _resolved_device_id(cfg, raw_value, default=''):
     text = str(raw_value or '').strip()
     if not text:
         return str(default or '')
+    if hasattr(cfg, 'device_kind'):
+        if cfg.device_kind(text):
+            return text
     if hasattr(cfg, 'device_by_id'):
         device = cfg.device_by_id(text)
         if device is not None:
@@ -129,24 +132,93 @@ def _device_by_id(cfg, device_id):
     return None
 
 
+def _device_kind(cfg, device_id):
+    if not device_id:
+        return ''
+    if hasattr(cfg, 'device_kind'):
+        return str(cfg.device_kind(device_id) or '')
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return ''
+    return str(getattr(device, 'kind', '') or '')
+
+
+def _device_ids_by_kind(cfg, kind):
+    if hasattr(cfg, 'device_ids_by_kind'):
+        ids = []
+        for device_id in cfg.device_ids_by_kind(kind):
+            ids.append(str(device_id))
+        return tuple(ids)
+    if hasattr(cfg, 'devices_by_kind'):
+        ids = []
+        for device in cfg.devices_by_kind(kind):
+            ids.append(str(device.device_id))
+        return tuple(ids)
+    return ()
+
+
+def _device_capability(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_capability'):
+        return cfg.device_capability(device_id, field, default)
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return default
+    capabilities = getattr(device, 'capabilities', None)
+    if capabilities is None:
+        return default
+    return getattr(capabilities, field, default)
+
+
+def _device_adapter_value(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_adapter_value'):
+        return cfg.device_adapter_value(device_id, field, default)
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return default
+    adapter = getattr(device, 'adapter', None)
+    if adapter is None:
+        return default
+    return getattr(adapter, field, default)
+
+
+def _device_policy_value(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_policy_value'):
+        return cfg.device_policy_value(device_id, field, default)
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return default
+    policy = getattr(device, 'policy', None)
+    if policy is None:
+        return default
+    return getattr(policy, field, default)
+
+
+def _device_can_absorb(cfg, device_id):
+    return bool(_device_capability(cfg, device_id, 'can_absorb_w', False))
+
+
+def _device_response_kind(kind):
+    kind = str(kind or '')
+    if kind == 'BATTERY':
+        return 'continuous'
+    if kind == 'EV_CHARGER':
+        return 'selector'
+    return 'relay'
+
+
 def _is_ev_device_id(cfg, device_id):
     device_id = str(device_id or '')
-    if hasattr(cfg, 'device_by_id') and hasattr(cfg, 'devices_by_kind'):
-        device = _device_by_id(cfg, device_id)
-        if device is None:
-            return False
-        return str(getattr(device, 'kind', '')) == 'EV_CHARGER'
-    device = _device_by_id(cfg, device_id)
-    if device is not None:
-        return str(getattr(device, 'kind', '')) == 'EV_CHARGER'
+    kind = _device_kind(cfg, device_id)
+    if kind:
+        return kind == 'EV_CHARGER'
     return device_id == 'EV_CHARGER'
 
 
 def _default_ev_device_id(cfg):
-    ev_devices = _ev_devices(cfg)
-    if ev_devices:
-        return str(ev_devices[0].device_id)
-    if hasattr(cfg, 'devices_by_kind'):
+    ev_device_ids = _device_ids_by_kind(cfg, 'EV_CHARGER')
+    if ev_device_ids:
+        return str(ev_device_ids[0])
+    if hasattr(cfg, 'device_ids_by_kind') or hasattr(cfg, 'devices_by_kind'):
         return ''
     return 'EV_CHARGER'
 
@@ -180,8 +252,9 @@ def _selected_ev_context(cfg, device_id):
         except (TypeError, ValueError):
             return int(default)
 
-    device = _device_by_id(cfg, device_id)
-    if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
+    kind = _device_kind(cfg, device_id)
+    device = None
+    if kind != 'EV_CHARGER':
         return SimpleNamespace(
             device_id='',
             device=None,
@@ -200,16 +273,14 @@ def _selected_ev_context(cfg, device_id):
             hard_off_release_cycles=0,
             priority=0,
         )
+    if not hasattr(cfg, 'device_adapter_value'):
+        device = _device_by_id(cfg, device_id)
 
-    adapter = device.adapter
-    capabilities = device.capabilities
-    policy = device.policy
+    current_step_a = _positive_float(_device_adapter_value(cfg, device_id, 'current_step_a', None), 1.0)
+    phases = _positive_float(_device_adapter_value(cfg, device_id, 'phases', None), 1.0)
+    voltage_v = _positive_float(_device_adapter_value(cfg, device_id, 'voltage_v', None), 230.0)
 
-    current_step_a = _positive_float(getattr(adapter, 'current_step_a', None), 1.0)
-    phases = _positive_float(getattr(adapter, 'phases', None), 1.0)
-    voltage_v = _positive_float(getattr(adapter, 'voltage_v', None), 230.0)
-
-    raw_force_on = getattr(policy, 'force_on', False)
+    raw_force_on = _device_policy_value(cfg, device_id, 'force_on', False)
     if isinstance(raw_force_on, str):
         text = raw_force_on.strip().lower()
         if text in ('true', 'on', '1', 'yes'):
@@ -223,15 +294,15 @@ def _selected_ev_context(cfg, device_id):
     else:
         force_on = bool(raw_force_on)
 
-    low_pv_threshold = _non_negative_float(getattr(policy, 'low_pv_threshold_w', 0), 0.0)
+    low_pv_threshold = _non_negative_float(_device_policy_value(cfg, device_id, 'low_pv_threshold_w', 0), 0.0)
     hard_off_pv_threshold_kw = (
         low_pv_threshold / 1000.0
         if low_pv_threshold > 50.0
         else low_pv_threshold
     )
-    min_absorb_w = _non_negative_float(getattr(capabilities, 'min_absorb_w', None), 0.0)
-    max_absorb_w = _non_negative_float(getattr(capabilities, 'max_absorb_w', None), 0.0)
-    configured_step_w = _non_negative_float(getattr(capabilities, 'step_w', 0), 0.0)
+    min_absorb_w = _non_negative_float(_device_capability(cfg, device_id, 'min_absorb_w', None), 0.0)
+    max_absorb_w = _non_negative_float(_device_capability(cfg, device_id, 'max_absorb_w', None), 0.0)
+    configured_step_w = _non_negative_float(_device_capability(cfg, device_id, 'step_w', 0), 0.0)
     power_step_w = configured_step_w if configured_step_w > 0 else float(
         ev_current_a_to_power_w(
             current_step_a,
@@ -241,11 +312,11 @@ def _selected_ev_context(cfg, device_id):
     )
 
     return SimpleNamespace(
-        device_id=str(getattr(device, 'device_id', '') or ''),
+        device_id=str(device_id or ''),
         device=device,
-        adapter=adapter,
-        capabilities=capabilities,
-        policy=policy,
+        adapter=getattr(device, 'adapter', None),
+        capabilities=getattr(device, 'capabilities', None),
+        policy=getattr(device, 'policy', None),
         current_step_a=int(round(current_step_a)),
         phases=int(round(phases)),
         voltage_v=float(voltage_v),
@@ -255,15 +326,15 @@ def _selected_ev_context(cfg, device_id):
         force_on=force_on,
         hard_off_pv_threshold_kw=hard_off_pv_threshold_kw,
         hard_off_low_pv_cycles=_int_or_default(
-            getattr(policy, 'hard_off_low_pv_cycles', 0),
+            _device_policy_value(cfg, device_id, 'hard_off_low_pv_cycles', 0),
             0,
         ),
         hard_off_release_cycles=_int_or_default(
-            getattr(policy, 'hard_off_release_cycles', 0),
+            _device_policy_value(cfg, device_id, 'hard_off_release_cycles', 0),
             0,
         ),
         priority=_int_or_default(
-            getattr(policy, 'priority', 0),
+            _device_policy_value(cfg, device_id, 'priority', 0),
             0,
         ),
     )
@@ -363,44 +434,46 @@ def _device_policy_payload(policy):
 
 
 def _capability_device_config_for_id(cfg, device_id):
-    device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
-    if device is not None:
-        caps = device.capabilities
-        policy = device.policy
+    kind = _device_kind(cfg, device_id)
+    if kind:
+        min_absorb_w = _device_capability(cfg, device_id, 'min_absorb_w', 0)
+        max_absorb_w = _device_capability(cfg, device_id, 'max_absorb_w', 0)
+        max_produce_w = _device_capability(cfg, device_id, 'max_produce_w', 0)
+        step_w = _device_capability(cfg, device_id, 'step_w', 0)
         return EmsDeviceConfig(
-            device_id=str(device.device_id),
-            kind=str(device.kind),
-            response_kind='continuous' if str(device.kind) == 'BATTERY' else ('selector' if str(device.kind) == 'EV_CHARGER' else 'relay'),
-            can_absorb_w=bool(caps.can_absorb_w),
-            can_produce_w=bool(caps.can_produce_w),
-            min_absorb_w=int(round(float(caps.min_absorb_w))),
-            max_absorb_w=int(round(float(caps.max_absorb_w))),
-            max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
-            step_w=max(1, int(round(float(caps.step_w)))),
-            priority=int(round(float(policy.priority))),
+            device_id=str(device_id),
+            kind=str(kind),
+            response_kind=_device_response_kind(kind),
+            can_absorb_w=bool(_device_capability(cfg, device_id, 'can_absorb_w', False)),
+            can_produce_w=bool(_device_capability(cfg, device_id, 'can_produce_w', False)),
+            min_absorb_w=int(round(float(min_absorb_w or 0))),
+            max_absorb_w=int(round(float(max_absorb_w or 0))),
+            max_produce_w=int(round(abs(float(max_produce_w or 0)))),
+            step_w=max(1, int(round(float(step_w or 0)))),
+            priority=int(round(float(_device_policy_value(cfg, device_id, 'priority', 0) or 0))),
         )
     raise KeyError(f'unknown device_id: {device_id}')
 
 
 def _relay_devices(cfg):
-    return tuple(cfg.devices_by_kind('RELAY'))
+    return tuple(_device_ids_by_kind(cfg, 'RELAY'))
 
 
 def _ev_devices(cfg):
-    return tuple(cfg.devices_by_kind('EV_CHARGER'))
+    return tuple(_device_ids_by_kind(cfg, 'EV_CHARGER'))
 
 
 def _relay_device_ids_payload(cfg):
     payload = []
     for relay in _relay_devices(cfg):
-        payload.append(str(relay.device_id))
+        payload.append(str(relay))
     return tuple(payload)
 
 
 def _ev_device_ids_payload(cfg):
     payload = []
     for ev in _ev_devices(cfg):
-        payload.append(str(ev.device_id))
+        payload.append(str(ev))
     return tuple(payload)
 
 
@@ -408,15 +481,15 @@ def _relay_runtime_candidates(cfg, relay_device_states):
     candidates = []
     state_map = relay_device_states or {}
     for relay in _relay_devices(cfg):
-        device_id = str(relay.device_id)
+        device_id = str(relay)
         state = dict(state_map.get(device_id, {}) or {})
-        threshold_w = max(int(round(float(getattr(relay.capabilities, 'max_absorb_w', 0) or 0))), 0)
+        threshold_w = max(int(round(float(_device_capability(cfg, device_id, 'max_absorb_w', 0) or 0))), 0)
         candidates.append(
             {
                 'device_id': device_id,
-                'priority': int(round(float(relay.policy.priority))),
+                'priority': int(round(float(_device_policy_value(cfg, device_id, 'priority', 0) or 0))),
                 'threshold_w': threshold_w,
-                'enabled': bool(state.get('surplus_allowed', False)) and bool(relay.capabilities.can_absorb_w),
+                'enabled': bool(state.get('surplus_allowed', False)) and _device_can_absorb(cfg, device_id),
                 'force_on': bool(state.get('force_on', False)),
                 'active': bool(state.get('active', False)),
             }
@@ -501,6 +574,23 @@ def _device_policy_payloads(device_policies):
     return tuple(payloads)
 
 
+def _legacy_bridge_metrics(cfg):
+    if not hasattr(cfg, 'legacy_device_bridge_count'):
+        return 0, {}
+    try:
+        count = int(cfg.legacy_device_bridge_count())
+    except Exception:
+        count = 0
+    try:
+        counts_by_kind = dict(cfg.legacy_device_bridge_counts_by_kind())
+    except Exception:
+        counts_by_kind = {}
+    normalized = {}
+    for kind, item_count in counts_by_kind.items():
+        normalized[str(kind)] = int(item_count)
+    return count, normalized
+
+
 def _build_device_policies(
     cfg,
     *,
@@ -521,8 +611,8 @@ def _build_device_policies(
         ),
     ]
     selected_ev_device_id = str(adjustable_ev_device_id or _selected_ev_device_id(cfg, ''))
-    for ev_device in _ev_devices(cfg):
-        device_id = str(ev_device.device_id)
+    for ev_device_id in _ev_devices(cfg):
+        device_id = str(ev_device_id)
         if device_id == selected_ev_device_id:
             policies.append(
                 DevicePolicy(
@@ -989,19 +1079,19 @@ def compute_net_zero_engine_outputs(
 
     configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
     adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
-    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.home_battery.policy.priority))
-    adjustable_capable = bool(_capability_device_config_for_id(cfg, adjustable_surplus_load).can_absorb_w)
+    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', 0) or 0)
+    adjustable_capable = _device_can_absorb(cfg, adjustable_surplus_load)
     normalized_relay_device_states = {}
     for device_id, state in (relay_device_states or {}).items():
         normalized_relay_device_states[str(device_id)] = dict(state or {})
     relay_devices = _relay_devices(cfg)
     for index, relay in enumerate(relay_devices):
-        device_id = str(relay.device_id)
+        device_id = str(relay)
         state = normalized_relay_device_states.setdefault(device_id, {})
         if 'surplus_allowed' not in state:
-            state['surplus_allowed'] = bool(relay.policy.surplus_allowed)
+            state['surplus_allowed'] = bool(_device_policy_value(cfg, device_id, 'surplus_allowed', False))
         if 'force_on' not in state:
-            state['force_on'] = bool(relay.policy.force_on)
+            state['force_on'] = bool(_device_policy_value(cfg, device_id, 'force_on', False))
         if 'active' not in state:
             state['active'] = False
     relay_runtime_candidates = _relay_runtime_candidates(
@@ -1261,6 +1351,8 @@ def compute_net_zero_engine_outputs(
     else:
         selected_previous_ev_state_next = _default_previous_ev_device_state('')
 
+    legacy_device_bridge_count, legacy_device_bridge_counts_by_kind = _legacy_bridge_metrics(cfg)
+
     return NetZeroOutputs(
         battery_target_w=battery_target_w,
         battery_write_enabled=battery_write_enabled,
@@ -1327,7 +1419,7 @@ def compute_net_zero_engine_outputs(
             'ev_power_step_w': int(getattr(selected_ev, 'power_step_w', 0) or 0),
             'ev_target_w': int(round(ev_target_w)),
             'primary_power_envelope_w': primary_envelope_w,
-            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', cfg.home_battery.policy.priority)),
+            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', 0) or 0),
             'adjustable_surplus_load': adjustable_surplus_load,
             'adjustable_surplus_activation': configured_activation_w,
             'adjustable_primary_load': adjustable_primary_load,
@@ -1352,5 +1444,7 @@ def compute_net_zero_engine_outputs(
             'haeo_nz_ev_limit_w': int(getattr(haeo_nz_plan, 'ev_limit_w', 0)),
             'haeo_nz_combo_reason': getattr(haeo_nz_plan, 'reason', ''),
             'prev_force_on_device_ids': current_force_on_device_ids,
+            'legacy_device_bridge_count': int(legacy_device_bridge_count),
+            'legacy_device_bridge_counts_by_kind': legacy_device_bridge_counts_by_kind,
         },
     )

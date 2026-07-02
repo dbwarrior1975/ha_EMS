@@ -523,6 +523,15 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
         'policy_engine_dynamic_config_reads_ms': 0,
         'policy_engine_runtime_entity_registry_ms': 0,
         'policy_engine_core_config_build_ms': 12,
+        'policy_engine_core_config_materialize_total_ms': 12,
+        'policy_engine_core_config_profiles_global_runtime_state_ms': 2,
+        'policy_engine_core_config_devices_ms': 3,
+        'policy_engine_core_config_home_battery_ms': 1,
+        'policy_engine_core_config_haeo_ms': 1,
+        'policy_engine_core_config_role_constraints_ms': 1,
+        'policy_engine_core_config_derived_fields_ms': 4,
+        'policy_engine_dynamic_runtime_snapshot_ms': 9,
+        'policy_engine_policy_context_view_ms': 3,
     }
     cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
     entities = _minimal_entities()
@@ -538,6 +547,8 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
     assert diagnostics_attrs['policy_engine_static_context_cache_hits'] == 8
     assert diagnostics_attrs['policy_engine_static_context_cache_misses'] == 1
     assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
+    assert diagnostics_attrs['policy_engine_core_config_materialize_total_ms'] == 12
+    assert diagnostics_attrs['policy_engine_core_config_devices_ms'] == 3
 
 
 @pytest.mark.unit
@@ -553,6 +564,15 @@ def test_context_cache_timing_fields_are_diagnostics_only(project_root):
         'policy_engine_dynamic_config_reads_ms': 0,
         'policy_engine_runtime_entity_registry_ms': 0,
         'policy_engine_core_config_build_ms': 12,
+        'policy_engine_core_config_materialize_total_ms': 12,
+        'policy_engine_core_config_profiles_global_runtime_state_ms': 2,
+        'policy_engine_core_config_devices_ms': 3,
+        'policy_engine_core_config_home_battery_ms': 1,
+        'policy_engine_core_config_haeo_ms': 1,
+        'policy_engine_core_config_role_constraints_ms': 1,
+        'policy_engine_core_config_derived_fields_ms': 4,
+        'policy_engine_dynamic_runtime_snapshot_ms': 9,
+        'policy_engine_policy_context_view_ms': 3,
     }
     cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
     entities = _minimal_entities()
@@ -572,8 +592,10 @@ def test_context_cache_timing_fields_are_diagnostics_only(project_root):
     for attrs in canonical_attrs:
         assert 'policy_engine_static_context_cache_hit' not in attrs
         assert 'policy_engine_core_config_build_ms' not in attrs
+        assert 'policy_engine_core_config_materialize_total_ms' not in attrs
     assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
     assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
+    assert diagnostics_attrs['policy_engine_core_config_materialize_total_ms'] == 12
 
 
 @pytest.mark.unit

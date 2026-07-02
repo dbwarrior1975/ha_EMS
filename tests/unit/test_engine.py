@@ -2,7 +2,12 @@ import pytest
 from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile
 from ems_core.domain.ev_power import ev_min_power_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
-from ems_adapter.config_loader import build_core_config_from_grouped_reader, load_grouped_ems_config
+from ems_adapter.config_loader import (
+    build_core_config_from_grouped_reader,
+    build_policy_context_view,
+    compile_core_config_plan_from_grouped_config,
+    load_grouped_ems_config,
+)
 from tests.helpers import cfg_ev_min_a, ev_state, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
@@ -169,6 +174,57 @@ def _core_cfg_without_ev_devices(
     }
     values.update(value_overrides or {})
     return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
+
+
+def _core_cfg_view_with_extra_devices(
+    project_root,
+    *,
+    extra_devices=None,
+    value_overrides=None,
+):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    for device_id, device in (extra_devices or {}).items():
+        grouped['ems']['devices'][device_id] = device
+
+    values = {
+        'input_number.ems_deadband_w': 50,
+        'input_number.ems_ramp_max_w': 5000,
+        'input_number.ems_strict_limits_max_w': 4600,
+        'input_number.ems_surplus_freeze_s': 30,
+        'input_number.ems_haeo_stale_timeout_s': 300,
+        'input_number.ems_nz_battery_floor_default_w': 100,
+        'input_number.ems_nz_battery_floor_ev_active_w': 0,
+        'input_select.ems_adjustable_surplus_load': 'EV_CHARGER',
+        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_number.ems_adjustable_surplus_activation_w': 2000,
+        'input_number.ems_home_battery_min_absorb_w': 100,
+        'input_number.ems_max_battery_charge_w': 3700,
+        'input_number.ems_max_battery_discharge_w': 4000,
+        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_battery_protect_soc': 2,
+        'input_number.ems_battery_protect_soc_recovery_margin': 1,
+        'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
+        'input_number.ems_battery_protect_charge_floor_w': 0,
+        'input_number.ems_surplus_ev_priority': 3,
+        'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
+        'input_number.ems_ev_hard_off_low_pv_cycles': 2,
+        'input_number.ems_ev_hard_off_release_cycles': 2,
+        'input_number.ems_ev_min_power_w': 1380,
+        'input_number.ems_ev_max_power_w': 3680,
+        'input_number.ems_ev_current_step_a': 2,
+        'input_number.ems_ev_charger_phases': 1,
+        'input_number.ems_ev_voltage_v': 230,
+        'input_boolean.ems_ev_force_on': False,
+        'input_number.ems_surplus_relay1_priority': 2,
+        'input_number.ems_relay1_nominal_absorb_w': 2500,
+        'input_number.ems_relay1_power_kw': 2500,
+        'input_number.ems_surplus_relay2_priority': 1,
+        'input_number.ems_relay2_nominal_absorb_w': 5000,
+        'input_number.ems_relay2_power_kw': 5000,
+    }
+    values.update(value_overrides or {})
+    plan = compile_core_config_plan_from_grouped_config(grouped)
+    return build_policy_context_view(plan, lambda entity_id, default: values.get(entity_id, default))
 
 
 def _garage_ev_device_config():
@@ -1266,6 +1322,39 @@ def test_engine_targets_selected_second_ev_and_marks_other_evs_inactive(project_
     assert payloads['EV_CHARGER']['reason'] == 'inactive_ev_policy'
     assert out.attrs['previous_ev_device_states']['GARAGE_EV']['mode'] == out.attrs['ev_policy_mode']
     assert out.attrs['previous_ev_device_states']['EV_CHARGER']['mode'] == 'hard_off'
+
+
+@pytest.mark.unit
+def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materialization(project_root):
+    cfg = _core_cfg_view_with_extra_devices(
+        project_root,
+        extra_devices={'GARAGE_EV': _garage_ev_device_config()},
+        value_overrides=_garage_ev_value_overrides(),
+    )
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=3000.0, required_power_consumption_kw=3.0), 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=True,
+        previous_ev_device_states={
+            'EV_CHARGER': {
+                'device_id': 'EV_CHARGER',
+                'mode': 'hard_off',
+                'low_pv_cycles': 2,
+                'hard_off_release_ready_cycles': 1,
+                'hard_off_active': True,
+            },
+        },
+    )
+
+    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert cfg.legacy_device_bridge_count() == 0
+    assert cfg.legacy_device_bridge_counts_by_kind() == {}
+    assert out.attrs['legacy_device_bridge_count'] == 0
+    assert out.attrs['legacy_device_bridge_counts_by_kind'] == {}
 
 
 @pytest.mark.unit

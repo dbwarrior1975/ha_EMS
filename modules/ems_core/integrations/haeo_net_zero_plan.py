@@ -26,6 +26,41 @@ def _device_by_id(cfg, device_id):
     return cfg.device_by_id(device_id)
 
 
+def _device_kind(cfg, device_id):
+    if hasattr(cfg, 'device_kind'):
+        return str(cfg.device_kind(device_id) or '')
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return ''
+    return str(getattr(device, 'kind', '') or '')
+
+
+def _device_capability(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_capability'):
+        return cfg.device_capability(device_id, field, default)
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return default
+    capabilities = getattr(device, 'capabilities', None)
+    if capabilities is None:
+        return default
+    return getattr(capabilities, field, default)
+
+
+def _ev_device_ids(cfg):
+    if hasattr(cfg, 'device_ids_by_kind'):
+        ids = []
+        for device_id in cfg.device_ids_by_kind('EV_CHARGER'):
+            ids.append(str(device_id))
+        return tuple(ids)
+    if hasattr(cfg, 'devices_by_kind'):
+        ids = []
+        for device in cfg.devices_by_kind('EV_CHARGER'):
+            ids.append(str(device.device_id))
+        return tuple(ids)
+    return ()
+
+
 def _ev_devices(cfg):
     if hasattr(cfg, 'devices_by_kind'):
         return tuple(cfg.devices_by_kind('EV_CHARGER'))
@@ -33,16 +68,15 @@ def _ev_devices(cfg):
 
 
 def _default_ev_device_id(cfg):
-    ev_devices = _ev_devices(cfg)
-    if ev_devices:
-        return str(ev_devices[0].device_id)
+    ev_device_ids = _ev_device_ids(cfg)
+    if ev_device_ids:
+        return str(ev_device_ids[0])
     return 'EV_CHARGER'
 
 
 def _is_ev_device_id(cfg, device_id):
-    device = _device_by_id(cfg, device_id)
-    if device is not None:
-        return str(getattr(device, 'kind', '')) == 'EV_CHARGER'
+    if _device_kind(cfg, device_id) == 'EV_CHARGER':
+        return True
     return str(device_id or '') == 'EV_CHARGER'
 
 
@@ -57,15 +91,13 @@ def _selected_ev_device_id(cfg):
 
 
 def _ev_plan_params(cfg, ev_device_id):
-    device = _device_by_id(cfg, ev_device_id)
-    if device is None or str(getattr(device, 'kind', '')) != 'EV_CHARGER':
+    if _device_kind(cfg, ev_device_id) != 'EV_CHARGER':
         return {
             'ev_limit_w_cap': int(ev_max_power_w(cfg)),
         }
 
-    capabilities = device.capabilities
     return {
-        'ev_limit_w_cap': int(round(float(capabilities.max_absorb_w))),
+        'ev_limit_w_cap': int(round(float(_device_capability(cfg, ev_device_id, 'max_absorb_w', 0) or 0))),
     }
 
 
