@@ -23,6 +23,26 @@ from ems_core.net_zero.surplus_allocator import (
 )
 from ems_core.net_zero.surplus_device_targets import build_surplus_device_targets, decision_name_for_device_id, device_targets_payload
 
+# Production default: expose only outer policy/tick timings collected by the caller.
+# Flip to True temporarily when detailed NET_ZERO profiling is needed.
+NET_ZERO_DETAILED_METRICS_ENABLED = False
+
+
+def set_net_zero_detailed_metrics_enabled(enabled):
+    global NET_ZERO_DETAILED_METRICS_ENABLED
+    NET_ZERO_DETAILED_METRICS_ENABLED = bool(enabled)
+
+
+def net_zero_detailed_metrics_enabled():
+    return bool(NET_ZERO_DETAILED_METRICS_ENABLED)
+
+
+def _net_zero_profile_started_ts():
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return 0.0
+    return time.time()
+
+
 _LAST_NET_ZERO_COMPUTE_METRICS = {
     'policy_engine_net_zero_cfg_scalar_reads': 0,
     'policy_engine_net_zero_cfg_scalar_read_ms': 0,
@@ -51,6 +71,8 @@ _LAST_NET_ZERO_COMPUTE_METRICS = {
     'policy_engine_net_zero_fact_dict_copies': 0,
     'policy_engine_net_zero_facts_fallback_used': 0,
     'policy_engine_net_zero_facts_dynamic_bindings': 0,
+    'policy_engine_net_zero_facts_dynamic_binding_groups': 0,
+    'policy_engine_net_zero_selected_ev_contexts': 0,
     'policy_engine_net_zero_surplus_targets_ms': 0,
     'policy_engine_net_zero_ev_policy_ms': 0,
     'policy_engine_net_zero_battery_policy_ms': 0,
@@ -60,11 +82,15 @@ _ACTIVE_NET_ZERO_COMPUTE_METRICS = None
 
 
 def net_zero_compute_metrics_attrs():
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return {}
     return dict(_LAST_NET_ZERO_COMPUTE_METRICS)
 
 
 def _reset_net_zero_compute_metrics():
     _LAST_NET_ZERO_COMPUTE_METRICS.clear()
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return
     _LAST_NET_ZERO_COMPUTE_METRICS.update(
         {
             'policy_engine_net_zero_cfg_scalar_reads': 0,
@@ -94,6 +120,8 @@ def _reset_net_zero_compute_metrics():
             'policy_engine_net_zero_fact_dict_copies': 0,
             'policy_engine_net_zero_facts_fallback_used': 0,
             'policy_engine_net_zero_facts_dynamic_bindings': 0,
+            'policy_engine_net_zero_facts_dynamic_binding_groups': 0,
+            'policy_engine_net_zero_selected_ev_contexts': 0,
             'policy_engine_net_zero_surplus_targets_ms': 0,
             'policy_engine_net_zero_ev_policy_ms': 0,
             'policy_engine_net_zero_battery_policy_ms': 0,
@@ -104,17 +132,20 @@ def _reset_net_zero_compute_metrics():
 
 def _note_net_zero_metric(key, increment=1):
     global _ACTIVE_NET_ZERO_COMPUTE_METRICS
-    if _ACTIVE_NET_ZERO_COMPUTE_METRICS is None:
+    if not NET_ZERO_DETAILED_METRICS_ENABLED or _ACTIVE_NET_ZERO_COMPUTE_METRICS is None:
         return
     _ACTIVE_NET_ZERO_COMPUTE_METRICS[key] = int(_ACTIVE_NET_ZERO_COMPUTE_METRICS.get(key, 0) or 0) + int(increment)
 
 
 def _note_net_zero_duration_ms(key, started_ts):
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return
     _note_net_zero_metric(key, int(round(max(0.0, time.time() - started_ts) * 1000.0)))
 
 
-
 def _note_policy_runtime_facts_metrics(facts):
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return
     if not isinstance(facts, dict):
         return
     metrics = facts.get('_metrics')
@@ -126,6 +157,8 @@ def _note_policy_runtime_facts_metrics(facts):
         _note_net_zero_metric('policy_engine_net_zero_facts_adapter_fields', metrics.get('policy_runtime_facts_adapter_fields', 0) or 0)
         _note_net_zero_metric('policy_engine_net_zero_fact_dict_copies', metrics.get('policy_runtime_fact_dict_copies', 0) or 0)
         _note_net_zero_metric('policy_engine_net_zero_facts_dynamic_bindings', metrics.get('policy_runtime_facts_dynamic_bindings', 0) or 0)
+        _note_net_zero_metric('policy_engine_net_zero_facts_dynamic_binding_groups', metrics.get('policy_runtime_facts_dynamic_binding_groups', 0) or 0)
+        _note_net_zero_metric('policy_engine_net_zero_selected_ev_contexts', metrics.get('policy_runtime_selected_ev_contexts', 0) or 0)
         return
 
     device_kind_by_id = facts.get('device_kind_by_id', {}) or {}
@@ -147,8 +180,9 @@ def _note_policy_runtime_facts_metrics(facts):
         adapter_count += len(values or {})
     _note_net_zero_metric('policy_engine_net_zero_facts_adapter_fields', adapter_count)
 
-
 def _cfg_scalar_value(cfg, field_name, default=None):
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return getattr(cfg, field_name, default)
     started_ts = time.time()
     _note_net_zero_metric('policy_engine_net_zero_cfg_scalar_reads')
     value = getattr(cfg, field_name, default)
@@ -157,6 +191,8 @@ def _cfg_scalar_value(cfg, field_name, default=None):
 
 
 def _cfg_accessor_call(count_key, fn, *args):
+    if not NET_ZERO_DETAILED_METRICS_ENABLED:
+        return fn(*args)
     started_ts = time.time()
     _note_net_zero_metric(count_key)
     try:
@@ -268,11 +304,11 @@ def _selected_ev_context_from_fact_maps(facts, device_id):
 def _build_policy_runtime_facts(cfg):
     facts_provider = getattr(cfg, 'policy_runtime_facts', None)
     if callable(facts_provider):
-        provider_started_ts = time.time()
+        provider_started_ts = _net_zero_profile_started_ts()
         raw_facts = facts_provider() or {}
         _note_net_zero_duration_ms('policy_engine_net_zero_facts_provider_ms', provider_started_ts)
 
-        copy_started_ts = time.time()
+        copy_started_ts = _net_zero_profile_started_ts()
         if isinstance(raw_facts, dict):
             facts = raw_facts
         else:
@@ -281,7 +317,7 @@ def _build_policy_runtime_facts(cfg):
         _note_net_zero_duration_ms('policy_engine_net_zero_facts_copy_ms', copy_started_ts)
         _note_policy_runtime_facts_metrics(facts)
 
-        selected_ev_context_started_ts = time.time()
+        selected_ev_context_started_ts = _net_zero_profile_started_ts()
         selected_ev_context_by_id = facts.get('selected_ev_context_by_id')
         if not isinstance(selected_ev_context_by_id, dict):
             selected_ev_context_by_id = {}
@@ -292,7 +328,7 @@ def _build_policy_runtime_facts(cfg):
         return facts
 
     _note_net_zero_metric('policy_engine_net_zero_facts_fallback_used')
-    fallback_started_ts = time.time()
+    fallback_started_ts = _net_zero_profile_started_ts()
     ids_by_kind = {}
     for kind in ('BATTERY', 'EV_CHARGER', 'RELAY'):
         ids_by_kind[kind] = tuple(_device_ids_by_kind(cfg, kind))
@@ -620,10 +656,11 @@ def _selected_ev_device_id_for_roles(cfg, adjustable_surplus_load, adjustable_pr
 
 def _selected_ev_context(cfg, device_id, facts=None):
     if facts is not None:
-        return (facts.get('selected_ev_context_by_id', {}) or {}).get(
-            str(device_id or ''),
-            _selected_ev_context_from_fact_maps(facts, ''),
-        )
+        selected_ev_context_by_id = facts.get('selected_ev_context_by_id', {}) or {}
+        selected_ev_context = selected_ev_context_by_id.get(str(device_id or ''))
+        if selected_ev_context is not None:
+            return selected_ev_context
+        return _selected_ev_context_from_fact_maps(facts, '')
 
     def _positive_float(value, default):
         try:
@@ -1406,12 +1443,15 @@ def compute_net_zero_engine_outputs(
 ):
     global _ACTIVE_NET_ZERO_COMPUTE_METRICS
     _reset_net_zero_compute_metrics()
-    _ACTIVE_NET_ZERO_COMPUTE_METRICS = dict(_LAST_NET_ZERO_COMPUTE_METRICS)
+    if NET_ZERO_DETAILED_METRICS_ENABLED:
+        _ACTIVE_NET_ZERO_COMPUTE_METRICS = dict(_LAST_NET_ZERO_COMPUTE_METRICS)
+    else:
+        _ACTIVE_NET_ZERO_COMPUTE_METRICS = None
     try:
-        state_parse_started_ts = time.time()
+        state_parse_started_ts = _net_zero_profile_started_ts()
         policy_runtime_facts = _build_policy_runtime_facts(cfg)
 
-        forecast_haeo_started_ts = time.time()
+        forecast_haeo_started_ts = _net_zero_profile_started_ts()
         conf_fc = configured_forecast(profiles.control, profiles.forecast)
         eff_fc = effective_forecast(conf_fc, haeo.fresh)
 
@@ -1428,7 +1468,7 @@ def compute_net_zero_engine_outputs(
         haeo_nz_plan_active = bool(getattr(haeo_nz_plan, 'active', False))
         _note_net_zero_duration_ms('policy_engine_net_zero_forecast_haeo_normalization_ms', forecast_haeo_started_ts)
 
-        role_normalization_started_ts = time.time()
+        role_normalization_started_ts = _net_zero_profile_started_ts()
         if haeo_nz_plan_active:
             adjustable_primary_load = _haeo_plan_primary_device_id(haeo_nz_plan)
             adjustable_surplus_load = _haeo_plan_adjustable_device_id(haeo_nz_plan)
@@ -1480,7 +1520,7 @@ def compute_net_zero_engine_outputs(
         selected_ev = _selected_ev_context(cfg, selected_ev_device_id, facts=policy_runtime_facts)
         _note_net_zero_duration_ms('policy_engine_net_zero_role_normalization_ms', role_normalization_started_ts)
 
-        previous_ev_state_started_ts = time.time()
+        previous_ev_state_started_ts = _net_zero_profile_started_ts()
         normalized_previous_ev_device_states = _normalize_previous_ev_device_states(previous_ev_device_states)
         selected_previous_ev_state = normalized_previous_ev_device_states.get(selected_ev_device_id)
         if has_ev_devices and selected_previous_ev_state is None:
@@ -1500,7 +1540,7 @@ def compute_net_zero_engine_outputs(
         _note_net_zero_duration_ms('policy_engine_net_zero_previous_ev_state_normalization_ms', previous_ev_state_started_ts)
         _note_net_zero_duration_ms('policy_engine_net_zero_state_parse_ms', state_parse_started_ts)
 
-        surplus_targets_started_ts = time.time()
+        surplus_targets_started_ts = _net_zero_profile_started_ts()
         configured_activation_w = float(_cfg_scalar_value(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
         adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
         adjustable_priority = int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0)
@@ -1610,7 +1650,7 @@ def compute_net_zero_engine_outputs(
         primary_envelope_w = None
         ev_target_w = 0.0
         ev_burn_active_for_battery = False
-        ev_policy_started_ts = time.time()
+        ev_policy_started_ts = _net_zero_profile_started_ts()
         if has_ev_devices:
             low_pv = (
                 pv_power_kw is not None
@@ -1727,7 +1767,7 @@ def compute_net_zero_engine_outputs(
             )
         _note_net_zero_duration_ms('policy_engine_net_zero_ev_policy_ms', ev_policy_started_ts)
 
-        battery_policy_started_ts = time.time()
+        battery_policy_started_ts = _net_zero_profile_started_ts()
         battery_target_w, battery_write_enabled, battery_min_floor_w, battery_min_floor_reason, adjustable_surplus_active_next = _battery_target_and_authority(
             profiles,
             cfg,
@@ -1746,7 +1786,7 @@ def compute_net_zero_engine_outputs(
         _note_net_zero_duration_ms('policy_engine_net_zero_battery_policy_ms', battery_policy_started_ts)
         discharge_limit_w, discharge_limit_sign_mode, configured_discharge_limit_w = _normalized_discharge_limit_w(cfg)
 
-        relay_policy_started_ts = time.time()
+        relay_policy_started_ts = _net_zero_profile_started_ts()
         relay_policy_states = []
         for relay in relay_runtime_candidates:
             relay_policy_states.append(
@@ -1899,5 +1939,8 @@ def compute_net_zero_engine_outputs(
     )
         return result
     finally:
-        _LAST_NET_ZERO_COMPUTE_METRICS.update(_ACTIVE_NET_ZERO_COMPUTE_METRICS or {})
+        if NET_ZERO_DETAILED_METRICS_ENABLED:
+            _LAST_NET_ZERO_COMPUTE_METRICS.update(_ACTIVE_NET_ZERO_COMPUTE_METRICS or {})
+        else:
+            _LAST_NET_ZERO_COMPUTE_METRICS.clear()
         _ACTIVE_NET_ZERO_COMPUTE_METRICS = None
