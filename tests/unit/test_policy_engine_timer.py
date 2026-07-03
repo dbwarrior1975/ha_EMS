@@ -533,6 +533,18 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
         'policy_engine_dynamic_runtime_snapshot_ms': 9,
         'policy_engine_policy_context_view_ms': 3,
     }
+    mod['net_zero_compute_metrics_attrs'] = lambda: {
+        'policy_engine_net_zero_cfg_scalar_reads': 5,
+        'policy_engine_net_zero_cfg_device_by_id_calls': 1,
+        'policy_engine_net_zero_cfg_device_kind_calls': 2,
+        'policy_engine_net_zero_cfg_device_ids_by_kind_calls': 1,
+        'policy_engine_net_zero_cfg_devices_by_kind_calls': 0,
+        'policy_engine_net_zero_cfg_device_capability_calls': 3,
+        'policy_engine_net_zero_cfg_device_adapter_value_calls': 4,
+        'policy_engine_net_zero_cfg_device_policy_value_calls': 5,
+        'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 1,
+        'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 1,
+    }
     cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
     entities = _minimal_entities()
     published = []
@@ -549,6 +561,8 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
     assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
     assert diagnostics_attrs['policy_engine_core_config_materialize_total_ms'] == 12
     assert diagnostics_attrs['policy_engine_core_config_devices_ms'] == 3
+    assert diagnostics_attrs['policy_engine_net_zero_cfg_scalar_reads'] == 5
+    assert diagnostics_attrs['policy_engine_net_zero_cfg_device_policy_value_calls'] == 5
 
 
 @pytest.mark.unit

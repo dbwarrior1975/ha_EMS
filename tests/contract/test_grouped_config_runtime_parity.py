@@ -526,6 +526,10 @@ def test_runtime_context_metrics_are_numeric_and_non_negative(project_root, monk
         'policy_engine_static_context_cache_misses',
         'policy_engine_static_context_build_ms',
         'policy_engine_dynamic_config_reads_ms',
+        'policy_engine_dynamic_config_logical_reads',
+        'policy_engine_dynamic_config_reader_total_ms',
+        'policy_engine_dynamic_config_reader_overhead_ms',
+        'policy_engine_dynamic_config_audit_overhead_ms',
         'policy_engine_runtime_entity_registry_ms',
         'policy_engine_core_config_build_ms',
     )
@@ -533,6 +537,7 @@ def test_runtime_context_metrics_are_numeric_and_non_negative(project_root, monk
         assert isinstance(metrics[field], int)
         assert metrics[field] >= 0
     assert isinstance(metrics['policy_engine_static_context_cache_hit'], bool)
+    assert isinstance(metrics['policy_engine_dynamic_config_full_audit_collected'], bool)
 
 
 @pytest.mark.unit
@@ -574,6 +579,7 @@ def test_runtime_context_dynamic_read_audit_collapses_duplicate_reads_within_sin
     assert read_counts['shared'] == 1
     assert audit['total_reads'] >= audit['underlying_reads']
     assert audit['cache_hits'] >= 1
+    assert audit['full_audit_collected'] is True
     metrics = runtime_context_mod.runtime_context_metrics_attrs()
     shared_entries = [
         entry for entry in audit['entries']
@@ -585,6 +591,7 @@ def test_runtime_context_dynamic_read_audit_collapses_duplicate_reads_within_sin
     assert shared_entries[0]['cache_hits'] == 1
     assert metrics['policy_engine_dynamic_config_unique_reads'] >= 1
     assert metrics['policy_engine_dynamic_config_audit_entries'] >= 1
+    assert metrics['policy_engine_dynamic_config_full_audit_collected'] is True
 
 
 @pytest.mark.unit
@@ -1063,6 +1070,10 @@ def test_core_config_materialization_submetrics_are_numeric_and_non_negative(pro
         'policy_engine_policy_context_view_ms',
         'policy_engine_dynamic_config_unique_reads',
         'policy_engine_dynamic_config_audit_entries',
+        'policy_engine_dynamic_config_logical_reads',
+        'policy_engine_dynamic_config_reader_total_ms',
+        'policy_engine_dynamic_config_reader_overhead_ms',
+        'policy_engine_dynamic_config_audit_overhead_ms',
         'policy_engine_dynamic_runtime_snapshot_dict_nodes',
         'policy_engine_dynamic_runtime_snapshot_tuple_nodes',
         'policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen',
@@ -1073,6 +1084,7 @@ def test_core_config_materialization_submetrics_are_numeric_and_non_negative(pro
     for key in metric_keys:
         assert isinstance(metrics[key], int)
         assert metrics[key] >= 0
+    assert isinstance(metrics['policy_engine_dynamic_config_full_audit_collected'], bool)
 
 
 @pytest.mark.unit

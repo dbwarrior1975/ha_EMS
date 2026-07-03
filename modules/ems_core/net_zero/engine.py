@@ -22,6 +22,54 @@ from ems_core.net_zero.surplus_allocator import (
 )
 from ems_core.net_zero.surplus_device_targets import build_surplus_device_targets, decision_name_for_device_id, device_targets_payload
 
+_LAST_NET_ZERO_COMPUTE_METRICS = {
+    'policy_engine_net_zero_cfg_scalar_reads': 0,
+    'policy_engine_net_zero_cfg_device_by_id_calls': 0,
+    'policy_engine_net_zero_cfg_device_kind_calls': 0,
+    'policy_engine_net_zero_cfg_device_ids_by_kind_calls': 0,
+    'policy_engine_net_zero_cfg_devices_by_kind_calls': 0,
+    'policy_engine_net_zero_cfg_device_capability_calls': 0,
+    'policy_engine_net_zero_cfg_device_adapter_value_calls': 0,
+    'policy_engine_net_zero_cfg_device_policy_value_calls': 0,
+    'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 0,
+    'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 0,
+}
+_ACTIVE_NET_ZERO_COMPUTE_METRICS = None
+
+
+def net_zero_compute_metrics_attrs():
+    return dict(_LAST_NET_ZERO_COMPUTE_METRICS)
+
+
+def _reset_net_zero_compute_metrics():
+    _LAST_NET_ZERO_COMPUTE_METRICS.clear()
+    _LAST_NET_ZERO_COMPUTE_METRICS.update(
+        {
+            'policy_engine_net_zero_cfg_scalar_reads': 0,
+            'policy_engine_net_zero_cfg_device_by_id_calls': 0,
+            'policy_engine_net_zero_cfg_device_kind_calls': 0,
+            'policy_engine_net_zero_cfg_device_ids_by_kind_calls': 0,
+            'policy_engine_net_zero_cfg_devices_by_kind_calls': 0,
+            'policy_engine_net_zero_cfg_device_capability_calls': 0,
+            'policy_engine_net_zero_cfg_device_adapter_value_calls': 0,
+            'policy_engine_net_zero_cfg_device_policy_value_calls': 0,
+            'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 0,
+            'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 0,
+        }
+    )
+
+
+def _note_net_zero_metric(key, increment=1):
+    global _ACTIVE_NET_ZERO_COMPUTE_METRICS
+    if _ACTIVE_NET_ZERO_COMPUTE_METRICS is None:
+        return
+    _ACTIVE_NET_ZERO_COMPUTE_METRICS[key] = int(_ACTIVE_NET_ZERO_COMPUTE_METRICS.get(key, 0) or 0) + int(increment)
+
+
+def _cfg_scalar_value(cfg, field_name, default=None):
+    _note_net_zero_metric('policy_engine_net_zero_cfg_scalar_reads')
+    return getattr(cfg, field_name, default)
+
 
 def configured_forecast(control, forecast_profile):
     if control in (ControlProfile.MANUAL, ControlProfile.MANUAL_SAFE):
@@ -96,13 +144,14 @@ def _resolved_device_id(cfg, raw_value, default=''):
 
 
 def _normalized_adjustable_surplus_load(cfg):
-    raw = str(getattr(cfg, 'adjustable_surplus_load', '') or '').strip().lower()
+    raw_value = _cfg_scalar_value(cfg, 'adjustable_surplus_load', '')
+    raw = str(raw_value or '').strip().lower()
     if raw in ('ev_charger', 'ev', 'charger_current'):
         selected_ev_device_id = _default_ev_device_id(cfg)
         return selected_ev_device_id or 'HOME_BATTERY'
     if raw in ('home_battery', 'battery', 'actuator_battery_setpoint_w'):
         return 'HOME_BATTERY'
-    resolved = _resolved_device_id(cfg, getattr(cfg, 'adjustable_surplus_load', ''), '')
+    resolved = _resolved_device_id(cfg, raw_value, '')
     if resolved:
         return resolved
     return 'HOME_BATTERY'
@@ -113,12 +162,13 @@ def _uses_ev_adjustable_mode(cfg):
 
 
 def _normalized_adjustable_primary_load(cfg):
-    raw = str(getattr(cfg, 'adjustable_primary_load', '') or '').strip().lower()
+    raw_value = _cfg_scalar_value(cfg, 'adjustable_primary_load', '')
+    raw = str(raw_value or '').strip().lower()
     if raw in ('ev_charger', 'ev', 'charger_current'):
         return _default_ev_device_id(cfg)
     if raw in ('home_battery', 'battery', 'actuator_battery_setpoint_w'):
         return 'HOME_BATTERY'
-    resolved = _resolved_device_id(cfg, getattr(cfg, 'adjustable_primary_load', ''), '')
+    resolved = _resolved_device_id(cfg, raw_value, '')
     if resolved:
         return resolved
     return ''
@@ -128,6 +178,7 @@ def _device_by_id(cfg, device_id):
     if not device_id:
         return None
     if hasattr(cfg, 'device_by_id'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_by_id_calls')
         return cfg.device_by_id(device_id)
     return None
 
@@ -136,6 +187,7 @@ def _device_kind(cfg, device_id):
     if not device_id:
         return ''
     if hasattr(cfg, 'device_kind'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_kind_calls')
         return str(cfg.device_kind(device_id) or '')
     device = _device_by_id(cfg, device_id)
     if device is None:
@@ -145,11 +197,13 @@ def _device_kind(cfg, device_id):
 
 def _device_ids_by_kind(cfg, kind):
     if hasattr(cfg, 'device_ids_by_kind'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_ids_by_kind_calls')
         ids = []
         for device_id in cfg.device_ids_by_kind(kind):
             ids.append(str(device_id))
         return tuple(ids)
     if hasattr(cfg, 'devices_by_kind'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_devices_by_kind_calls')
         ids = []
         for device in cfg.devices_by_kind(kind):
             ids.append(str(device.device_id))
@@ -159,6 +213,7 @@ def _device_ids_by_kind(cfg, kind):
 
 def _device_capability(cfg, device_id, field, default=None):
     if hasattr(cfg, 'device_capability'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_capability_calls')
         return cfg.device_capability(device_id, field, default)
     device = _device_by_id(cfg, device_id)
     if device is None:
@@ -171,6 +226,7 @@ def _device_capability(cfg, device_id, field, default=None):
 
 def _device_adapter_value(cfg, device_id, field, default=None):
     if hasattr(cfg, 'device_adapter_value'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_adapter_value_calls')
         return cfg.device_adapter_value(device_id, field, default)
     device = _device_by_id(cfg, device_id)
     if device is None:
@@ -183,6 +239,7 @@ def _device_adapter_value(cfg, device_id, field, default=None):
 
 def _device_policy_value(cfg, device_id, field, default=None):
     if hasattr(cfg, 'device_policy_value'):
+        _note_net_zero_metric('policy_engine_net_zero_cfg_device_policy_value_calls')
         return cfg.device_policy_value(device_id, field, default)
     device = _device_by_id(cfg, device_id)
     if device is None:
@@ -352,7 +409,8 @@ def _ev_runtime_current_a(m, device_id):
 
 
 def _normalized_discharge_limit_w(cfg):
-    configured = float(getattr(cfg, 'max_battery_discharge_w', cfg.strict_limits_max_w))
+    strict_limits_max_w = _cfg_scalar_value(cfg, 'strict_limits_max_w', 0)
+    configured = float(_cfg_scalar_value(cfg, 'max_battery_discharge_w', strict_limits_max_w))
     # Canonical config is negative (export/discharge domain), but keep
     # legacy positive magnitude values backward-compatible.
     if configured < 0.0:
@@ -368,7 +426,7 @@ def _normal_limits_discharge_cap(raw, cfg):
 
 
 def _battery_protect_charge_floor_w(cfg):
-    return int(round(max(float(getattr(cfg, 'battery_protect_charge_floor_w', 0.0)), 0.0)))
+    return int(round(max(float(_cfg_scalar_value(cfg, 'battery_protect_charge_floor_w', 0.0)), 0.0)))
 
 
 def _haeo_plan_primary_device_id(plan):
@@ -578,10 +636,12 @@ def _legacy_bridge_metrics(cfg):
     if not hasattr(cfg, 'legacy_device_bridge_count'):
         return 0, {}
     try:
+        _note_net_zero_metric('policy_engine_net_zero_cfg_legacy_bridge_count_calls')
         count = int(cfg.legacy_device_bridge_count())
     except Exception:
         count = 0
     try:
+        _note_net_zero_metric('policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls')
         counts_by_kind = dict(cfg.legacy_device_bridge_counts_by_kind())
     except Exception:
         counts_by_kind = {}
@@ -1003,6 +1063,9 @@ def compute_net_zero_engine_outputs(
     previous_force_on_device_ids=None,
     haeo_nz_plan=None,
 ):
+    global _ACTIVE_NET_ZERO_COMPUTE_METRICS
+    _reset_net_zero_compute_metrics()
+    _ACTIVE_NET_ZERO_COMPUTE_METRICS = dict(_LAST_NET_ZERO_COMPUTE_METRICS)
     conf_fc = configured_forecast(profiles.control, profiles.forecast)
     eff_fc = effective_forecast(conf_fc, haeo.fresh)
 
@@ -1077,9 +1140,9 @@ def compute_net_zero_engine_outputs(
     if not has_ev_devices:
         selected_previous_ev_state = _default_previous_ev_device_state('')
 
-    configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
+    configured_activation_w = float(_cfg_scalar_value(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
     adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
-    adjustable_priority = int(getattr(cfg, 'adjustable_surplus_load_priority', 0) or 0)
+    adjustable_priority = int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0)
     adjustable_capable = _device_can_absorb(cfg, adjustable_surplus_load)
     normalized_relay_device_states = {}
     for device_id, state in (relay_device_states or {}).items():
@@ -1109,10 +1172,11 @@ def compute_net_zero_engine_outputs(
 
     surplus_active = net_zero_surplus_policy_active(profiles, eff_fc, haeo_nz_plan_active=haeo_nz_plan_active)
 
+    surplus_freeze_s = _cfg_scalar_value(cfg, 'surplus_freeze_s', 0)
     effective_freeze_until_ts, current_force_on_device_ids = _apply_force_rising_edge_freeze_for_devices(
         now_ts=now_ts,
         freeze_until_ts=freeze_until_ts,
-        freeze_s=cfg.surplus_freeze_s,
+        freeze_s=surplus_freeze_s,
         relay_candidates=relay_runtime_candidates,
         previous_force_on_device_ids=previous_force_on_device_ids or (),
     )
@@ -1124,7 +1188,7 @@ def compute_net_zero_engine_outputs(
         rpnz_w=nz.rpnz_w,
         targets=surplus_device_targets,
     )
-    surplus_device_decision = compute_surplus_device_dispatch(surplus_device_inp, now_ts, cfg.surplus_freeze_s)
+    surplus_device_decision = compute_surplus_device_dispatch(surplus_device_inp, now_ts, surplus_freeze_s)
     surplus_device_next = next_device_target(surplus_device_targets)
     surplus_device_release = release_device_target(surplus_device_targets)
 
@@ -1142,7 +1206,7 @@ def compute_net_zero_engine_outputs(
         )
     )
     combo_change_freeze_until_ts = (
-        float(now_ts) + float(cfg.surplus_freeze_s)
+        float(now_ts) + float(surplus_freeze_s)
         if combo_change_requires_clear
         else None
     )
@@ -1353,7 +1417,7 @@ def compute_net_zero_engine_outputs(
 
     legacy_device_bridge_count, legacy_device_bridge_counts_by_kind = _legacy_bridge_metrics(cfg)
 
-    return NetZeroOutputs(
+    result = NetZeroOutputs(
         battery_target_w=battery_target_w,
         battery_write_enabled=battery_write_enabled,
         surplus_policy_active=surplus_active,
@@ -1419,7 +1483,7 @@ def compute_net_zero_engine_outputs(
             'ev_power_step_w': int(getattr(selected_ev, 'power_step_w', 0) or 0),
             'ev_target_w': int(round(ev_target_w)),
             'primary_power_envelope_w': primary_envelope_w,
-            'adjustable_surplus_load_priority': int(getattr(cfg, 'adjustable_surplus_load_priority', 0) or 0),
+            'adjustable_surplus_load_priority': int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0),
             'adjustable_surplus_load': adjustable_surplus_load,
             'adjustable_surplus_activation': configured_activation_w,
             'adjustable_primary_load': adjustable_primary_load,
@@ -1448,3 +1512,6 @@ def compute_net_zero_engine_outputs(
             'legacy_device_bridge_counts_by_kind': legacy_device_bridge_counts_by_kind,
         },
     )
+    _LAST_NET_ZERO_COMPUTE_METRICS.update(_ACTIVE_NET_ZERO_COMPUTE_METRICS or {})
+    _ACTIVE_NET_ZERO_COMPUTE_METRICS = None
+    return result

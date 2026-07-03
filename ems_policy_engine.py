@@ -4,7 +4,12 @@ import json
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
-from ems_core.net_zero.engine import compute_net_zero_engine_outputs, configured_forecast, effective_forecast
+from ems_core.net_zero.engine import (
+    compute_net_zero_engine_outputs,
+    configured_forecast,
+    effective_forecast,
+    net_zero_compute_metrics_attrs,
+)
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
@@ -680,6 +685,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
             }
         )
         diagnostics_attrs.update(runtime_context_metrics_attrs())
+        diagnostics_attrs.update(net_zero_compute_metrics_attrs())
         timing['policy_engine_diagnostics_build_ms'] = _elapsed_ms(phase_started_ts, time.time())
         diagnostics_attrs.update(_phase_timing_attrs(timing, _elapsed_ms(total_started_ts, time.time())))
         phase_started_ts = time.time()
