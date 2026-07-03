@@ -56,6 +56,12 @@ _RUNTIME_CONTEXT_LAST_METRICS = {
     'policy_engine_dynamic_config_reader_overhead_ms': 0,
     'policy_engine_dynamic_config_audit_overhead_ms': 0,
     'policy_engine_dynamic_config_full_audit_collected': False,
+    'policy_engine_dynamic_read_plan_apply_total_ms': 0,
+    'policy_engine_dynamic_read_underlying_ha_ms': 0,
+    'policy_engine_dynamic_read_wrapper_overhead_ms': 0,
+    'policy_engine_dynamic_read_audit_update_ms': 0,
+    'policy_engine_dynamic_read_audit_build_ms': 0,
+    'policy_engine_dynamic_read_audit_sort_ms': 0,
     'policy_engine_runtime_entity_registry_ms': 0,
     'policy_engine_core_config_build_ms': 0,
     'policy_engine_core_config_materialize_total_ms': 0,
@@ -74,6 +80,7 @@ _RUNTIME_CONTEXT_LAST_METRICS = {
     'policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen': 0,
     'policy_engine_dynamic_runtime_snapshot_dynamic_refs_unique': 0,
     'policy_engine_dynamic_runtime_snapshot_dynamic_ref_cache_hits': 0,
+    'policy_engine_core_config_unexplained_overhead_ms': 0,
 }
 _RUNTIME_CONTEXT_LAST_DYNAMIC_READ_AUDIT = {
     'entries': (),
@@ -121,6 +128,12 @@ def _reset_runtime_context_metrics():
             'policy_engine_dynamic_config_reader_overhead_ms': 0,
             'policy_engine_dynamic_config_audit_overhead_ms': 0,
             'policy_engine_dynamic_config_full_audit_collected': False,
+            'policy_engine_dynamic_read_plan_apply_total_ms': 0,
+            'policy_engine_dynamic_read_underlying_ha_ms': 0,
+            'policy_engine_dynamic_read_wrapper_overhead_ms': 0,
+            'policy_engine_dynamic_read_audit_update_ms': 0,
+            'policy_engine_dynamic_read_audit_build_ms': 0,
+            'policy_engine_dynamic_read_audit_sort_ms': 0,
             'policy_engine_runtime_entity_registry_ms': 0,
             'policy_engine_core_config_build_ms': 0,
             'policy_engine_core_config_materialize_total_ms': 0,
@@ -139,6 +152,7 @@ def _reset_runtime_context_metrics():
             'policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen': 0,
             'policy_engine_dynamic_runtime_snapshot_dynamic_refs_unique': 0,
             'policy_engine_dynamic_runtime_snapshot_dynamic_ref_cache_hits': 0,
+            'policy_engine_core_config_unexplained_overhead_ms': 0,
         }
     )
     _RUNTIME_CONTEXT_LAST_DYNAMIC_READ_AUDIT.clear()
@@ -380,10 +394,8 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         detail_text = '; '.join(issue_details) if issue_details else 'unknown validation error'
         raise ValueError(f'Grouped EMS config validation failed: {detail_text}')
 
-    dynamic_read_time_s = {'value': 0.0}
-    dynamic_reader_total_s = {'value': 0.0}
-    dynamic_audit_overhead_s = {'value': 0.0}
-    dynamic_value_cache = {}
+    dynamic_underlying_ha_s = {'value': 0.0}
+    dynamic_audit_update_s = {'value': 0.0}
     collect_full_audit = _runtime_context_should_collect_full_audit()
     dynamic_read_audit = {} if collect_full_audit else None
     dynamic_read_totals = {
@@ -401,33 +413,6 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         )
 
     def grouped_reader(entity_id, default):
-        reader_started_ts = time.time()
-        cache_key = _audit_cache_key(entity_id, default)
-        dynamic_read_totals['total_reads'] += 1
-        entry = None
-        if collect_full_audit and dynamic_read_audit is not None:
-            audit_started_ts = time.time()
-            entry = dynamic_read_audit.get(cache_key)
-            if entry is None:
-                entry = {
-                    'entity_id': cache_key[0],
-                    'default_type_obj': cache_key[1],
-                    'default_value': default,
-                    'count': 0,
-                    'underlying_reads': 0,
-                    'cache_hits': 0,
-                    'total_read_ms': 0,
-                }
-                dynamic_read_audit[cache_key] = entry
-            entry['count'] += 1
-            dynamic_audit_overhead_s['value'] += max(0.0, time.time() - audit_started_ts)
-        if cache_key in dynamic_value_cache:
-            dynamic_read_totals['cache_hits'] += 1
-            if entry is not None:
-                entry['cache_hits'] += 1
-            value = dynamic_value_cache[cache_key]
-            dynamic_reader_total_s['value'] += max(0.0, time.time() - reader_started_ts)
-            return value
         started_ts = time.time()
         value = _read_grouped_entity(
             entity_id,
@@ -437,54 +422,59 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
             read_int,
             read_str,
         )
-        read_elapsed_s = max(0.0, time.time() - started_ts)
-        dynamic_read_time_s['value'] += read_elapsed_s
-        dynamic_read_totals['underlying_reads'] += 1
-        if entry is not None:
-            entry['underlying_reads'] += 1
-            entry['total_read_ms'] += int(round(read_elapsed_s * 1000.0))
-        dynamic_value_cache[cache_key] = value
-        dynamic_reader_total_s['value'] += max(0.0, time.time() - reader_started_ts)
+        dynamic_underlying_ha_s['value'] += max(0.0, time.time() - started_ts)
         return value
 
-    def note_cached_dynamic_read(entity_id, default, count=1):
-        if count <= 0:
-            return
-        started_ts = time.time()
-        cache_key = _audit_cache_key(entity_id, default)
-        dynamic_read_totals['total_reads'] += int(count)
-        dynamic_read_totals['cache_hits'] += int(count)
-        if collect_full_audit and dynamic_read_audit is not None:
-            entry = dynamic_read_audit.get(cache_key)
-            if entry is None:
-                entry = {
-                    'entity_id': cache_key[0],
-                    'default_type_obj': cache_key[1],
-                    'default_value': default,
-                    'count': 0,
-                    'underlying_reads': 0,
-                    'cache_hits': 0,
-                    'total_read_ms': 0,
-                }
-                dynamic_read_audit[cache_key] = entry
-            entry['count'] += int(count)
-            entry['cache_hits'] += int(count)
-        elapsed_s = max(0.0, time.time() - started_ts)
-        dynamic_audit_overhead_s['value'] += elapsed_s
-        dynamic_reader_total_s['value'] += elapsed_s
-
-    grouped_reader.note_cached_dynamic_read = note_cached_dynamic_read
-
     core_config_started_ts = time.time()
+    dynamic_read_plan_apply_started_ts = time.time()
     dynamic_runtime_read_values = []
     unique_reads = tuple(dynamic_runtime_read_plan.get('unique_reads', ()) or ())
     logical_read_counts = tuple(dynamic_runtime_read_plan.get('logical_read_counts', ()) or ())
     for index, read_entry in enumerate(unique_reads):
         entity_id = str(read_entry.get('entity_id', ''))
         default = read_entry.get('default')
-        dynamic_runtime_read_values.append(grouped_reader(entity_id, default))
-        duplicate_count = max(0, int(logical_read_counts[index]) - 1)
-        note_cached_dynamic_read(entity_id, default, duplicate_count)
+        ha_started_ts = time.time()
+        value = _read_grouped_entity(
+            entity_id,
+            default,
+            read_bool,
+            read_float,
+            read_int,
+            read_str,
+        )
+        read_elapsed_s = max(0.0, time.time() - ha_started_ts)
+        dynamic_underlying_ha_s['value'] += read_elapsed_s
+        dynamic_runtime_read_values.append(value)
+        if collect_full_audit and dynamic_read_audit is not None:
+            audit_started_ts = time.time()
+            logical_read_count = max(1, int(logical_read_counts[index]))
+            duplicate_count = max(0, logical_read_count - 1)
+            cache_key = _audit_cache_key(entity_id, default)
+            dynamic_read_audit[cache_key] = {
+                'entity_id': cache_key[0],
+                'default_type_obj': cache_key[1],
+                'default_value': default,
+                'count': logical_read_count,
+                'underlying_reads': 1,
+                'cache_hits': duplicate_count,
+                'total_read_ms': int(round(read_elapsed_s * 1000.0)),
+            }
+            dynamic_audit_update_s['value'] += max(0.0, time.time() - audit_started_ts)
+    if collect_full_audit:
+        total_reads = 0
+        for logical_read_count in logical_read_counts:
+            total_reads += max(1, int(logical_read_count))
+        dynamic_read_totals['total_reads'] = total_reads
+        dynamic_read_totals['underlying_reads'] = len(unique_reads)
+        dynamic_read_totals['cache_hits'] = max(0, total_reads - len(unique_reads))
+    else:
+        total_reads = 0
+        for logical_read_count in logical_read_counts:
+            total_reads += max(1, int(logical_read_count))
+        dynamic_read_totals['total_reads'] = total_reads
+        dynamic_read_totals['underlying_reads'] = len(unique_reads)
+        dynamic_read_totals['cache_hits'] = max(0, total_reads - len(unique_reads))
+    dynamic_read_plan_apply_total_ms = _elapsed_ms(dynamic_read_plan_apply_started_ts, time.time())
 
     materialize_metrics = {}
     grouped_cfg = build_policy_context_view(
@@ -495,9 +485,9 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
         dynamic_runtime_read_values=tuple(dynamic_runtime_read_values),
     )
     total_core_config_ms = _elapsed_ms(core_config_started_ts, time.time())
-    dynamic_config_reads_ms = int(round(dynamic_read_time_s['value'] * 1000.0))
-    dynamic_reader_total_ms = int(round(dynamic_reader_total_s['value'] * 1000.0))
-    dynamic_audit_overhead_ms = int(round(dynamic_audit_overhead_s['value'] * 1000.0))
+    dynamic_config_reads_ms = int(round(dynamic_underlying_ha_s['value'] * 1000.0))
+    dynamic_audit_update_ms = int(round(dynamic_audit_update_s['value'] * 1000.0))
+    dynamic_reader_total_ms = max(0, int(dynamic_read_plan_apply_total_ms))
     dynamic_reader_overhead_ms = max(0, dynamic_reader_total_ms - dynamic_config_reads_ms)
     core_config_build_ms = max(0, total_core_config_ms - dynamic_config_reads_ms)
     materialize_metrics['policy_engine_core_config_materialize_total_ms'] = max(0, int(total_core_config_ms))
@@ -512,15 +502,20 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
             'policy_engine_dynamic_config_logical_reads': int(dynamic_read_totals['total_reads']),
             'policy_engine_dynamic_config_reader_total_ms': max(0, int(dynamic_reader_total_ms)),
             'policy_engine_dynamic_config_reader_overhead_ms': max(0, int(dynamic_reader_overhead_ms)),
-            'policy_engine_dynamic_config_audit_overhead_ms': max(0, int(dynamic_audit_overhead_ms)),
+            'policy_engine_dynamic_config_audit_overhead_ms': max(0, int(dynamic_audit_update_ms)),
             'policy_engine_dynamic_config_full_audit_collected': bool(collect_full_audit),
-            'policy_engine_dynamic_config_unique_reads': len(dynamic_value_cache),
+            'policy_engine_dynamic_config_unique_reads': len(unique_reads),
             'policy_engine_dynamic_config_audit_entries': len(dynamic_read_audit or {}),
+            'policy_engine_dynamic_read_plan_apply_total_ms': max(0, int(dynamic_read_plan_apply_total_ms)),
+            'policy_engine_dynamic_read_underlying_ha_ms': max(0, int(dynamic_config_reads_ms)),
+            'policy_engine_dynamic_read_wrapper_overhead_ms': max(0, int(dynamic_reader_overhead_ms)),
+            'policy_engine_dynamic_read_audit_update_ms': max(0, int(dynamic_audit_update_ms)),
             'policy_engine_runtime_entity_registry_ms': max(0, int(runtime_entity_registry_ms)),
             'policy_engine_core_config_build_ms': max(0, int(core_config_build_ms)),
         }
     )
     _RUNTIME_CONTEXT_LAST_METRICS.update(materialize_metrics)
+    audit_build_started_ts = time.time()
     audit_sort_entries = []
     if collect_full_audit and dynamic_read_audit is not None:
         for entry in dynamic_read_audit.values():
@@ -542,10 +537,28 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str):
                     audit_entry,
                 )
             )
+    dynamic_read_audit_build_ms = _elapsed_ms(audit_build_started_ts, time.time())
+    audit_sort_started_ts = time.time()
     audit_sort_entries.sort()
+    dynamic_read_audit_sort_ms = _elapsed_ms(audit_sort_started_ts, time.time())
     audit_entries = []
     for item in audit_sort_entries:
         audit_entries.append(item[4])
+    _RUNTIME_CONTEXT_LAST_METRICS['policy_engine_dynamic_read_audit_build_ms'] = max(
+        0, int(dynamic_read_audit_build_ms)
+    )
+    _RUNTIME_CONTEXT_LAST_METRICS['policy_engine_dynamic_read_audit_sort_ms'] = max(
+        0, int(dynamic_read_audit_sort_ms)
+    )
+    _RUNTIME_CONTEXT_LAST_METRICS['policy_engine_core_config_unexplained_overhead_ms'] = max(
+        0,
+        int(
+            (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_core_config_materialize_total_ms', 0) or 0)
+            - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_dynamic_config_reads_ms', 0) or 0)
+            - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_dynamic_runtime_snapshot_ms', 0) or 0)
+            - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_policy_context_view_ms', 0) or 0)
+        ),
+    )
     _RUNTIME_CONTEXT_LAST_DYNAMIC_READ_AUDIT.update(
         {
             'entries': tuple(audit_entries),

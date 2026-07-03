@@ -207,6 +207,7 @@ class CompiledEMSPlan:
     haeo: Optional[dict]
     role_constraints: dict
     grouped_config_plan: dict
+    policy_runtime_facts_plan: Optional[dict] = None
 
 
 CompiledCoreConfigPlan = CompiledEMSPlan
@@ -291,6 +292,7 @@ class CoreConfigView:
     def __init__(self, context: PolicyContext):
         self._context = context
         self._device_cache = {}
+        self._policy_runtime_facts_cache = None
         self._legacy_device_bridge_count = 0
         self._legacy_device_bridge_counts_by_kind = {}
         self._device_order = tuple(context.plan.devices.keys()) + ('HOME_BATTERY',)
@@ -396,6 +398,18 @@ class CoreConfigView:
         for kind, count in self._legacy_device_bridge_counts_by_kind.items():
             counts[str(kind)] = int(count)
         return counts
+
+    def policy_runtime_facts(self) -> dict:
+        cached = self._policy_runtime_facts_cache
+        if cached is not None:
+            return cached
+        facts = build_policy_runtime_facts_from_context(
+            self._context.plan,
+            self._context.snapshot,
+            policy_runtime_facts_plan=self._context.plan.policy_runtime_facts_plan,
+        )
+        self._policy_runtime_facts_cache = facts
+        return facts
 
     def first_device_by_kind(self, kind: str):
         kind_text = str(kind)
@@ -1203,7 +1217,7 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
         if str(device_id) == 'HOME_BATTERY':
             continue
         static_devices[str(device_id)] = _build_static_device_plan(device_plan)
-    return CompiledEMSPlan(
+    compiled_plan = CompiledEMSPlan(
         profiles=dict(_require_mapping_value(compiled['ems'], 'profiles')),
         policy_engine=dict(_require_mapping_value(compiled['ems'], 'policy_engine')),
         global_config=dict(_require_mapping_value(compiled['ems'], 'global_config')),
@@ -1215,6 +1229,8 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
         role_constraints=dict(_require_mapping_value(compiled['ems'], 'role_constraints')),
         grouped_config_plan=compiled,
     )
+    compiled_plan.policy_runtime_facts_plan = compile_policy_runtime_facts_plan(compiled_plan)
+    return compiled_plan
 
 
 def materialize_core_config_from_plan(
@@ -1580,6 +1596,145 @@ def _compile_flat_runtime_device_dynamic_fields(
     return tuple(bindings)
 
 
+
+def _policy_runtime_static_section(device_plan: StaticDevicePlan, section: str):
+    section_name = str(section)
+    if section_name == 'capabilities':
+        return device_plan.static_capabilities
+    if section_name == 'adapter':
+        return device_plan.static_adapter
+    if section_name == 'policy':
+        return device_plan.static_policy
+    if section_name == 'guard':
+        return device_plan.static_guard
+    return None
+
+
+def _policy_runtime_static_fact_value(device_plan: StaticDevicePlan, section: str, field: str, default=None):
+    static_section = _policy_runtime_static_section(device_plan, section)
+    if not hasattr(static_section, 'get'):
+        return default, False
+    static_value = static_section.get(str(field))
+    if isinstance(static_value, DynamicConfigRef):
+        return static_value.default, True
+    if static_value is None:
+        return default, False
+    return static_value, False
+
+
+def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[str, object]:
+    battery_device_ids = ['HOME_BATTERY']
+    device_ids_by_kind = {
+        'BATTERY': (),
+        'EV_CHARGER': (),
+        'RELAY': (),
+    }
+    ev_device_ids = []
+    relay_device_ids = []
+    devices = {}
+    static_device_kind_by_id = {}
+    static_capabilities_by_id = {}
+    static_policy_by_id = {}
+    static_adapter_by_id = {}
+    dynamic_fact_bindings = []
+
+    def add_device(device_id_text, device_plan, kind):
+        capabilities_fields = (
+            'min_absorb_w',
+            'max_absorb_w',
+            'max_produce_w',
+            'step_w',
+            'can_absorb_w',
+            'can_produce_w',
+        )
+        policy_fields = ('priority',)
+        adapter_fields = ()
+        if kind == 'EV_CHARGER':
+            policy_fields = (
+                'priority',
+                'force_on',
+                'low_pv_threshold_w',
+                'hard_off_low_pv_cycles',
+                'hard_off_release_cycles',
+            )
+            adapter_fields = (
+                'current_step_a',
+                'phases',
+                'voltage_v',
+            )
+        elif kind == 'RELAY':
+            policy_fields = (
+                'priority',
+                'surplus_allowed',
+                'force_on',
+            )
+
+        devices[device_id_text] = {
+            'kind': kind,
+            'capabilities_fields': capabilities_fields,
+            'policy_fields': policy_fields,
+            'adapter_fields': adapter_fields,
+        }
+        static_device_kind_by_id[device_id_text] = kind
+
+        capability_values = {}
+        for field_name in capabilities_fields:
+            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w') else 0
+            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'capabilities', str(field_name), default)
+            capability_values[str(field_name)] = value
+            if is_dynamic:
+                dynamic_fact_bindings.append(('device_capabilities_by_id', device_id_text, str(field_name), 'capabilities', str(field_name)))
+        static_capabilities_by_id[device_id_text] = capability_values
+
+        policy_values = {}
+        for field_name in policy_fields:
+            default = 0 if str(field_name) == 'priority' else False
+            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'policy', str(field_name), default)
+            policy_values[str(field_name)] = value
+            if is_dynamic:
+                dynamic_fact_bindings.append(('device_policy_by_id', device_id_text, str(field_name), 'policy', str(field_name)))
+        static_policy_by_id[device_id_text] = policy_values
+
+        adapter_values = {}
+        for field_name in adapter_fields:
+            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'adapter', str(field_name), None)
+            adapter_values[str(field_name)] = value
+            if is_dynamic:
+                dynamic_fact_bindings.append(('device_adapter_by_id', device_id_text, str(field_name), 'adapter', str(field_name)))
+        if adapter_values:
+            static_adapter_by_id[device_id_text] = adapter_values
+
+    add_device('HOME_BATTERY', compiled_plan.home_battery, 'BATTERY')
+
+    for device_id, device_plan in compiled_plan.devices.items():
+        kind = str(device_plan.kind)
+        device_id_text = str(device_id)
+        if kind == 'EV_CHARGER':
+            ev_device_ids.append(device_id_text)
+        elif kind == 'RELAY':
+            relay_device_ids.append(device_id_text)
+        elif kind == 'BATTERY':
+            battery_device_ids.append(device_id_text)
+        add_device(device_id_text, device_plan, kind)
+
+    device_ids_by_kind['BATTERY'] = tuple(battery_device_ids)
+    device_ids_by_kind['EV_CHARGER'] = tuple(ev_device_ids)
+    device_ids_by_kind['RELAY'] = tuple(relay_device_ids)
+    static_base = {
+        'device_ids_by_kind': device_ids_by_kind,
+        'device_kind_by_id': static_device_kind_by_id,
+        'device_capabilities_by_id': static_capabilities_by_id,
+        'device_policy_by_id': static_policy_by_id,
+        'device_adapter_by_id': static_adapter_by_id,
+    }
+    return {
+        'device_ids_by_kind': device_ids_by_kind,
+        'devices': devices,
+        'static_base': static_base,
+        'dynamic_fact_bindings': tuple(dynamic_fact_bindings),
+    }
+
+
 def compile_dynamic_runtime_read_plan(compiled_plan: CompiledEMSPlan) -> dict[str, object]:
     unique_reads: list[dict[str, object]] = []
     unique_slots: dict[tuple[object, ...], int] = {}
@@ -1787,6 +1942,209 @@ def _resolve_home_battery_priority_from_snapshot(
                 3,
             )
     return resolved_priority
+
+
+def _policy_runtime_device_plan(compiled_plan: CompiledEMSPlan, device_id: str) -> Optional[StaticDevicePlan]:
+    device_id = str(device_id)
+    if device_id == 'HOME_BATTERY':
+        return compiled_plan.home_battery
+    return compiled_plan.devices.get(device_id)
+
+
+
+def _policy_runtime_device_values(snapshot: DynamicRuntimeSnapshot, device_id: str) -> dict:
+    device_id = str(device_id)
+    if device_id == 'HOME_BATTERY':
+        return snapshot.home_battery_values or {}
+    return snapshot.device_values.get(device_id, {}) or {}
+
+
+
+def build_policy_runtime_facts_from_context(
+    compiled_plan: CompiledEMSPlan,
+    snapshot: DynamicRuntimeSnapshot,
+    *,
+    policy_runtime_facts_plan: Optional[dict[str, object]] = None,
+) -> dict[str, object]:
+    facts_started_ts = time.time()
+    fact_dict_copies = 0
+    fact_device_count = 0
+    fact_capability_fields = 0
+    fact_policy_fields = 0
+    fact_adapter_fields = 0
+
+    facts_plan = policy_runtime_facts_plan or compiled_plan.policy_runtime_facts_plan or compile_policy_runtime_facts_plan(compiled_plan)
+    static_base = facts_plan.get('static_base') if isinstance(facts_plan, dict) else None
+    if isinstance(static_base, dict):
+        device_ids_by_kind = static_base.get('device_ids_by_kind', {}) or {}
+        device_kind_by_id = static_base.get('device_kind_by_id', {}) or {}
+        base_capabilities_by_id = static_base.get('device_capabilities_by_id', {}) or {}
+        base_policy_by_id = static_base.get('device_policy_by_id', {}) or {}
+        base_adapter_by_id = static_base.get('device_adapter_by_id', {}) or {}
+        device_capabilities_by_id = base_capabilities_by_id
+        device_policy_by_id = base_policy_by_id
+        device_adapter_by_id = base_adapter_by_id
+        copied_capability_devices = {}
+        copied_policy_devices = {}
+        copied_adapter_devices = {}
+
+        dynamic_fact_bindings = tuple(facts_plan.get('dynamic_fact_bindings', ()) or ())
+        for binding in dynamic_fact_bindings:
+            if len(tuple(binding)) < 5:
+                continue
+            target_map_name = str(binding[0])
+            device_id = str(binding[1])
+            target_field = str(binding[2])
+            section_name = str(binding[3])
+            source_field = str(binding[4])
+            dynamic_values = _policy_runtime_device_values(snapshot, device_id)
+            section_values = dynamic_values.get(section_name) if isinstance(dynamic_values, dict) else None
+            if not isinstance(section_values, dict) or source_field not in section_values:
+                continue
+            resolved_value = section_values[source_field]
+            if target_map_name == 'device_capabilities_by_id':
+                if not isinstance(device_capabilities_by_id, dict) or device_capabilities_by_id is base_capabilities_by_id:
+                    device_capabilities_by_id = dict(base_capabilities_by_id)
+                    fact_dict_copies += 1
+                section_values_map = copied_capability_devices.get(device_id)
+                if section_values_map is None:
+                    section_values_map = dict(device_capabilities_by_id.get(device_id, {}) or {})
+                    copied_capability_devices[device_id] = section_values_map
+                    device_capabilities_by_id[device_id] = section_values_map
+                    fact_dict_copies += 1
+                section_values_map[target_field] = resolved_value
+            elif target_map_name == 'device_policy_by_id':
+                if not isinstance(device_policy_by_id, dict) or device_policy_by_id is base_policy_by_id:
+                    device_policy_by_id = dict(base_policy_by_id)
+                    fact_dict_copies += 1
+                section_values_map = copied_policy_devices.get(device_id)
+                if section_values_map is None:
+                    section_values_map = dict(device_policy_by_id.get(device_id, {}) or {})
+                    copied_policy_devices[device_id] = section_values_map
+                    device_policy_by_id[device_id] = section_values_map
+                    fact_dict_copies += 1
+                section_values_map[target_field] = resolved_value
+            elif target_map_name == 'device_adapter_by_id':
+                if not isinstance(device_adapter_by_id, dict) or device_adapter_by_id is base_adapter_by_id:
+                    device_adapter_by_id = dict(base_adapter_by_id)
+                    fact_dict_copies += 1
+                section_values_map = copied_adapter_devices.get(device_id)
+                if section_values_map is None:
+                    section_values_map = dict(device_adapter_by_id.get(device_id, {}) or {})
+                    copied_adapter_devices[device_id] = section_values_map
+                    device_adapter_by_id[device_id] = section_values_map
+                    fact_dict_copies += 1
+                section_values_map[target_field] = resolved_value
+
+        if hasattr(device_kind_by_id, '__len__'):
+            fact_device_count = len(device_kind_by_id)
+        descriptors = facts_plan.get('devices', {}) or {}
+        for descriptor in descriptors.values():
+            fact_capability_fields += len(tuple(descriptor.get('capabilities_fields', ()) or ()))
+            fact_policy_fields += len(tuple(descriptor.get('policy_fields', ()) or ()))
+            fact_adapter_fields += len(tuple(descriptor.get('adapter_fields', ()) or ()))
+
+        metrics = {
+            'policy_runtime_facts_context_build_ms': int(round(max(0.0, time.time() - facts_started_ts) * 1000.0)),
+            'policy_runtime_facts_device_count': int(fact_device_count),
+            'policy_runtime_facts_capability_fields': int(fact_capability_fields),
+            'policy_runtime_facts_policy_fields': int(fact_policy_fields),
+            'policy_runtime_facts_adapter_fields': int(fact_adapter_fields),
+            'policy_runtime_fact_dict_copies': int(fact_dict_copies),
+            'policy_runtime_facts_dynamic_bindings': int(len(dynamic_fact_bindings)),
+        }
+        return {
+            'device_ids_by_kind': device_ids_by_kind,
+            'device_kind_by_id': device_kind_by_id,
+            'device_capabilities_by_id': device_capabilities_by_id,
+            'device_policy_by_id': device_policy_by_id,
+            'device_adapter_by_id': device_adapter_by_id,
+            '_metrics': metrics,
+        }
+
+    device_ids_by_kind = dict(facts_plan.get('device_ids_by_kind', {}) or {})
+    device_descriptors = dict(facts_plan.get('devices', {}) or {})
+    fact_dict_copies += 2
+    device_kind_by_id = {}
+    device_capabilities_by_id = {}
+    device_policy_by_id = {}
+    device_adapter_by_id = {}
+    fact_dict_copies += 4
+
+    for device_id, descriptor in device_descriptors.items():
+        device_plan = _policy_runtime_device_plan(compiled_plan, str(device_id))
+        if device_plan is None:
+            continue
+        fact_device_count += 1
+        dynamic_values = _policy_runtime_device_values(snapshot, str(device_id))
+        kind = str(descriptor.get('kind', '') or '')
+        device_kind_by_id[str(device_id)] = kind
+
+        capability_values = {}
+        fact_dict_copies += 1
+        for field_name in tuple(descriptor.get('capabilities_fields', ()) or ()): 
+            fact_capability_fields += 1
+            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w') else 0
+            capability_values[str(field_name)] = _resolve_snapshot_backed_section_value(
+                device_plan,
+                dynamic_values,
+                'capabilities',
+                str(field_name),
+                default,
+            )
+        device_capabilities_by_id[str(device_id)] = capability_values
+
+        policy_values = {}
+        fact_dict_copies += 1
+        for field_name in tuple(descriptor.get('policy_fields', ()) or ()): 
+            fact_policy_fields += 1
+            policy_values[str(field_name)] = _resolve_snapshot_backed_section_value(
+                device_plan,
+                dynamic_values,
+                'policy',
+                str(field_name),
+                0 if str(field_name) == 'priority' else False,
+            )
+        device_policy_by_id[str(device_id)] = policy_values
+
+        adapter_values = {}
+        fact_dict_copies += 1
+        for field_name in tuple(descriptor.get('adapter_fields', ()) or ()): 
+            fact_adapter_fields += 1
+            adapter_values[str(field_name)] = _resolve_snapshot_backed_section_value(
+                device_plan,
+                dynamic_values,
+                'adapter',
+                str(field_name),
+                None,
+            )
+        if adapter_values:
+            device_adapter_by_id[str(device_id)] = adapter_values
+
+    normalized_ids_by_kind = {}
+    fact_dict_copies += 1
+    for kind, ids in device_ids_by_kind.items():
+        normalized_ids = []
+        for device_id in tuple(ids or ()): 
+            normalized_ids.append(str(device_id))
+        normalized_ids_by_kind[str(kind)] = tuple(normalized_ids)
+
+    metrics = {
+        'policy_runtime_facts_context_build_ms': int(round(max(0.0, time.time() - facts_started_ts) * 1000.0)),
+        'policy_runtime_facts_device_count': int(fact_device_count),
+        'policy_runtime_facts_capability_fields': int(fact_capability_fields),
+        'policy_runtime_facts_policy_fields': int(fact_policy_fields),
+        'policy_runtime_facts_adapter_fields': int(fact_adapter_fields),
+        'policy_runtime_fact_dict_copies': int(fact_dict_copies),
+    }
+    return {
+        'device_ids_by_kind': normalized_ids_by_kind,
+        'device_kind_by_id': device_kind_by_id,
+        'device_capabilities_by_id': device_capabilities_by_id,
+        'device_policy_by_id': device_policy_by_id,
+        'device_adapter_by_id': device_adapter_by_id,
+        '_metrics': metrics,
+    }
 
 
 def build_dynamic_runtime_snapshot(
