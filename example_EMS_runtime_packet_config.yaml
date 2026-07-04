@@ -3,12 +3,9 @@
 # Device ownership rule:
 # - EMS_config.yaml declares only device identity/kind and immutable physical
 #   direction capabilities.
-# - sensor.ems_runtime_inputs_and_profiles owns profiles, raw measurements
-#   and every adjustable global policy parameter.
 # - sensor.ems_devices_runtime owns every adjustable device limit, policy,
 #   guard threshold/measurement and adapter state.
-# - Do not duplicate packet-owned fields in this file; ems.global_config
-#   is intentionally absent in runtime-packet mode.
+# - Do not duplicate packet-owned fields in this file.
 
 ems:
   runtime_sources:
@@ -23,7 +20,17 @@ ems:
     interval_seconds: 5
     diagnostics_interval_seconds: 30
 
-
+  global_config:
+    deadband_w: 50
+    ramp_w: 1000
+    strict_limit_w: 8000
+    surplus_freeze_s: 300
+    haeo_stale_timeout_s: 900
+    nz_battery_floor_default_w: 100
+    nz_battery_floor_ev_active_w: 100
+    adjustable_surplus_load: EV_CHARGER
+    adjustable_primary_load: HOME_BATTERY
+    adjustable_surplus_activation_w: 2000
 
   role_constraints:
     default:

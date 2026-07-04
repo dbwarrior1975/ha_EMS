@@ -9,7 +9,9 @@ def _project_root() -> Path:
 
 
 def _load_entities():
-    config = load_grouped_ems_config(_project_root() / 'EMS_config.yaml')
+    # Legacy dynamic-ref contract tests need the full entity registry even when
+    # the production EMS_config.yaml uses the runtime packet schema.
+    config = load_grouped_ems_config(_project_root() / 'example_EMS_config.yaml')
     return build_runtime_entities_from_grouped_config(config)
 
 

@@ -21,6 +21,15 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 from tests.helpers import ev_w
 
 
+@pytest.fixture(autouse=True)
+def _enable_runtime_context_detailed_metrics_for_contract_tests():
+    previous = runtime_context_mod.runtime_context_detailed_metrics_enabled()
+    runtime_context_mod.set_runtime_context_detailed_metrics_enabled(True)
+    try:
+        yield
+    finally:
+        runtime_context_mod.set_runtime_context_detailed_metrics_enabled(previous)
+
 def _write_grouped_config_with_override(project_root, tmp_path, dotted_path, value):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     node = config

@@ -13,8 +13,15 @@ from ems_core.net_zero.engine import (
 from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
-from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, parse_input_datetime_ts, publish_sensor
+from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, get_attrs, parse_input_datetime_ts, publish_sensor
 from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context, runtime_context_metrics_attrs
+try:
+    get_attrs
+except NameError:
+    def get_attrs(entity_id, default=None):
+        return default or {}
+
+
 _POLICY_ENGINE_BUILD = 'pyscript_ast_loop_safe_2026_06_15'
 _POLICY_ENGINE_TIMER_STATE = {
     'last_run_ts': None,
@@ -87,20 +94,94 @@ def _payload_hash(payload):
 
 
 def read_core_config():
-    cfg, _entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    cfg, _entities = read_runtime_context(get_bool, get_float, get_int, get_str, get_attrs)
     return cfg
 
 
 def read_config():
     return read_core_config()
     
-def read_profiles(entities):
+def _valid_runtime_value(value):
+    return value not in (None, 'unknown', 'unavailable', 'none', '')
+
+
+def _as_float(value, default=0.0):
+    if not _valid_runtime_value(value):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(value, default=0):
+    if not _valid_runtime_value(value):
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_bool(value, default=False):
+    if not _valid_runtime_value(value):
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ('1', 'true', 'yes', 'on'):
+        return True
+    if text in ('0', 'false', 'no', 'off'):
+        return False
+    return bool(value)
+
+
+def _cfg_attr(obj, name, default=None):
+    if obj is None:
+        return default
+    return getattr(obj, name, default)
+
+
+def _runtime_packet_mode(entities):
+    return bool((entities or {}).get('runtime_packet_mode', False))
+
+
+def read_profiles(cfg, entities=None):
+    entities = entities or {}
+    if not _runtime_packet_mode(entities):
+        return Profiles(
+            control=_enum(ControlProfile, get_str(entities.get('control_profile', ''), 'AUTOMATIC'), ControlProfile.AUTOMATIC),
+            goal=_enum(GoalProfile, get_str(entities.get('goal_profile', ''), 'NET_ZERO'), GoalProfile.NET_ZERO),
+            forecast=_enum(ForecastProfile, get_str(entities.get('forecast_profile', ''), 'NONE'), ForecastProfile.NONE),
+            guard=_enum(GuardProfile, get_str(entities.get('guard_profile', ''), 'NORMAL_LIMITS'), GuardProfile.NORMAL_LIMITS),
+        )
+    cfg_profiles = getattr(cfg, 'profiles', None)
     return Profiles(
-        control=_enum(ControlProfile, get_str(entities['control_profile'], 'AUTOMATIC'), ControlProfile.AUTOMATIC),
-        goal=_enum(GoalProfile, get_str(entities['goal_profile'], 'NET_ZERO'), GoalProfile.NET_ZERO),
-        forecast=_enum(ForecastProfile, get_str(entities['forecast_profile'], 'NONE'), ForecastProfile.NONE),
-        guard=_enum(GuardProfile, get_str(entities['guard_profile'], 'NORMAL_LIMITS'), GuardProfile.NORMAL_LIMITS),
+        control=_enum(ControlProfile, _cfg_attr(cfg_profiles, 'control', get_str(entities.get('control_profile', ''), 'AUTOMATIC')), ControlProfile.AUTOMATIC),
+        goal=_enum(GoalProfile, _cfg_attr(cfg_profiles, 'goal', get_str(entities.get('goal_profile', ''), 'NET_ZERO')), GoalProfile.NET_ZERO),
+        forecast=_enum(ForecastProfile, _cfg_attr(cfg_profiles, 'forecast', get_str(entities.get('forecast_profile', ''), 'NONE')), ForecastProfile.NONE),
+        guard=_enum(GuardProfile, _cfg_attr(cfg_profiles, 'guard', get_str(entities.get('guard_profile', ''), 'NORMAL_LIMITS')), GuardProfile.NORMAL_LIMITS),
     )
+
+
+def _cfg_policy_runtime_facts(cfg):
+    policy_runtime_facts = getattr(cfg, 'policy_runtime_facts', None)
+    if callable(policy_runtime_facts):
+        facts = policy_runtime_facts()
+        if isinstance(facts, dict):
+            return facts
+    return {}
+
+
+def _ev_state_payload_from_values(adapter, policy):
+    current_a = _as_int((adapter or {}).get('current_a'), 0)
+    enabled = _as_bool((adapter or {}).get('enabled'), False)
+    return {
+        'enabled': enabled,
+        'current_a': current_a,
+        'surplus_allowed': _as_bool((policy or {}).get('surplus_allowed'), False),
+        'active': bool(enabled and current_a > 0),
+    }
 
 
 def _ev_state_payload(device):
@@ -115,47 +196,166 @@ def _ev_state_payload(device):
     }
 
 
+def _battery_heartbeat_age_s(now_ts, cfg, entities):
+    heartbeat_entity = (entities or {}).get('battery_heartbeat')
+    if heartbeat_entity:
+        return age_seconds(heartbeat_entity, now_ts)
+    heartbeat_value = None
+    home_battery_guard_value = getattr(cfg, 'home_battery_guard_value', None)
+    if callable(home_battery_guard_value):
+        heartbeat_value = home_battery_guard_value('heartbeat', None)
+    if _valid_runtime_value(heartbeat_value):
+        return 0.0
+    return 999999.0
+
+
 def read_measurements(now_ts, cfg, entities):
-    device_entities = entities.get('devices', {}) or {}
-    active_surplus_device_ids = set(_read_active_surplus_device_ids(entities))
+    entities = entities or {}
+    if not _runtime_packet_mode(entities):
+        device_entities = entities.get('devices', {}) or {}
+        active_surplus_device_ids = set(_read_active_surplus_device_ids(entities))
+        relay_states = {}
+        ev_states = {}
+        for device_id, device in device_entities.items():
+            if not isinstance(device, dict):
+                continue
+            kind = str(device.get('kind') or '')
+            if kind == 'RELAY':
+                relay_states[str(device_id)] = {
+                    'enabled': get_bool(device.get('enabled', '')),
+                    'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
+                    'force_on': get_bool(device.get('force_on', '')),
+                    'active': str(device_id) in active_surplus_device_ids,
+                }
+            elif kind == 'EV_CHARGER':
+                ev_states[str(device_id)] = _ev_state_payload(device)
+        return RuntimeMeasurements(
+            now_ts=now_ts,
+            soc=get_float(entities.get('soc', ''), None),
+            min_cell_voltage_v=get_float(entities.get('min_cell_voltage_v', ''), None),
+            battery_heartbeat_age_s=age_seconds(entities.get('battery_heartbeat', ''), now_ts),
+            grid_power_w=get_float(entities.get('grid_power_w', ''), 0),
+            current_battery_setpoint_w=get_float(entities.get('current_battery_sp', ''), 100),
+            quarter_energy_balance_kwh=get_float(entities.get('quarter_energy_balance_kwh', ''), 0),
+            pv_power_w=get_float(entities.get('pv_power_w', ''), None),
+            relay_states=relay_states,
+            ev_states=ev_states,
+        )
+    facts = _cfg_policy_runtime_facts(cfg)
+    kind_by_id = facts.get('device_kind_by_id', {}) or {}
+    policy_by_id = facts.get('device_policy_by_id', {}) or {}
+    adapter_by_id = facts.get('device_adapter_by_id', {}) or {}
+    active_surplus_device_ids = set(_read_active_surplus_device_ids(cfg, entities))
     relay_states = {}
     ev_states = {}
-    for device_id, device in device_entities.items():
-        if not isinstance(device, dict):
-            continue
-        kind = str(device.get('kind') or '')
-        if kind == 'RELAY':
-            relay_states[str(device_id)] = {
-                'enabled': get_bool(device.get('enabled', '')),
-                'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
-                'force_on': get_bool(device.get('force_on', '')),
-                'active': str(device_id) in active_surplus_device_ids,
-            }
-        elif kind == 'EV_CHARGER':
-            ev_states[str(device_id)] = _ev_state_payload(device)
+    if kind_by_id:
+        for device_id, kind in kind_by_id.items():
+            device_id = str(device_id)
+            kind = str(kind or '')
+            adapter = adapter_by_id.get(device_id, {}) or {}
+            policy = policy_by_id.get(device_id, {}) or {}
+            if kind == 'RELAY':
+                relay_states[device_id] = {
+                    'enabled': _as_bool(adapter.get('enabled'), False),
+                    'surplus_allowed': _as_bool(policy.get('surplus_allowed'), False),
+                    'force_on': _as_bool(policy.get('force_on'), False),
+                    'active': device_id in active_surplus_device_ids,
+                }
+            elif kind == 'EV_CHARGER':
+                ev_states[device_id] = _ev_state_payload_from_values(adapter, policy)
+    else:
+        device_entities = entities.get('devices', {}) or {}
+        for device_id, device in device_entities.items():
+            if not isinstance(device, dict):
+                continue
+            kind = str(device.get('kind') or '')
+            if kind == 'RELAY':
+                relay_states[str(device_id)] = {
+                    'enabled': get_bool(device.get('enabled', '')),
+                    'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
+                    'force_on': get_bool(device.get('force_on', '')),
+                    'active': str(device_id) in active_surplus_device_ids,
+                }
+            elif kind == 'EV_CHARGER':
+                ev_states[str(device_id)] = _ev_state_payload(device)
 
+    home_guard = getattr(cfg, 'home_battery_guard_value', None)
+    device_adapter = getattr(cfg, 'device_adapter_value', None)
+    runtime = getattr(cfg, 'runtime', None)
     return RuntimeMeasurements(
         now_ts=now_ts,
-        soc=get_float(entities['soc'], None),
-        min_cell_voltage_v=get_float(entities['min_cell_voltage_v'], None),
-        battery_heartbeat_age_s=age_seconds(entities['battery_heartbeat'], now_ts),
-        grid_power_w=get_float(entities['grid_power_w'], 0),
-        current_battery_setpoint_w=get_float(entities['current_battery_sp'], 100),
-        quarter_energy_balance_kwh=get_float(entities['quarter_energy_balance_kwh'], 0),
-        pv_power_w=get_float(entities['pv_power_w'], None),
+        soc=_as_float(home_guard('soc', None), None) if callable(home_guard) else get_float(entities.get('soc', ''), None),
+        min_cell_voltage_v=_as_float(home_guard('min_cell_voltage_v', None), None) if callable(home_guard) else get_float(entities.get('min_cell_voltage_v', ''), None),
+        battery_heartbeat_age_s=_battery_heartbeat_age_s(now_ts, cfg, entities),
+        grid_power_w=_as_float(_cfg_attr(runtime, 'grid_power_w', None), get_float(entities.get('grid_power_w', ''), 0)),
+        current_battery_setpoint_w=_as_float(device_adapter('HOME_BATTERY', 'target_w', None), get_float(entities.get('current_battery_sp', ''), 100)) if callable(device_adapter) else get_float(entities.get('current_battery_sp', ''), 100),
+        quarter_energy_balance_kwh=_as_float(_cfg_attr(runtime, 'quarter_energy_balance_kwh', None), get_float(entities.get('quarter_energy_balance_kwh', ''), 0)),
+        pv_power_w=_as_float(_cfg_attr(runtime, 'pv_power_w', None), get_float(entities.get('pv_power_w', ''), None)),
         relay_states=relay_states,
         ev_states=ev_states,
     )
 
 
+def _forecast_from_cfg_haeo(value):
+    if isinstance(value, dict):
+        forecast = value.get('forecast')
+        if isinstance(forecast, (list, tuple)):
+            return forecast
+    if isinstance(value, (list, tuple)):
+        return value
+    return None
+
+
+def _haeo_fresh_source_is_fresh(value, entity_id, now_ts, timeout_s):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # Numeric packet values are treated as source age seconds when plausible.
+        return float(value) < float(timeout_s)
+    if entity_id:
+        return age_seconds(entity_id, now_ts) < float(timeout_s)
+    return False
+
+
 def read_haeo(now_ts, profiles, cfg, entities):
+    entities = entities or {}
     configured = configured_forecast(profiles.control, profiles.forecast)
-    batt_age = age_seconds(entities['haeo_battery_active_power_fresh_source'], now_ts)
-    ev_age = age_seconds(entities['haeo_ev_active_power_fresh_source'], now_ts)
-    fresh = batt_age < cfg.haeo_stale_timeout_s and ev_age < cfg.haeo_stale_timeout_s
+    if not _runtime_packet_mode(entities):
+        batt_age = age_seconds(entities.get('haeo_battery_active_power_fresh_source', ''), now_ts)
+        ev_age = age_seconds(entities.get('haeo_ev_active_power_fresh_source', ''), now_ts)
+        fresh = batt_age < cfg.haeo_stale_timeout_s and ev_age < cfg.haeo_stale_timeout_s
+        eff = effective_forecast(configured, fresh)
+        batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
+        ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
+        return HaeoTargets(
+            effective_forecast=eff,
+            configured_forecast=configured,
+            fresh=fresh,
+            battery_target_kw=latest_forecast_value_at_or_before(batt_forecast, now_ts, 0),
+            ev_target_kw=max(latest_forecast_value_at_or_before(ev_forecast, now_ts, 0), 0),
+        )
+    haeo_cfg = getattr(cfg, 'haeo', None)
+    timeout_s = getattr(cfg, 'haeo_stale_timeout_s', 300)
+    batt_fresh = _haeo_fresh_source_is_fresh(
+        _cfg_attr(haeo_cfg, 'battery_fresh_source', None),
+        entities.get('haeo_battery_active_power_fresh_source', ''),
+        now_ts,
+        timeout_s,
+    )
+    ev_fresh = _haeo_fresh_source_is_fresh(
+        _cfg_attr(haeo_cfg, 'ev_fresh_source', None),
+        entities.get('haeo_ev_active_power_fresh_source', ''),
+        now_ts,
+        timeout_s,
+    )
+    fresh = bool(batt_fresh and ev_fresh)
     eff = effective_forecast(configured, fresh)
-    batt_forecast = get_attr(entities['haeo_battery_power_active'], 'forecast', []) or []
-    ev_forecast = get_attr(entities['haeo_ev_battery_power_active'], 'forecast', []) or []
+    batt_forecast = _forecast_from_cfg_haeo(_cfg_attr(haeo_cfg, 'battery_power_active', None))
+    ev_forecast = _forecast_from_cfg_haeo(_cfg_attr(haeo_cfg, 'ev_power_active', None))
+    if batt_forecast is None:
+        batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
+    if ev_forecast is None:
+        ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
     return HaeoTargets(
         effective_forecast=eff,
         configured_forecast=configured,
@@ -190,19 +390,35 @@ def _parse_active_device_ids(raw_value):
     return tuple(parsed)
 
 
-def _read_active_surplus_device_ids(entities):
-    device_ids = get_attr(entities['active_surplus_devices'], 'device_ids', None)
+def _cfg_state_value(cfg, field, default=None):
+    state_cfg = getattr(cfg, 'state', None)
+    return _cfg_attr(state_cfg, field, default)
+
+
+def _read_active_surplus_device_ids(cfg_or_entities, entities=None):
+    cfg = cfg_or_entities if entities is not None else None
+    entities = entities if entities is not None else cfg_or_entities
+    raw_cfg_value = _cfg_state_value(cfg, 'active_surplus_devices', None) if cfg is not None else None
+    if isinstance(raw_cfg_value, dict):
+        parsed = _parse_active_device_ids(raw_cfg_value.get('device_ids'))
+        if parsed:
+            return parsed
+    parsed = _parse_active_device_ids(raw_cfg_value)
+    if parsed:
+        return parsed
+    active_entity = (entities or {}).get('active_surplus_devices', '')
+    device_ids = get_attr(active_entity, 'device_ids', None)
     parsed = _parse_active_device_ids(device_ids)
     if parsed:
         return parsed
-    parsed = _parse_active_device_ids(get_str(entities['active_surplus_devices'], ''))
+    parsed = _parse_active_device_ids(get_str(active_entity, ''))
     if parsed:
         return parsed
     return ()
 
 
-def _read_previous_device_state(entities):
-    return _read_selected_previous_device_state(entities)
+def _read_previous_device_state(cfg_or_entities, entities=None):
+    return _read_selected_previous_device_state(cfg_or_entities, entities)
 
 
 def _default_previous_device_state(device_id=''):
@@ -222,37 +438,56 @@ def _normalize_previous_device_state_entry(device_id, state):
     normalized['mode'] = str(state.get('mode') or '')
     normalized['low_pv_cycles'] = int(state.get('low_pv_cycles', 0) or 0)
     normalized['hard_off_release_ready_cycles'] = int(state.get('hard_off_release_ready_cycles', 0) or 0)
-    normalized['hard_off_active'] = bool(state.get('hard_off_active', False))
+    normalized['hard_off_active'] = _as_bool(state.get('hard_off_active', False), False)
     return normalized
 
 
-def _read_previous_ev_device_states(entities):
+def _read_previous_ev_device_states(cfg_or_entities, entities=None):
+    cfg = cfg_or_entities if entities is not None else None
+    entities = entities if entities is not None else cfg_or_entities
     states = {}
-    raw_states = get_attr(entities['previous_device_state'], 'device_states', None)
+    raw_cfg_state = _cfg_state_value(cfg, 'previous_device_state', None) if cfg is not None else None
+    if isinstance(raw_cfg_state, dict):
+        raw_states = raw_cfg_state.get('device_states')
+        if isinstance(raw_states, dict):
+            for device_id, state in raw_states.items():
+                states[str(device_id)] = _normalize_previous_device_state_entry(device_id, state)
+        mode = raw_cfg_state.get('mode')
+        if mode:
+            device_id = raw_cfg_state.get('device_id')
+            if device_id:
+                states[str(device_id)] = _normalize_previous_device_state_entry(device_id, raw_cfg_state)
+    previous_entity = (entities or {}).get('previous_device_state', '')
+    raw_states = get_attr(previous_entity, 'device_states', None)
     if isinstance(raw_states, dict):
         for device_id, state in raw_states.items():
             states[str(device_id)] = _normalize_previous_device_state_entry(device_id, state)
 
-    mode = get_attr(entities['previous_device_state'], 'mode', '')
+    mode = get_attr(previous_entity, 'mode', '')
     if mode:
-        device_id = get_attr(entities['previous_device_state'], 'device_id', '')
+        device_id = get_attr(previous_entity, 'device_id', '')
         if device_id:
             states[str(device_id)] = _normalize_previous_device_state_entry(
                 device_id,
                 {
                     'device_id': device_id,
                     'mode': mode,
-                    'low_pv_cycles': get_attr(entities['previous_device_state'], 'low_pv_cycles', 0),
-                    'hard_off_release_ready_cycles': get_attr(entities['previous_device_state'], 'hard_off_release_ready_cycles', 0),
-                    'hard_off_active': get_attr(entities['previous_device_state'], 'hard_off_active', False),
+                    'low_pv_cycles': get_attr(previous_entity, 'low_pv_cycles', 0),
+                    'hard_off_release_ready_cycles': get_attr(previous_entity, 'hard_off_release_ready_cycles', 0),
+                    'hard_off_active': get_attr(previous_entity, 'hard_off_active', False),
                 },
             )
     return states
 
 
-def _read_selected_previous_device_state(entities):
-    states = _read_previous_ev_device_states(entities)
-    adjustable_device_id = get_str(entities['adjustable_surplus_load'], 'EV_CHARGER')
+def _read_selected_previous_device_state(cfg_or_entities, entities=None):
+    cfg = cfg_or_entities if entities is not None else None
+    entities = entities if entities is not None else cfg_or_entities
+    states = _read_previous_ev_device_states(cfg, entities) if cfg is not None else _read_previous_ev_device_states(entities)
+    adjustable_device_id = getattr(cfg, 'adjustable_surplus_load', None) if cfg is not None else None
+    if not adjustable_device_id:
+        adjustable_device_id = get_str((entities or {}).get('adjustable_surplus_load', ''), 'EV_CHARGER')
+    adjustable_device_id = str(adjustable_device_id or 'EV_CHARGER')
     if adjustable_device_id in states:
         return states[adjustable_device_id]
     return _default_previous_device_state(adjustable_device_id)
@@ -287,10 +522,14 @@ def _selected_previous_device_state_for_outputs(outputs):
     return _normalize_previous_device_state_entry(device_id, outputs.attrs.get('previous_device_state', {}))
 
 
-def _read_adjustable_surplus_active(entities):
-    active_device_ids = _read_active_surplus_device_ids(entities)
-    adjustable_device_id = get_str(entities['adjustable_surplus_load'], 'EV_CHARGER')
-    return adjustable_device_id in active_device_ids
+def _read_adjustable_surplus_active(cfg_or_entities, entities=None):
+    cfg = cfg_or_entities if entities is not None else None
+    entities = entities if entities is not None else cfg_or_entities
+    active_device_ids = _read_active_surplus_device_ids(cfg, entities) if cfg is not None else _read_active_surplus_device_ids(entities)
+    adjustable_device_id = getattr(cfg, 'adjustable_surplus_load', None) if cfg is not None else None
+    if not adjustable_device_id:
+        adjustable_device_id = get_str((entities or {}).get('adjustable_surplus_load', ''), 'EV_CHARGER')
+    return str(adjustable_device_id or 'EV_CHARGER') in active_device_ids
 
 
 _MISSING = object()
@@ -464,8 +703,27 @@ def _elapsed_ms(started_ts, ended_ts):
 def _timed_read_runtime_context():
     import time
     started_ts = time.time()
-    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str)
+    cfg, entities = read_runtime_context(get_bool, get_float, get_int, get_str, get_attrs)
     return cfg, entities, _elapsed_ms(started_ts, time.time())
+
+
+def _read_surplus_freeze_until_ts(cfg, entities):
+    if not _runtime_packet_mode(entities):
+        return parse_input_datetime_ts((entities or {}).get('surplus_freeze_until', ''))
+    value = _cfg_state_value(cfg, 'surplus_freeze_until', None)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) if float(value) > 0 else None
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        try:
+            numeric = float(text)
+            return numeric if numeric > 0 else None
+        except ValueError:
+            pass
+    entity_id = (entities or {}).get('surplus_freeze_until')
+    if entity_id:
+        return parse_input_datetime_ts(entity_id)
+    return None
 
 
 def _phase_timing_attrs(timing, total_ms):
@@ -510,7 +768,11 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     timing.setdefault('policy_engine_read_runtime_context_ms', 0)
 
     phase_started_ts = time.time()
-    profiles = read_profiles(entities)
+    
+    try:
+        profiles = read_profiles(cfg, entities)
+    except TypeError:
+        profiles = read_profiles(entities)
     m = read_measurements(now_ts, cfg, entities)
     timing['policy_engine_read_measurements_ms'] = _elapsed_ms(phase_started_ts, time.time())
 
@@ -524,8 +786,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     haeo = read_haeo(now_ts, profiles, cfg, entities)
     previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
     previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
-    active_surplus_device_ids = _read_active_surplus_device_ids(entities)
-    previous_device_state = _read_previous_device_state(entities)
+    active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
+    previous_device_state = _read_previous_device_state(cfg, entities)
     previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
     timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
 
@@ -556,15 +818,15 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     phase_started_ts = time.time()
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
-        freeze_until_ts=parse_input_datetime_ts(entities['surplus_freeze_until']),
-        ev_burn_active=_read_adjustable_surplus_active(entities),
-        adjustable_surplus_active=_read_adjustable_surplus_active(entities),
+        freeze_until_ts=_read_surplus_freeze_until_ts(cfg, entities),
+        ev_burn_active=_read_adjustable_surplus_active(cfg, entities),
+        adjustable_surplus_active=_read_adjustable_surplus_active(cfg, entities),
         pv_power_kw=pv_power_kw,
         ev_hard_off_active=bool(previous_device_state['hard_off_active']),
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
         ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
         relay_device_states=getattr(m, 'relay_states', {}),
-        previous_ev_device_states=_read_previous_ev_device_states(entities),
+        previous_ev_device_states=_read_previous_ev_device_states(cfg, entities),
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
     )
@@ -649,11 +911,13 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     published_device_policies = False
     published_dispatch_command = False
     published_policy_state = False
-    publish_sensor(
-        entities['previous_device_state'],
-        _selected_previous_device_state_for_outputs(outputs)['mode'],
-        _previous_device_state_attrs_from_outputs(outputs),
-    )
+    previous_device_state_entity = entities.get('previous_device_state') or entities.get('policy_state')
+    if previous_device_state_entity:
+        publish_sensor(
+            previous_device_state_entity,
+            _selected_previous_device_state_for_outputs(outputs)['mode'],
+            _previous_device_state_attrs_from_outputs(outputs),
+        )
     publish_sensor(entities['device_policies'], device_policies_hash, attrs)
     published_device_policies = True
     publish_sensor(entities['dispatch_command'], dispatch_command_hash, dispatch_command_attrs)

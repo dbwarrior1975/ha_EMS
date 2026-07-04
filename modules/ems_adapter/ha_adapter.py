@@ -66,6 +66,16 @@ def get_attr(entity_id, attr, default=None):
         return default
 
 
+def get_attrs(entity_id, default=None):
+    try:
+        attrs = state.getattr(entity_id)
+        if isinstance(attrs, dict):
+            return attrs
+        return default
+    except Exception:
+        return default
+
+
 def publish_sensor(entity_id, value, attrs=None):
     state.set(entity_id, value=value, new_attributes=attrs or {})
 

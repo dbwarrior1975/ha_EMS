@@ -240,7 +240,7 @@ def test_relay2_device_mapping_is_zero_when_inactive():
 
 @pytest.mark.unit
 def test_core_config_device_mapping_uses_yaml_capabilities_directly(project_root):
-    grouped_config = load_grouped_ems_config(project_root / 'EMS_config.yaml')
+    grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     values = {
         'input_number.ems_home_battery_min_absorb_w': 125,
         'input_number.ems_max_battery_charge_w': 4300,

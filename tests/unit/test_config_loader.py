@@ -14,8 +14,11 @@ from ems_adapter.config_loader import (
     _parse_policy_engine_interval_seconds,
     build_core_config_from_grouped_config,
     build_core_config_from_grouped_reader,
+    build_dynamic_runtime_snapshot_from_packets,
     build_policy_context_view,
+    build_policy_runtime_facts_from_context,
     compile_core_config_plan_from_grouped_config,
+    compile_dynamic_runtime_read_plan,
     materialize_core_config_from_plan,
     runtime_alias_index,
     load_grouped_ems_config,
@@ -1038,3 +1041,277 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
     assert 'BROKEN' not in second_cfg.devices
     assert 'mutated' not in plan.grouped_config_plan['ems']['role_constraints'].get('default', {})
     assert 'BROKEN' not in plan.grouped_config_plan['ems']['devices']
+
+
+def _complete_runtime_packets(*, relay1_force_on=True):
+    return {
+        'inputs_and_profiles': {
+            'schema_version': 1,
+            'profiles': {
+                'control': 'AUTOMATIC',
+                'goal': 'NET_ZERO',
+                'forecast': 'NONE',
+                'guard': 'NORMAL_LIMITS',
+            },
+            'config': {
+                'deadband_w': 55.0,
+                'ramp_w': 1200.0,
+                'strict_limit_w': 8100.0,
+                'default_sp_w': 110.0,
+                'surplus_freeze_s': 310.0,
+                'battery_heartbeat_timeout_s': 370.0,
+                'haeo_stale_timeout_s': 910.0,
+                'nz_battery_floor_default_w': 120.0,
+                'nz_battery_floor_ev_active_w': 130.0,
+                'adjustable_surplus_load': 'EV_CHARGER',
+                'adjustable_primary_load': 'HOME_BATTERY',
+                'adjustable_surplus_activation_w': 2100.0,
+            },
+            'runtime': {
+                'grid_power_w': 10.5,
+                'quarter_energy_balance_kwh': 0.049,
+                'pv_power_w': 20.25,
+            },
+        },
+        'devices': {
+            'schema_version': 1,
+            'devices': {
+                'HOME_BATTERY': {
+                    'capabilities': {
+                        'min_absorb_w': 100.0,
+                        'max_absorb_w': 5000.0,
+                        'max_produce_w': 4000.0,
+                        'step_w': 100.0,
+                    },
+                    'policy': {
+                        'priority': 4,
+                        'default_min_absorb_w': 100.0,
+                    },
+                    'guard': {
+                        'soc': 97.0,
+                        'min_cell_voltage_v': 3.32,
+                        'heartbeat': 'ok',
+                        'protect_soc': 10.0,
+                        'protect_soc_recovery_margin': 5.0,
+                        'protect_min_cell_voltage_v': 3.1,
+                        'protect_min_absorb_w': 100.0,
+                    },
+                    'adapter': {
+                        'target_w': -600.0,
+                        'measured_power_w': -665.8,
+                    },
+                },
+                'EV_CHARGER': {
+                    'capabilities': {
+                        'min_absorb_w': 1301.0,
+                        'max_absorb_w': 1400.0,
+                        'max_produce_w': 0.0,
+                        'step_w': 1.0,
+                    },
+                    'policy': {
+                        'priority': 2,
+                        'surplus_allowed': True,
+                        'force_on': True,
+                        'low_pv_threshold_w': 1600.0,
+                        'hard_off_low_pv_cycles': 15,
+                        'hard_off_release_cycles': 100,
+                    },
+                    'adapter': {
+                        'enabled': True,
+                        'current_a': 6.0,
+                        'current_step_a': 2.0,
+                        'phases': 3,
+                        'voltage_v': 240.0,
+                    },
+                },
+                'RELAY1': {
+                    'capabilities': {
+                        'min_absorb_w': 2700.0,
+                        'max_absorb_w': 2700.0,
+                        'max_produce_w': 0.0,
+                        'step_w': 2700.0,
+                    },
+                    'policy': {
+                        'priority': 3,
+                        'surplus_allowed': True,
+                        'force_on': relay1_force_on,
+                    },
+                    'adapter': {'enabled': True},
+                },
+                'RELAY2': {
+                    'capabilities': {
+                        'min_absorb_w': 5700.0,
+                        'max_absorb_w': 5700.0,
+                        'max_produce_w': 0.0,
+                        'step_w': 5700.0,
+                    },
+                    'policy': {
+                        'priority': 1,
+                        'surplus_allowed': False,
+                        'force_on': True,
+                    },
+                    'adapter': {'enabled': False},
+                },
+            },
+        },
+        'surplus_state': {
+            'schema_version': 1,
+            'state': {
+                'surplus_freeze_until': 0.0,
+                'active_surplus_devices': {'device_ids': ''},
+                'previous_device_state': {},
+            },
+            'haeo': {
+                'battery_power_active': {},
+                'ev_power_active': {},
+                'battery_fresh_source': 999999.0,
+                'ev_fresh_source': 999999.0,
+            },
+        },
+    }
+
+
+@pytest.mark.unit
+def test_runtime_packet_device_values_override_static_facts(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    plan = compile_core_config_plan_from_grouped_config(config)
+
+    metrics = {}
+    snapshot = build_dynamic_runtime_snapshot_from_packets(plan, _complete_runtime_packets(), metrics)
+    facts = build_policy_runtime_facts_from_context(plan, snapshot)
+
+    assert snapshot.runtime['quarter_energy_balance_kwh'] == 0.049
+    assert snapshot.global_config == {
+        'deadband_w': 55.0,
+        'ramp_w': 1200.0,
+        'strict_limit_w': 8100.0,
+        'default_sp_w': 110.0,
+        'surplus_freeze_s': 310.0,
+        'battery_heartbeat_timeout_s': 370.0,
+        'haeo_stale_timeout_s': 910.0,
+        'nz_battery_floor_default_w': 120.0,
+        'nz_battery_floor_ev_active_w': 130.0,
+        'adjustable_surplus_load': 'EV_CHARGER',
+        'adjustable_primary_load': 'HOME_BATTERY',
+        'adjustable_surplus_activation_w': 2100.0,
+    }
+    assert snapshot.home_battery_values['adapter']['target_w'] == -600.0
+    assert snapshot.home_battery_values['guard']['protect_soc'] == 10.0
+
+    battery_capabilities = facts['device_capabilities_by_id']['HOME_BATTERY']
+    assert battery_capabilities['can_absorb_w'] is True
+    assert battery_capabilities['can_produce_w'] is True
+    assert battery_capabilities['max_absorb_w'] == 5000.0
+    assert facts['device_policy_by_id']['HOME_BATTERY']['priority'] == 4
+
+    ev_capabilities = facts['device_capabilities_by_id']['EV_CHARGER']
+    ev_policy = facts['device_policy_by_id']['EV_CHARGER']
+    ev_adapter = facts['device_adapter_by_id']['EV_CHARGER']
+    assert ev_capabilities['min_absorb_w'] == 1301.0
+    assert ev_capabilities['max_absorb_w'] == 1400.0
+    assert ev_policy['priority'] == 2
+    assert ev_policy['surplus_allowed'] is True
+    assert ev_policy['force_on'] is True
+    assert ev_adapter == {
+        'enabled': True,
+        'current_a': 6,
+        'current_step_a': 2,
+        'phases': 3,
+        'voltage_v': 240,
+    }
+
+    relay1_policy = facts['device_policy_by_id']['RELAY1']
+    relay1_adapter = facts['device_adapter_by_id']['RELAY1']
+    assert relay1_policy['priority'] == 3
+    assert relay1_policy['force_on'] is True
+    assert relay1_adapter['enabled'] is True
+
+    relay2_policy = facts['device_policy_by_id']['RELAY2']
+    relay2_adapter = facts['device_adapter_by_id']['RELAY2']
+    assert relay2_policy['priority'] == 1
+    assert relay2_policy['surplus_allowed'] is False
+    assert relay2_policy['force_on'] is True
+    assert relay2_adapter['enabled'] is False
+
+    selected_ev = facts['selected_ev_context_by_id']['EV_CHARGER']
+    assert selected_ev.force_on is True
+    assert selected_ev.current_step_a == 2
+    assert selected_ev.phases == 3
+    assert selected_ev.voltage_v == 240.0
+    assert metrics['policy_engine_runtime_packet_missing_fields'] == 0
+
+
+@pytest.mark.unit
+def test_runtime_packet_force_on_updates_across_snapshots(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    plan = compile_core_config_plan_from_grouped_config(config)
+
+    def facts_for(force_on):
+        snapshot = build_dynamic_runtime_snapshot_from_packets(
+            plan,
+            _complete_runtime_packets(relay1_force_on=force_on),
+        )
+        return build_policy_runtime_facts_from_context(plan, snapshot)
+
+    assert facts_for(False)['device_policy_by_id']['RELAY1']['force_on'] is False
+    assert facts_for(True)['device_policy_by_id']['RELAY1']['force_on'] is True
+
+
+@pytest.mark.unit
+def test_runtime_packet_config_rejects_duplicate_runtime_owned_device_fields(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    config['ems']['devices']['EV_CHARGER']['policy'] = {'priority': 2}
+    config['ems']['devices']['RELAY1']['capabilities']['max_absorb_w'] = 2700
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    paths = {issue.path for issue in result.errors}
+    assert 'ems.devices.EV_CHARGER.policy' in paths
+    assert 'ems.devices.RELAY1.capabilities.max_absorb_w' in paths
+
+@pytest.mark.unit
+def test_runtime_packet_config_rejects_static_global_config(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    config['ems']['global_config'] = {
+        'deadband_w': 50,
+        'ramp_w': 1000,
+        'strict_limit_w': 8000,
+    }
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert any(issue.path == 'ems.global_config' for issue in result.errors)
+
+
+@pytest.mark.unit
+def test_runtime_packet_global_config_updates_across_snapshots(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    plan = compile_core_config_plan_from_grouped_config(config)
+
+    first_packets = _complete_runtime_packets()
+    second_packets = _complete_runtime_packets()
+    second_packets['inputs_and_profiles']['config']['deadband_w'] = 125.0
+    second_packets['inputs_and_profiles']['config']['adjustable_surplus_load'] = 'RELAY1'
+    second_packets['inputs_and_profiles']['config']['strict_limit_w'] = 9000.0
+
+    first = build_dynamic_runtime_snapshot_from_packets(plan, first_packets)
+    second = build_dynamic_runtime_snapshot_from_packets(plan, second_packets)
+
+    assert first.global_config['deadband_w'] == 55.0
+    assert second.global_config['deadband_w'] == 125.0
+    assert first.global_config['adjustable_surplus_load'] == 'EV_CHARGER'
+    assert second.global_config['adjustable_surplus_load'] == 'RELAY1'
+    assert second.global_config['strict_limit_w'] == 9000.0
+
+
+@pytest.mark.unit
+def test_runtime_packet_global_config_is_not_in_individual_dynamic_read_plan(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
+    plan = compile_core_config_plan_from_grouped_config(config)
+    read_plan = compile_dynamic_runtime_read_plan(plan)
+
+    assert read_plan['global_config_fields'] == ()
+    assert all('global_config' not in str(entry.get('path', '')) for entry in read_plan['unique_reads'])
+

@@ -78,6 +78,7 @@ OPTIONAL_TOP_LEVEL_SECTIONS = (
     'role_constraints',
     'haeo',
     'policy_engine',
+    'runtime_sources',
 )
 REJECTED_TOP_LEVEL_SECTIONS = frozenset(
     (
@@ -120,6 +121,113 @@ LEGACY_RUNTIME_REJECTIONS = {
         'quarter_energy_balance_kwh and current quarter time.'
     ),
     'pv_power_kw': 'runtime.pv_power_kw is no longer accepted; use runtime.pv_power_w.',
+}
+RUNTIME_PACKET_SOURCE_KEYS = frozenset(('inputs_and_profiles', 'devices', 'surplus_state'))
+RUNTIME_PACKET_SCHEMA_VERSION = 1
+
+PACKET_DEFAULT_PROFILES = {
+    'control': 'AUTOMATIC',
+    'goal': 'NET_ZERO',
+    'forecast': 'NONE',
+    'guard': 'NORMAL_LIMITS',
+}
+PACKET_DEFAULT_GLOBAL_CONFIG = {
+    'deadband_w': 50.0,
+    'ramp_w': 1000.0,
+    'strict_limit_w': 4600.0,
+    'default_sp_w': 100.0,
+    'surplus_freeze_s': 30.0,
+    'battery_heartbeat_timeout_s': 360.0,
+    'haeo_stale_timeout_s': 300.0,
+    'nz_battery_floor_default_w': 100.0,
+    'nz_battery_floor_ev_active_w': 0.0,
+    'adjustable_surplus_load': 'HOME_BATTERY',
+    'adjustable_primary_load': '',
+    'adjustable_surplus_activation_w': 0.0,
+}
+PACKET_DEFAULT_RUNTIME = {
+    'grid_power_w': 0.0,
+    'quarter_energy_balance_kwh': 0.0,
+    'pv_power_w': 0.0,
+}
+PACKET_DEFAULT_STATE = {
+    'surplus_freeze_until': '',
+    'active_surplus_devices': (),
+    'previous_device_state': {},
+}
+PACKET_DEFAULT_HAEO = {
+    'battery_power_active': {},
+    'ev_power_active': {},
+    'battery_fresh_source': False,
+    'ev_fresh_source': False,
+}
+
+PACKET_STATIC_CAPABILITY_FIELDS = frozenset(('can_absorb_w', 'can_produce_w'))
+PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
+    'BATTERY': {
+        'min_absorb_w': 0.0,
+        'max_absorb_w': 0.0,
+        'max_produce_w': 0.0,
+        'step_w': 1.0,
+    },
+    'EV_CHARGER': {
+        'min_absorb_w': 0.0,
+        'max_absorb_w': 0.0,
+        'max_produce_w': 0.0,
+        'step_w': 1.0,
+    },
+    'RELAY': {
+        'min_absorb_w': 0.0,
+        'max_absorb_w': 0.0,
+        'max_produce_w': 0.0,
+        'step_w': 1.0,
+    },
+}
+PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
+    'BATTERY': {
+        'priority': 0,
+        'default_min_absorb_w': 0.0,
+    },
+    'EV_CHARGER': {
+        'priority': 0,
+        'surplus_allowed': False,
+        'force_on': False,
+        'low_pv_threshold_w': 1600.0,
+        'hard_off_low_pv_cycles': 15,
+        'hard_off_release_cycles': 100,
+    },
+    'RELAY': {
+        'priority': 0,
+        'surplus_allowed': False,
+        'force_on': False,
+    },
+}
+PACKET_RUNTIME_GUARD_FIELDS_BY_KIND = {
+    'BATTERY': {
+        'soc': None,
+        'min_cell_voltage_v': None,
+        'heartbeat': None,
+        'protect_soc': 100.0,
+        'protect_soc_recovery_margin': 0.0,
+        'protect_min_cell_voltage_v': 99.0,
+        'protect_min_absorb_w': 0.0,
+    },
+}
+PACKET_RUNTIME_ADAPTER_FIELDS_BY_KIND = {
+    'BATTERY': {
+        'target_w': 0.0,
+        'measured_power_w': 0.0,
+    },
+    'EV_CHARGER': {
+        'enabled': False,
+        'current_a': 0.0,
+        'current_step_a': 1.0,
+        'phases': 1,
+        'voltage_v': 230.0,
+    },
+    'RELAY': {
+        'enabled': False,
+    },
 }
 ALLOWED_DEVICE_KEYS = frozenset(('kind', 'capabilities', 'policy', 'adapter', 'guard'))
 ALLOWED_CAPABILITIES_KEYS = frozenset(
@@ -217,6 +325,14 @@ class StaticDevicePlan:
 
 
 @dataclass
+class RuntimePacketPlan:
+    inputs_and_profiles_entity_id: str
+    devices_entity_id: str
+    surplus_state_entity_id: str
+    schema_version: int = RUNTIME_PACKET_SCHEMA_VERSION
+
+
+@dataclass
 class CompiledEMSPlan:
     profiles: dict
     policy_engine: dict
@@ -229,6 +345,7 @@ class CompiledEMSPlan:
     role_constraints: dict
     grouped_config_plan: dict
     policy_runtime_facts_plan: Optional[dict] = None
+    runtime_packet_plan: Optional[RuntimePacketPlan] = None
 
 
 CompiledCoreConfigPlan = CompiledEMSPlan
@@ -532,6 +649,133 @@ def _load_yaml_module():
     return yaml
 
 
+def _runtime_packet_sources_from_ems(ems: object) -> Optional[dict[str, str]]:
+    if not isinstance(ems, dict):
+        return None
+    sources = ems.get('runtime_sources')
+    if not isinstance(sources, dict):
+        return None
+    resolved = {}
+    for key in RUNTIME_PACKET_SOURCE_KEYS:
+        source = sources.get(key)
+        entity_id = None
+        if isinstance(source, dict):
+            entity_id = source.get('entity_id')
+        elif isinstance(source, str):
+            entity_id = source
+        if not _is_valid_entity_id(entity_id):
+            return None
+        resolved[str(key)] = str(entity_id)
+    return resolved
+
+
+def _ems_uses_runtime_packets(ems: object) -> bool:
+    return _runtime_packet_sources_from_ems(ems) is not None
+
+
+def _config_uses_runtime_packets(config: object) -> bool:
+    if not isinstance(config, dict):
+        return False
+    return _ems_uses_runtime_packets(config.get('ems'))
+
+
+def _runtime_packet_plan_from_config(config: dict) -> Optional[RuntimePacketPlan]:
+    ems = config.get('ems', {}) if isinstance(config, dict) else {}
+    sources = _runtime_packet_sources_from_ems(ems)
+    if sources is None:
+        return None
+    return RuntimePacketPlan(
+        inputs_and_profiles_entity_id=str(sources.get('inputs_and_profiles') or ''),
+        devices_entity_id=str(sources.get('devices') or ''),
+        surplus_state_entity_id=str(sources.get('surplus_state') or ''),
+        schema_version=RUNTIME_PACKET_SCHEMA_VERSION,
+    )
+
+
+def _deep_mutable_copy(value: object) -> object:
+    if isinstance(value, dict):
+        copied = {}
+        for key, item in value.items():
+            copied[key] = _deep_mutable_copy(item)
+        return copied
+    if isinstance(value, list):
+        copied = []
+        for item in value:
+            copied.append(_deep_mutable_copy(item))
+        return copied
+    if isinstance(value, tuple):
+        copied = []
+        for item in value:
+            copied.append(_deep_mutable_copy(item))
+        return tuple(copied)
+    return value
+
+
+def _ensure_dict(parent: dict, key: str) -> dict:
+    value = parent.get(key)
+    if not isinstance(value, dict):
+        value = {}
+        parent[key] = value
+    return value
+
+
+def _setdefault_fields(section: dict, defaults: dict) -> None:
+    for key, value in defaults.items():
+        if key not in section:
+            section[key] = _deep_mutable_copy(value)
+
+
+def _normalize_runtime_packet_config_for_compile(config: dict) -> dict:
+    if not _config_uses_runtime_packets(config):
+        return config
+    normalized = _deep_mutable_copy(config)
+    if not isinstance(normalized, dict):
+        return config
+    ems = _ensure_dict(normalized, 'ems')
+    _setdefault_fields(_ensure_dict(ems, 'profiles'), PACKET_DEFAULT_PROFILES)
+    _setdefault_fields(_ensure_dict(ems, 'global_config'), PACKET_DEFAULT_GLOBAL_CONFIG)
+    _setdefault_fields(_ensure_dict(ems, 'runtime'), PACKET_DEFAULT_RUNTIME)
+    _setdefault_fields(_ensure_dict(ems, 'state'), PACKET_DEFAULT_STATE)
+    _setdefault_fields(_ensure_dict(ems, 'haeo'), PACKET_DEFAULT_HAEO)
+
+    devices = _ensure_dict(ems, 'devices')
+    for _device_id, device in devices.items():
+        if not isinstance(device, dict):
+            continue
+        kind = str(device.get('kind') or '')
+        capabilities = _ensure_dict(device, 'capabilities')
+        _setdefault_fields(capabilities, PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND.get(kind, {}))
+        policy = _ensure_dict(device, 'policy')
+        _setdefault_fields(policy, PACKET_RUNTIME_POLICY_FIELDS_BY_KIND.get(kind, {}))
+        guard_defaults = PACKET_RUNTIME_GUARD_FIELDS_BY_KIND.get(kind, {})
+        if guard_defaults:
+            guard = _ensure_dict(device, 'guard')
+            _setdefault_fields(guard, guard_defaults)
+        adapter = _ensure_dict(device, 'adapter')
+        _setdefault_fields(adapter, PACKET_RUNTIME_ADAPTER_FIELDS_BY_KIND.get(kind, {}))
+    return normalized
+
+
+def _validate_runtime_sources(runtime_sources: object, issues: list[ConfigValidationIssue]) -> None:
+    if not isinstance(runtime_sources, dict):
+        issues.append(_issue('ems.runtime_sources', SEVERITY_ERROR, 'missing or not a mapping'))
+        return
+    _validate_unknown_fields(runtime_sources, 'ems.runtime_sources', RUNTIME_PACKET_SOURCE_KEYS, issues)
+    for key in RUNTIME_PACKET_SOURCE_KEYS:
+        source = runtime_sources.get(key)
+        entity_id = None
+        if isinstance(source, dict):
+            _validate_unknown_fields(source, f'ems.runtime_sources.{key}', frozenset(('entity_id',)), issues)
+            entity_id = source.get('entity_id')
+        elif isinstance(source, str):
+            entity_id = source
+        else:
+            issues.append(_issue(f'ems.runtime_sources.{key}', SEVERITY_ERROR, 'must be a mapping with entity_id'))
+            continue
+        if not _is_valid_entity_id(entity_id):
+            issues.append(_issue(f'ems.runtime_sources.{key}.entity_id', SEVERITY_ERROR, 'must be a non-empty entity id string'))
+
+
 def load_and_validate_grouped_ems_config(path: Union[str, Path]) -> tuple[dict, ConfigValidationResult]:
     config = load_grouped_ems_config(path)
     return config, validate_grouped_ems_config(config)
@@ -545,6 +789,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         issues.append(_issue('ems', SEVERITY_ERROR, 'missing or not a mapping'))
         return _validation_result(False, issues)
 
+    runtime_packet_mode = 'runtime_sources' in ems
     _validate_unknown_fields(
         ems,
         'ems',
@@ -553,7 +798,11 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
     )
     _validate_rejected_top_level_sections(ems, issues)
 
-    for section in REQUIRED_TOP_LEVEL_SECTIONS:
+    if runtime_packet_mode:
+        required_sections = ('runtime_sources', 'devices')
+    else:
+        required_sections = REQUIRED_TOP_LEVEL_SECTIONS
+    for section in required_sections:
         if section not in ems:
             issues.append(_issue(f'ems.{section}', SEVERITY_ERROR, 'missing required section'))
         elif not isinstance(ems.get(section), dict):
@@ -563,14 +812,17 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         if section in ems and not isinstance(ems.get(section), dict):
             issues.append(_issue(f'ems.{section}', SEVERITY_ERROR, 'must be a mapping'))
 
+    if runtime_packet_mode:
+        _validate_runtime_sources(ems.get('runtime_sources'), issues)
+
     devices = ems.get('devices', {})
     if isinstance(devices, dict):
-        _validate_devices(devices, issues)
+        _validate_devices(devices, issues, runtime_packet_mode=runtime_packet_mode)
         _validate_device_capability_semantics(ems, devices, issues)
     else:
         devices = {}
 
-    if isinstance(ems.get('profiles'), dict):
+    if isinstance(ems.get('profiles'), dict) and not runtime_packet_mode:
         _validate_required_entities(
             ems['profiles'],
             'ems.profiles',
@@ -578,7 +830,16 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             issues,
         )
 
-    if isinstance(ems.get('global_config'), dict):
+    if runtime_packet_mode and 'global_config' in ems:
+        issues.append(
+            _issue(
+                'ems.global_config',
+                SEVERITY_ERROR,
+                'runtime-packet mode owns global policy config via '
+                'sensor.ems_runtime_inputs_and_profiles attribute config; remove static ems.global_config',
+            )
+        )
+    elif isinstance(ems.get('global_config'), dict):
         _validate_required_entities(
             ems['global_config'],
             'ems.global_config',
@@ -594,12 +855,13 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             frozenset(tuple(ALLOWED_RUNTIME_KEYS) + tuple(LEGACY_RUNTIME_REJECTIONS)),
             issues,
         )
-        _validate_required_entities(
-            ems['runtime'],
-            'ems.runtime',
-            ('grid_power_w', 'quarter_energy_balance_kwh', 'pv_power_w'),
-            issues,
-        )
+        if not runtime_packet_mode:
+            _validate_required_entities(
+                ems['runtime'],
+                'ems.runtime',
+                ('grid_power_w', 'quarter_energy_balance_kwh', 'pv_power_w'),
+                issues,
+            )
 
     if isinstance(ems.get('policy_engine'), dict):
         _validate_unknown_fields(
@@ -619,7 +881,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         except ValueError as exc:
             issues.append(_issue('ems.policy_engine.diagnostics_interval_seconds', SEVERITY_ERROR, str(exc)))
 
-    if isinstance(ems.get('state'), dict):
+    if isinstance(ems.get('state'), dict) and not runtime_packet_mode:
         _validate_required_entities(
             ems['state'],
             'ems.state',
@@ -627,7 +889,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             issues,
         )
 
-    if isinstance(ems.get('haeo'), dict):
+    if isinstance(ems.get('haeo'), dict) and not runtime_packet_mode:
         _validate_required_entities(
             ems['haeo'],
             'ems.haeo',
@@ -635,7 +897,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             issues,
         )
 
-    if isinstance(ems.get('role_constraints'), dict):
+    if isinstance(ems.get('role_constraints'), dict) and not runtime_packet_mode:
         _validate_role_constraints(ems['role_constraints'], devices, issues)
 
     has_error = False
@@ -705,17 +967,22 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
         _alias('goal_profile', 'ems.profiles.goal', profiles.get('goal')),
         _alias('forecast_profile', 'ems.profiles.forecast', profiles.get('forecast')),
         _alias('guard_profile', 'ems.profiles.guard', profiles.get('guard')),
-        _alias('deadband_w', 'ems.global_config.deadband_w', global_config.get('deadband_w')),
-        _alias('ramp_max_w', 'ems.global_config.ramp_w', global_config.get('ramp_w')),
-        _alias('strict_limits_max_w', 'ems.global_config.strict_limit_w', global_config.get('strict_limit_w')),
-        _alias('surplus_freeze_s', 'ems.global_config.surplus_freeze_s', global_config.get('surplus_freeze_s')),
-        _alias('haeo_stale_timeout_s', 'ems.global_config.haeo_stale_timeout_s', global_config.get('haeo_stale_timeout_s')),
-        _alias('nz_battery_floor_default_w', 'ems.global_config.nz_battery_floor_default_w', global_config.get('nz_battery_floor_default_w')),
-        _alias('nz_battery_floor_ev_active_w', 'ems.global_config.nz_battery_floor_ev_active_w', global_config.get('nz_battery_floor_ev_active_w')),
-        _alias('adjustable_surplus_load', 'ems.global_config.adjustable_surplus_load', global_config.get('adjustable_surplus_load')),
-        _alias('adjustable_primary_load', 'ems.global_config.adjustable_primary_load', global_config.get('adjustable_primary_load')),
-        _alias('adjustable_surplus_activation', 'ems.global_config.adjustable_surplus_activation_w', global_config.get('adjustable_surplus_activation_w')),
     ]
+    if not _ems_uses_runtime_packets(ems):
+        aliases.extend(
+            [
+                _alias('deadband_w', 'ems.global_config.deadband_w', global_config.get('deadband_w')),
+                _alias('ramp_max_w', 'ems.global_config.ramp_w', global_config.get('ramp_w')),
+                _alias('strict_limits_max_w', 'ems.global_config.strict_limit_w', global_config.get('strict_limit_w')),
+                _alias('surplus_freeze_s', 'ems.global_config.surplus_freeze_s', global_config.get('surplus_freeze_s')),
+                _alias('haeo_stale_timeout_s', 'ems.global_config.haeo_stale_timeout_s', global_config.get('haeo_stale_timeout_s')),
+                _alias('nz_battery_floor_default_w', 'ems.global_config.nz_battery_floor_default_w', global_config.get('nz_battery_floor_default_w')),
+                _alias('nz_battery_floor_ev_active_w', 'ems.global_config.nz_battery_floor_ev_active_w', global_config.get('nz_battery_floor_ev_active_w')),
+                _alias('adjustable_surplus_load', 'ems.global_config.adjustable_surplus_load', global_config.get('adjustable_surplus_load')),
+                _alias('adjustable_primary_load', 'ems.global_config.adjustable_primary_load', global_config.get('adjustable_primary_load')),
+                _alias('adjustable_surplus_activation', 'ems.global_config.adjustable_surplus_activation_w', global_config.get('adjustable_surplus_activation_w')),
+            ]
+        )
 
     home_battery = devices.get('HOME_BATTERY', {})
     battery_guard = home_battery.get('guard', {}) if isinstance(home_battery, dict) else {}
@@ -1182,7 +1449,9 @@ def _build_static_device_plan(compiled_device: dict[str, object]) -> StaticDevic
 
 
 def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreConfigPlan:
-    ems = config.get('ems', {})
+    runtime_packet_plan = _runtime_packet_plan_from_config(config)
+    config_for_compile = _normalize_runtime_packet_config_for_compile(config)
+    ems = config_for_compile.get('ems', {})
     devices = ems.get('devices', {})
     role_constraints = ems.get('role_constraints', {})
     policy_engine = ems.get('policy_engine', {})
@@ -1249,6 +1518,7 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
         haeo=dict(compiled['ems']['haeo']) if isinstance(compiled['ems'].get('haeo'), dict) else None,
         role_constraints=dict(_require_mapping_value(compiled['ems'], 'role_constraints')),
         grouped_config_plan=compiled,
+        runtime_packet_plan=runtime_packet_plan,
     )
     compiled_plan.policy_runtime_facts_plan = compile_policy_runtime_facts_plan(compiled_plan)
     return compiled_plan
@@ -1782,17 +2052,20 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             'can_absorb_w',
             'can_produce_w',
         )
-        policy_fields = ('priority',)
+        policy_fields = ('priority', 'default_min_absorb_w') if kind == 'BATTERY' else ('priority',)
         adapter_fields = ()
         if kind == 'EV_CHARGER':
             policy_fields = (
                 'priority',
+                'surplus_allowed',
                 'force_on',
                 'low_pv_threshold_w',
                 'hard_off_low_pv_cycles',
                 'hard_off_release_cycles',
             )
             adapter_fields = (
+                'enabled',
+                'current_a',
                 'current_step_a',
                 'phases',
                 'voltage_v',
@@ -1803,6 +2076,9 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
                 'surplus_allowed',
                 'force_on',
             )
+            adapter_fields = (
+                'enabled',
+            )
 
         devices[device_id_text] = {
             'kind': kind,
@@ -1812,12 +2088,17 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
         }
         static_device_kind_by_id[device_id_text] = kind
 
+        packet_mode = compiled_plan.runtime_packet_plan is not None
+        packet_capability_fields = PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND.get(kind, {}) if packet_mode else {}
+        packet_policy_fields = PACKET_RUNTIME_POLICY_FIELDS_BY_KIND.get(kind, {}) if packet_mode else {}
+        packet_adapter_fields = PACKET_RUNTIME_ADAPTER_FIELDS_BY_KIND.get(kind, {}) if packet_mode else {}
+
         capability_values = {}
         for field_name in capabilities_fields:
             default = False if str(field_name) in ('can_absorb_w', 'can_produce_w') else 0
             value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'capabilities', str(field_name), default)
             capability_values[str(field_name)] = value
-            if is_dynamic:
+            if is_dynamic or str(field_name) in packet_capability_fields:
                 add_dynamic_fact_binding('device_capabilities_by_id', device_id_text, str(field_name), 'capabilities', str(field_name))
         static_capabilities_by_id[device_id_text] = capability_values
 
@@ -1826,15 +2107,16 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             default = 0 if str(field_name) == 'priority' else False
             value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'policy', str(field_name), default)
             policy_values[str(field_name)] = value
-            if is_dynamic:
+            if is_dynamic or str(field_name) in packet_policy_fields:
                 add_dynamic_fact_binding('device_policy_by_id', device_id_text, str(field_name), 'policy', str(field_name))
         static_policy_by_id[device_id_text] = policy_values
 
         adapter_values = {}
         for field_name in adapter_fields:
-            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'adapter', str(field_name), None)
+            packet_default = packet_adapter_fields.get(str(field_name))
+            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'adapter', str(field_name), packet_default)
             adapter_values[str(field_name)] = value
-            if is_dynamic:
+            if is_dynamic or str(field_name) in packet_adapter_fields:
                 add_dynamic_fact_binding('device_adapter_by_id', device_id_text, str(field_name), 'adapter', str(field_name))
         if adapter_values:
             static_adapter_by_id[device_id_text] = adapter_values
@@ -1902,9 +2184,12 @@ def compile_dynamic_runtime_read_plan(compiled_plan: CompiledEMSPlan) -> dict[st
     profiles_fields = _compile_flat_runtime_section_fields(
         compiled_plan.profiles, unique_reads, unique_slots, logical_read_counts
     )
-    global_config_fields = _compile_flat_runtime_section_fields(
-        compiled_plan.global_config, unique_reads, unique_slots, logical_read_counts
-    )
+    if compiled_plan.runtime_packet_plan is not None:
+        global_config_fields = ()
+    else:
+        global_config_fields = _compile_flat_runtime_section_fields(
+            compiled_plan.global_config, unique_reads, unique_slots, logical_read_counts
+        )
     runtime_fields = _compile_flat_runtime_section_fields(
         compiled_plan.runtime, unique_reads, unique_slots, logical_read_counts
     )
@@ -2344,13 +2629,218 @@ def build_policy_runtime_facts_from_context(
     return facts
 
 
+def _static_snapshot_value(value: object) -> object:
+    if isinstance(value, DynamicConfigRef):
+        return value.default
+    if isinstance(value, MappingProxyType):
+        materialized = {}
+        for key, item in value.items():
+            materialized[str(key)] = _static_snapshot_value(item)
+        return materialized
+    if isinstance(value, dict):
+        materialized = {}
+        for key, item in value.items():
+            materialized[str(key)] = _static_snapshot_value(item)
+        return materialized
+    if isinstance(value, tuple):
+        materialized = []
+        for item in value:
+            materialized.append(_static_snapshot_value(item))
+        return tuple(materialized)
+    return value
+
+
+def _packet_missing(value: object) -> bool:
+    return value in (None, 'unknown', 'unavailable', 'none', '')
+
+
+def _coerce_packet_value(value: object, default: object) -> object:
+    if _packet_missing(value):
+        return default
+    if isinstance(default, bool):
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        return text in ('1', 'true', 'yes', 'on')
+    if isinstance(default, int) and not isinstance(default, bool):
+        if isinstance(value, bool):
+            return default
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+    if isinstance(default, float):
+        if isinstance(value, bool):
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+    return value
+
+
+def _packet_get(packet: object, path: tuple[str, ...], default: object, stats: Optional[dict[str, int]] = None) -> object:
+    current = packet
+    for key in path:
+        if not isinstance(current, dict) or key not in current:
+            if stats is not None:
+                stats['missing_fields'] = int(stats.get('missing_fields', 0) or 0) + 1
+            return default
+        current = current.get(key)
+    if _packet_missing(current):
+        if stats is not None:
+            stats['missing_fields'] = int(stats.get('missing_fields', 0) or 0) + 1
+        return default
+    return _coerce_packet_value(current, default)
+
+
+def _compiled_static_default(section: dict, field: str, fallback: object) -> object:
+    if not isinstance(section, dict):
+        return fallback
+    value = section.get(str(field), fallback)
+    if isinstance(value, DynamicConfigRef):
+        return value.default
+    if value is None:
+        return fallback
+    return _static_snapshot_value(value)
+
+
+def _packet_section_from_static(static_section: object) -> dict:
+    values = _static_snapshot_value(static_section)
+    if isinstance(values, dict):
+        return values
+    return {}
+
+
+def _packet_device_values_from_packet(
+    device_plan: StaticDevicePlan,
+    packet_devices: object,
+    stats: Optional[dict[str, int]] = None,
+) -> dict:
+    device_id = str(device_plan.device_id)
+    device_packet = {}
+    if isinstance(packet_devices, dict):
+        nested_devices = packet_devices.get('devices')
+        if isinstance(nested_devices, dict) and isinstance(nested_devices.get(device_id), dict):
+            device_packet = nested_devices.get(device_id) or {}
+        elif isinstance(packet_devices.get(device_id), dict):
+            device_packet = packet_devices.get(device_id) or {}
+
+    kind = str(device_plan.kind or '')
+    section_specs = (
+        ('capabilities', PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND.get(kind, {})),
+        ('policy', PACKET_RUNTIME_POLICY_FIELDS_BY_KIND.get(kind, {})),
+        ('guard', PACKET_RUNTIME_GUARD_FIELDS_BY_KIND.get(kind, {})),
+        ('adapter', PACKET_RUNTIME_ADAPTER_FIELDS_BY_KIND.get(kind, {})),
+    )
+    values = {}
+    for section_name, field_defaults in section_specs:
+        if not field_defaults:
+            continue
+        packet_section = device_packet.get(section_name) if isinstance(device_packet, dict) else None
+        if not isinstance(packet_section, dict):
+            packet_section = {}
+        section_values = {}
+        for field_name, default in field_defaults.items():
+            section_values[str(field_name)] = _packet_get(
+                packet_section,
+                (str(field_name),),
+                default,
+                stats=stats,
+            )
+        values[str(section_name)] = section_values
+    return values
+
+
+def build_dynamic_runtime_snapshot_from_packets(
+    compiled_plan: CompiledEMSPlan,
+    runtime_packets: dict,
+    metrics: Optional[dict[str, int]] = None,
+) -> DynamicRuntimeSnapshot:
+    started_ts = time.time()
+    packet_stats = {'missing_fields': 0}
+    inputs_packet = runtime_packets.get('inputs_and_profiles') if isinstance(runtime_packets, dict) else None
+    devices_packet = runtime_packets.get('devices') if isinstance(runtime_packets, dict) else None
+    surplus_packet = runtime_packets.get('surplus_state') if isinstance(runtime_packets, dict) else None
+    if not isinstance(inputs_packet, dict):
+        inputs_packet = {}
+    if not isinstance(devices_packet, dict):
+        devices_packet = {}
+    if not isinstance(surplus_packet, dict):
+        surplus_packet = {}
+
+    profiles = {}
+    for field_name in ('control', 'goal', 'forecast', 'guard'):
+        default = _compiled_static_default(compiled_plan.profiles, field_name, PACKET_DEFAULT_PROFILES[field_name])
+        profiles[field_name] = _packet_get(inputs_packet, ('profiles', field_name), default, stats=packet_stats)
+
+    global_config = {}
+    for field_name, fallback in PACKET_DEFAULT_GLOBAL_CONFIG.items():
+        default = _compiled_static_default(compiled_plan.global_config, field_name, fallback)
+        global_config[field_name] = _packet_get(
+            inputs_packet,
+            ('config', field_name),
+            default,
+            stats=packet_stats,
+        )
+
+    runtime = {}
+    for field_name in ('grid_power_w', 'quarter_energy_balance_kwh', 'pv_power_w'):
+        default = _compiled_static_default(compiled_plan.runtime, field_name, PACKET_DEFAULT_RUNTIME[field_name])
+        runtime[field_name] = _packet_get(inputs_packet, ('runtime', field_name), default, stats=packet_stats)
+
+    state = {}
+    for field_name in ('surplus_freeze_until', 'active_surplus_devices', 'previous_device_state'):
+        default = _compiled_static_default(compiled_plan.state, field_name, PACKET_DEFAULT_STATE[field_name])
+        state[field_name] = _packet_get(surplus_packet, ('state', field_name), default, stats=packet_stats)
+
+    home_battery_values = _packet_device_values_from_packet(compiled_plan.home_battery, devices_packet, stats=packet_stats)
+    device_values = {}
+    for device_id, device_plan in compiled_plan.devices.items():
+        device_values[str(device_id)] = _packet_device_values_from_packet(device_plan, devices_packet, stats=packet_stats)
+
+    haeo_values = None
+    if compiled_plan.haeo is not None or (isinstance(surplus_packet.get('haeo'), dict)):
+        haeo_values = {}
+        for field_name in ('battery_power_active', 'ev_power_active', 'battery_fresh_source', 'ev_fresh_source'):
+            default = _compiled_static_default(compiled_plan.haeo or {}, field_name, PACKET_DEFAULT_HAEO[field_name])
+            haeo_values[field_name] = _packet_get(surplus_packet, ('haeo', field_name), default, stats=packet_stats)
+
+    role_constraint_values = _static_snapshot_value(compiled_plan.role_constraints)
+    if not isinstance(role_constraint_values, dict):
+        role_constraint_values = {}
+
+    if metrics is not None:
+        metrics['policy_engine_runtime_packet_parse_ms'] = int(round(max(0.0, time.time() - started_ts) * 1000.0))
+        metrics['policy_engine_runtime_packet_missing_fields'] = int(packet_stats.get('missing_fields', 0) or 0)
+        metrics['policy_engine_runtime_packet_schema_version'] = RUNTIME_PACKET_SCHEMA_VERSION
+        metrics['policy_engine_dynamic_runtime_snapshot_dict_nodes'] = 0
+        metrics['policy_engine_dynamic_runtime_snapshot_tuple_nodes'] = 0
+        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen'] = 0
+        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_refs_unique'] = 0
+        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_ref_cache_hits'] = 0
+    return DynamicRuntimeSnapshot(
+        profiles=profiles,
+        global_config=global_config,
+        runtime=runtime,
+        state=state,
+        device_values=device_values,
+        home_battery_values=home_battery_values,
+        haeo_values=haeo_values,
+        role_constraint_values=role_constraint_values,
+    )
+
+
 def build_dynamic_runtime_snapshot(
     compiled_plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
     metrics: Optional[dict[str, int]] = None,
     dynamic_runtime_read_plan: Optional[dict[str, object]] = None,
     dynamic_runtime_read_values: Optional[tuple[object, ...]] = None,
+    runtime_packets: Optional[dict] = None,
 ) -> DynamicRuntimeSnapshot:
+    if runtime_packets is not None and compiled_plan.runtime_packet_plan is not None:
+        return build_dynamic_runtime_snapshot_from_packets(compiled_plan, runtime_packets, metrics=metrics)
     materialize_started_ts = time.time()
     runtime_read_plan = dynamic_runtime_read_plan or compile_dynamic_runtime_read_plan(compiled_plan)
 
@@ -2480,6 +2970,7 @@ def build_policy_context_view(
     metrics: Optional[dict[str, int]] = None,
     dynamic_runtime_read_plan: Optional[dict[str, object]] = None,
     dynamic_runtime_read_values: Optional[tuple[object, ...]] = None,
+    runtime_packets: Optional[dict] = None,
 ) -> CoreConfigView:
     snapshot_started_ts = time.time()
     snapshot = build_dynamic_runtime_snapshot(
@@ -2488,6 +2979,7 @@ def build_policy_context_view(
         metrics=metrics,
         dynamic_runtime_read_plan=dynamic_runtime_read_plan,
         dynamic_runtime_read_values=dynamic_runtime_read_values,
+        runtime_packets=runtime_packets,
     )
     _record_core_config_metric(metrics, 'policy_engine_dynamic_runtime_snapshot_ms', snapshot_started_ts)
     view_started_ts = time.time()
@@ -3099,7 +3591,7 @@ def _parse_policy_engine_diagnostics_interval_seconds(raw_value):
     return interval_seconds
 
 
-def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> None:
+def _validate_devices(devices: dict, issues: list[ConfigValidationIssue], runtime_packet_mode: bool = False) -> None:
     for device_id in REQUIRED_DEVICE_IDS:
         if device_id not in devices:
             issues.append(_issue(f'ems.devices.{device_id}', SEVERITY_ERROR, 'missing required device'))
@@ -3112,13 +3604,13 @@ def _validate_devices(devices: dict, issues: list[ConfigValidationIssue]) -> Non
         if kind == 'BATTERY':
             battery_ids.append(str(device_id))
         expected_kind = EXPECTED_DEVICE_KINDS.get(device_id)
-        _validate_device(device_id, device, expected_kind, issues)
+        _validate_device(device_id, device, expected_kind, issues, runtime_packet_mode=runtime_packet_mode)
 
     if len(battery_ids) != 1 or battery_ids[0] != 'HOME_BATTERY':
         issues.append(_issue('ems.devices', SEVERITY_ERROR, 'phase-1 flexible loader supports exactly one battery device id: HOME_BATTERY'))
 
 
-def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue]) -> None:
+def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue], runtime_packet_mode: bool = False) -> None:
     device_path = f'ems.devices.{device_id}'
     kind = device.get('kind')
     _validate_unknown_fields(device, device_path, ALLOWED_DEVICE_KEYS, issues)
@@ -3130,17 +3622,41 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
     capabilities = device.get('capabilities')
     if not isinstance(capabilities, dict):
         issues.append(_issue(f'{device_path}.capabilities', SEVERITY_ERROR, 'missing or not a mapping'))
+    elif runtime_packet_mode:
+        _validate_packet_static_capabilities(device_path, capabilities, issues)
     else:
         _validate_capabilities(device_path, capabilities, issues)
 
-    required_sections = ['capabilities', 'policy', 'adapter']
-    if device_id == 'HOME_BATTERY':
-        required_sections.append('guard')
+    if runtime_packet_mode:
+        required_sections = ['capabilities']
+    else:
+        required_sections = ['capabilities', 'policy', 'adapter']
+        if device_id == 'HOME_BATTERY':
+            required_sections.append('guard')
     for section in required_sections:
         if section not in device:
             issues.append(_issue(f'{device_path}.{section}', SEVERITY_ERROR, 'missing required section'))
         elif not isinstance(device.get(section), dict):
             issues.append(_issue(f'{device_path}.{section}', SEVERITY_ERROR, 'must be a mapping'))
+
+    if runtime_packet_mode:
+        for runtime_owned_section in ('policy', 'guard', 'adapter'):
+            if runtime_owned_section in device:
+                issues.append(
+                    _issue(
+                        f'{device_path}.{runtime_owned_section}',
+                        SEVERITY_ERROR,
+                        'runtime packet-owned section must not be defined in EMS_config.yaml',
+                    )
+                )
+        if kind == 'RELAY':
+            capabilities = device.get('capabilities')
+            if isinstance(capabilities, dict):
+                if capabilities.get('can_produce_w') is not False:
+                    issues.append(_issue(f'{device_path}.capabilities.can_produce_w', SEVERITY_ERROR, 'relay must define can_produce_w=false'))
+                if capabilities.get('can_absorb_w') is not True:
+                    issues.append(_issue(f'{device_path}.capabilities.can_absorb_w', SEVERITY_ERROR, 'relay must define can_absorb_w=true'))
+        return
 
     if device_id == 'HOME_BATTERY' and isinstance(device.get('guard'), dict):
         _validate_unknown_fields(
@@ -3243,6 +3759,20 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                 issues.append(_issue(f'{device_path}.capabilities.can_produce_w', SEVERITY_ERROR, 'relay must define can_produce_w=false'))
             if capabilities.get('can_absorb_w') is not True:
                 issues.append(_issue(f'{device_path}.capabilities.can_absorb_w', SEVERITY_ERROR, 'relay must define can_absorb_w=true'))
+
+
+def _validate_packet_static_capabilities(device_path: str, capabilities: dict, issues: list[ConfigValidationIssue]) -> None:
+    _validate_unknown_fields(
+        capabilities,
+        f'{device_path}.capabilities',
+        PACKET_STATIC_CAPABILITY_FIELDS,
+        issues,
+    )
+    for field in ('can_absorb_w', 'can_produce_w'):
+        if field not in capabilities:
+            issues.append(_issue(f'{device_path}.capabilities.{field}', SEVERITY_ERROR, 'missing required field'))
+        elif type(capabilities[field]) is not bool:
+            issues.append(_issue(f'{device_path}.capabilities.{field}', SEVERITY_ERROR, 'must be a boolean'))
 
 
 def _validate_capabilities(device_path: str, capabilities: dict, issues: list[ConfigValidationIssue]) -> None:
