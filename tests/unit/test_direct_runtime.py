@@ -285,6 +285,25 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
 
 
 @pytest.mark.unit
+def test_policy_config_rejects_relay_as_adjustable_surplus_load(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=18)
+    packet['config']['adjustable_surplus_load'] = 'RELAY1'
+
+    with pytest.raises(
+        RuntimePacketSchemaError,
+        match=(
+            r'RUNTIME_PACKET_INVALID: policy_config\.config\.adjustable_surplus_load '
+            r'must reference a BATTERY or EV_CHARGER device; RELAY1 has kind RELAY'
+        ),
+    ) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_surplus_load'
+
+
+@pytest.mark.unit
 def test_direct_parser_preserves_float_measurement_signed_discharge_and_runtime_device_values(project_root):
     _top, cfg, frame, _cache_hit = _parse(project_root)
 
@@ -374,7 +393,10 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
         ),
         (
             'export_surplus_activation',
-            lambda p, m, s: m.update(grid_power_w=-3000, quarter_energy_balance_kwh=0, pv_power_w=5000),
+            lambda p, m, s: (
+                p['devices']['EV_CHARGER']['policy'].update(surplus_allowed=True),
+                m.update(grid_power_w=-3000, quarter_energy_balance_kwh=0, pv_power_w=5000),
+            ),
             {'battery_target_w': 100, 'dispatch_action': 'ACTIVATE', 'dispatch_device_id': 'EV_CHARGER'},
         ),
         (
@@ -518,12 +540,13 @@ def test_runtime_packet_sensor_example_guards_missing_haeo_entities(project_root
     state_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Policy State Runtime')
     haeo_template = state_sensor['attributes']['haeo']
 
+    compact = ''.join(haeo_template.split())
     assert 'states.sensor.battery_active_power' in haeo_template
     assert 'states.sensor.ev_akut_active_power' in haeo_template
-    assert "battery_fresh_entity is not none and has_value('sensor.battery_active_power')" in haeo_template
-    assert "ev_fresh_entity is not none and has_value('sensor.ev_akut_active_power')" in haeo_template
-    assert 'as_timestamp(battery_fresh_entity.last_updated, 0)' in haeo_template
-    assert 'as_timestamp(ev_fresh_entity.last_updated, 0)' in haeo_template
+    assert "battery_fresh_entityisnotnoneandhas_value('sensor.battery_active_power')" in compact
+    assert "ev_fresh_entityisnotnoneandhas_value('sensor.ev_akut_active_power')" in compact
+    assert 'as_timestamp(battery_fresh_entity.last_updated,0)' in compact
+    assert 'as_timestamp(ev_fresh_entity.last_updated,0)' in compact
     assert 'states.sensor.battery_active_power.last_updated' not in haeo_template
     assert 'states.sensor.ev_akut_active_power.last_updated' not in haeo_template
 
@@ -580,6 +603,8 @@ def test_runtime_packet_policy_config_revision_is_automatic_not_missing_helper(p
     assert 'source.last_updated' in revision_template
     assert 'namespace(latest=0.0)' in revision_template
     assert 'input_select.ems_control_profile' in revision_template
+    assert 'input_boolean.ems_surplus_adjustable_active' in revision_template
+    assert 'input_boolean.ems_ev_surplus_allowed' not in revision_template
     assert 'input_boolean.ems_ev_force_on' in revision_template
 
 
@@ -597,7 +622,10 @@ def test_runtime_packet_policy_config_uses_runtime_helpers_instead_of_hardcoded_
     assert "states('input_select.ems_adjustable_surplus_load')" in config_template
     assert "states('input_number.ems_max_battery_charge_w')" in devices_template
     assert "states('input_number.ems_max_battery_discharge_w')" in devices_template
-    assert "states('input_number.ems_ev_power_step_w')" in devices_template
+    assert "states('input_number.ems_ev_current_step_a')" in devices_template
+    assert "states('input_number.ems_ev_charger_phases')" in devices_template
+    assert "states('input_number.ems_ev_voltage_v')" in devices_template
+    assert "input_number.ems_ev_power_step_w" not in devices_template
     assert "input_boolean.ems_surplus_adjustable_active" in devices_template
     assert "input_boolean.ems_ev_force_on" in devices_template
     assert "input_boolean.ems_relay1_force_on" in devices_template
@@ -630,8 +658,15 @@ def test_runtime_packet_measurements_do_not_mask_missing_required_sources_with_z
     sensors = source['template'][0]['sensor']
     measurement_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Measurements Runtime')
 
-    assert "states('sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc')" in measurement_sensor['attributes']['battery']
-    assert "| float(0)" not in measurement_sensor['attributes']['battery']
-    assert "else states('switch.charger_control')" in measurement_sensor['attributes']['ev']
-    assert "else states('switch.relay_1_2')" in measurement_sensor['attributes']['relays']
-    assert "else states('switch.relay_2_2')" in measurement_sensor['attributes']['relays']
+    battery_template = measurement_sensor['attributes']['battery']
+    ev_template = measurement_sensor['attributes']['ev']
+    relay_template = measurement_sensor['attributes']['relays']
+    battery_compact = ''.join(battery_template.split())
+    ev_compact = ''.join(ev_template.split())
+    relay_compact = ''.join(relay_template.split())
+
+    assert "states('sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc')" in battery_compact
+    assert "|float(0)" not in battery_compact
+    assert "elsestates('switch.charger_control')" in ev_compact
+    assert "elsestates('switch.relay_1_2')" in relay_compact
+    assert "elsestates('switch.relay_2_2')" in relay_compact

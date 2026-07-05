@@ -362,6 +362,7 @@ class QuarterScenarioHarness:
 
         for device_id, field, value in (
             ('EV_CHARGER', 'priority', 2),
+            ('EV_CHARGER', 'surplus_allowed', True),
             ('RELAY1', 'max_absorb_w', 2500),
             ('RELAY1', 'priority', 3),
             ('RELAY1', 'surplus_allowed', True),

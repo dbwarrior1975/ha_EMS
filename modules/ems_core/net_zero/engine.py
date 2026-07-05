@@ -377,6 +377,7 @@ def _build_policy_runtime_facts(cfg):
 
         policy = {'priority': _device_policy_value(cfg, device_id, 'priority', 0)}
         if kind == 'EV_CHARGER':
+            policy['surplus_allowed'] = _device_policy_value(cfg, device_id, 'surplus_allowed', False)
             policy['force_on'] = _device_policy_value(cfg, device_id, 'force_on', False)
             policy['low_pv_threshold_w'] = _device_policy_value(cfg, device_id, 'low_pv_threshold_w', 0)
             policy['hard_off_low_pv_cycles'] = _device_policy_value(cfg, device_id, 'hard_off_low_pv_cycles', 0)
@@ -1556,6 +1557,17 @@ def compute_net_zero_engine_outputs(
         adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
         adjustable_priority = int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0)
         adjustable_capable = _device_can_absorb(cfg, adjustable_surplus_load, facts=policy_runtime_facts)
+        adjustable_enabled = adjustable_capable
+        if use_ev_surplus_mode:
+            adjustable_enabled = adjustable_capable and bool(
+                _device_policy_value(
+                    cfg,
+                    adjustable_surplus_load,
+                    'surplus_allowed',
+                    False,
+                    facts=policy_runtime_facts,
+                )
+            )
         normalized_relay_device_states = {}
         for device_id, state in (relay_device_states or {}).items():
             normalized_relay_device_states[str(device_id)] = dict(state or {})
@@ -1583,7 +1595,7 @@ def compute_net_zero_engine_outputs(
             adjustable_device_id=adjustable_surplus_load,
             adjustable_priority=adjustable_priority,
             adjustable_active=adjustable_active_current,
-            adjustable_enabled=adjustable_capable,
+            adjustable_enabled=adjustable_enabled,
             relay_candidates=relay_runtime_candidates,
         )
         _note_net_zero_duration_ms('policy_engine_net_zero_surplus_targets_ms', surplus_targets_started_ts)

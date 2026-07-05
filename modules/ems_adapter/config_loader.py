@@ -3700,7 +3700,17 @@ def _validate_device_capability_semantics(ems: dict, devices: dict, issues: list
 
     adjustable_surplus_load = global_config.get('adjustable_surplus_load')
     if isinstance(adjustable_surplus_load, str) and adjustable_surplus_load in devices:
-        adjustable_caps = devices.get(adjustable_surplus_load, {}).get('capabilities')
+        adjustable_device = devices.get(adjustable_surplus_load, {})
+        adjustable_kind = str(adjustable_device.get('kind', '') or '') if isinstance(adjustable_device, dict) else ''
+        if adjustable_kind not in ('BATTERY', 'EV_CHARGER'):
+            issues.append(
+                _issue(
+                    'ems.global_config.adjustable_surplus_load',
+                    SEVERITY_ERROR,
+                    'adjustable_surplus_load must reference a BATTERY or EV_CHARGER device',
+                )
+            )
+        adjustable_caps = adjustable_device.get('capabilities') if isinstance(adjustable_device, dict) else None
         if isinstance(adjustable_caps, dict) and adjustable_caps.get('can_absorb_w') is False:
             issues.append(
                 _issue(

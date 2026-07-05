@@ -451,6 +451,15 @@ def _parse_policy_config_v2(
         if device_id and device_id not in topology.device_kind_by_id:
             _fail(f'policy_config.config.{field}', f'unknown device id {device_id}')
 
+    adjustable_device_id = cfg_values['adjustable_surplus_load']
+    adjustable_kind = str(topology.device_kind_by_id.get(adjustable_device_id, '') or '')
+    if adjustable_kind not in ('BATTERY', 'EV_CHARGER'):
+        _fail(
+            'policy_config.config.adjustable_surplus_load',
+            'must reference a BATTERY or EV_CHARGER device; '
+            f'{adjustable_device_id} has kind {adjustable_kind or "UNKNOWN"}',
+        )
+
     devices_raw = _mapping(_required(packet, 'devices', 'policy_config'), 'policy_config.devices')
     packet_device_ids = set()
     for key in devices_raw:

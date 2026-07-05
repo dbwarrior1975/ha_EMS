@@ -587,6 +587,57 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
 
 
 @pytest.mark.unit
+def test_engine_ev_adjustable_surplus_allowed_false_disables_target():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='HOME_BATTERY',
+        adjustable_surplus_activation=2000,
+        ev_surplus_allowed=False,
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
+        make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=False,
+    )
+
+    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'EV_CHARGER')
+    assert target['enabled'] is False
+    assert out.attrs['surplus_device_next_device_id'] == ''
+    assert out.surplus_dispatch_decision == 'NOOP'
+
+
+@pytest.mark.unit
+def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='HOME_BATTERY',
+        adjustable_surplus_activation=2000,
+        ev_surplus_allowed=False,
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
+        make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=True,
+    )
+
+    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'EV_CHARGER')
+    assert target['enabled'] is False
+    assert target['active'] is True
+    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
+
+
+@pytest.mark.unit
 def test_engine_surplus_device_trace_matches_current_activation_mapping():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(

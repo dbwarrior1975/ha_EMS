@@ -67,3 +67,22 @@ def test_surplus_release_deadband_applies_to_single_active_ev_target():
 
     assert decision.release == 'EV_CHARGER'
     assert decision.explanation == 'RPNZ <= 10 W release deadband -> release lowest-priority active target'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('device_id', ('EV_CHARGER', 'RELAY1'))
+def test_active_priority_zero_target_is_released_as_ineligible(device_id):
+    inp = SurplusDispatchInput(
+        policy_active=True,
+        freeze_until_ts=None,
+        rpc_kw=5.0,
+        rpnz_w=5000.0,
+        targets=(
+            _target(device_id, priority=0, active=True),
+        ),
+    )
+
+    decision = compute_surplus_device_dispatch(inp, now_ts=0.0)
+
+    assert decision.release == device_id
+    assert decision.explanation == f'{device_id} no longer eligible -> release dispatch state'

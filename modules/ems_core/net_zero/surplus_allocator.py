@@ -82,7 +82,7 @@ def compute_surplus_device_dispatch(inp, now_ts, freeze_s=30):
     if not inp.policy_active:
         return SurplusDispatchDecision(clear_all=True, freeze_until_ts=now_ts, explanation='Policy inactive -> clear all surplus states')
     for target in inp.targets:
-        if target.active and ((not target.enabled) or target.force_on):
+        if target.active and ((not target.enabled) or target.force_on or target.priority <= 0):
             return SurplusDispatchDecision(release=target.device_id, explanation=f'{target.device_id} no longer eligible -> release dispatch state')
     active = []
     for target in inp.targets:

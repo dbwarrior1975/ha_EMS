@@ -1042,6 +1042,21 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
 
 
 @pytest.mark.unit
+def test_grouped_config_rejects_relay_as_literal_adjustable_surplus_load(project_root):
+    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    config['ems']['global_config']['adjustable_surplus_load'] = 'RELAY1'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert any(
+        issue.path == 'ems.global_config.adjustable_surplus_load'
+        and issue.message == 'adjustable_surplus_load must reference a BATTERY or EV_CHARGER device'
+        for issue in result.errors
+    )
+
+
+@pytest.mark.unit
 def test_runtime_packet_config_rejects_duplicate_runtime_owned_device_fields(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
     config['ems']['devices']['EV_CHARGER']['policy'] = {'priority': 2}
