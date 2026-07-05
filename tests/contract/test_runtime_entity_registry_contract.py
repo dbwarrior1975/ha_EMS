@@ -221,6 +221,7 @@ def test_runtime_entity_registry_keeps_explicit_empty_device_id_lists(project_ro
             'kind': 'BATTERY',
             'target_w': 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
             'measured_power_w': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
+            'priority': 'input_number.ems_adjustable_surplus_load_priority',
         }
     }
 

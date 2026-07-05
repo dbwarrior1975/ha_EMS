@@ -60,16 +60,11 @@ def _configured_device_order(active_ids, h=None):
         ordered = list(active_ids or ())
         index = {device_id: pos for pos, device_id in enumerate(ordered)}
         devices = (_registry(h).get('devices') or {})
-        adjustable_surplus_load = h.get(_entity(h, 'adjustable_surplus_load'), '')
-        adjustable_priority = h.get(_entity(h, 'adjustable_surplus_load_priority'), 0)
-
         def _priority(device_id):
             device = devices.get(device_id) or {}
             entity_id = device.get('priority')
             if entity_id:
                 return h.get(entity_id, 0)
-            if device_id == adjustable_surplus_load:
-                return adjustable_priority
             return None
 
         return sorted(

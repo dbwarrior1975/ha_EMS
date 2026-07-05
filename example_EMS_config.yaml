@@ -48,6 +48,7 @@ ems:
         max_produce_w: input_number.ems_max_battery_discharge_w
         step_w: input_number.ems_deadband_w
       policy:
+        # Legacy HA helper name; this value belongs to HOME_BATTERY's surplus policy.
         priority: input_number.ems_adjustable_surplus_load_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
       guard:

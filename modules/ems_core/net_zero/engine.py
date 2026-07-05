@@ -1555,7 +1555,16 @@ def compute_net_zero_engine_outputs(
         surplus_targets_started_ts = _net_zero_profile_started_ts()
         configured_activation_w = float(_cfg_scalar_value(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
         adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
-        adjustable_priority = int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0)
+        adjustable_priority = int(
+            _device_policy_value(
+                cfg,
+                adjustable_surplus_load,
+                'priority',
+                0,
+                facts=policy_runtime_facts,
+            )
+            or 0
+        )
         adjustable_capable = _device_can_absorb(cfg, adjustable_surplus_load, facts=policy_runtime_facts)
         adjustable_enabled = adjustable_capable
         if use_ev_surplus_mode:
@@ -1931,7 +1940,9 @@ def compute_net_zero_engine_outputs(
             'ev_power_step_w': int(getattr(selected_ev, 'power_step_w', 0) or 0),
             'ev_target_w': int(round(ev_target_w)),
             'primary_power_envelope_w': primary_envelope_w,
-            'adjustable_surplus_load_priority': int(_cfg_scalar_value(cfg, 'adjustable_surplus_load_priority', 0) or 0),
+            # Compatibility diagnostic: derived from the selected device policy.
+            # DevicePolicy.priority is the only surplus-priority authority.
+            'adjustable_surplus_load_priority': int(adjustable_priority),
             'adjustable_surplus_load': adjustable_surplus_load,
             'adjustable_surplus_activation': configured_activation_w,
             'adjustable_primary_load': adjustable_primary_load,

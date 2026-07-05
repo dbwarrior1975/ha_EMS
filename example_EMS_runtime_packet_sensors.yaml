@@ -180,6 +180,8 @@ template:
                   },
   
                   'policy': {
+                    # Legacy HA helper name; semantically this is HOME_BATTERY's
+                    # device-owned surplus priority, not an adjustable-role priority.
                     'priority':
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'

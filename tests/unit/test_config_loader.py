@@ -990,7 +990,7 @@ def test_materialize_core_config_from_plan_matches_resolved_config_path_with_dyn
 
 
 @pytest.mark.unit
-def test_dynamic_default_override_battery_priority_uses_first_ev_priority_when_battery_ref_returns_default(project_root):
+def test_battery_priority_does_not_inherit_ev_priority_when_battery_value_equals_default(project_root):
     config = _load_example(project_root)
 
     cfg = build_core_config_from_grouped_reader(
@@ -1003,7 +1003,28 @@ def test_dynamic_default_override_battery_priority_uses_first_ev_priority_when_b
         ),
     )
 
-    assert cfg.home_battery.policy.priority == 8
+    assert cfg.home_battery.policy.priority == 3
+    assert cfg.ev_charger.policy.priority == 8
+
+
+@pytest.mark.unit
+def test_compat_adjustable_priority_is_derived_from_selected_device(project_root):
+    config = _load_example(project_root)
+
+    cfg = build_core_config_from_grouped_reader(
+        config,
+        _plan_reader_from_values(
+            {
+                'input_select.ems_adjustable_surplus_load': 'EV_CHARGER',
+                'input_number.ems_adjustable_surplus_load_priority': 2,
+                'input_number.ems_surplus_ev_priority': 3,
+            }
+        ),
+    )
+
+    assert cfg.home_battery.policy.priority == 2
+    assert cfg.ev_charger.policy.priority == 3
+    assert cfg.adjustable_surplus_load_priority == 3
 
 
 @pytest.mark.unit

@@ -455,7 +455,11 @@ class CoreConfigView:
         self.adjustable_primary_load = self.global_config.adjustable_primary_load
         self.adjustable_surplus_activation = self.global_config.adjustable_surplus_activation_w
         self.surplus_freeze_s = self.global_config.surplus_freeze_s
-        self.adjustable_surplus_load_priority = self.device_policy_value('HOME_BATTERY', 'priority', 0)
+        self.adjustable_surplus_load_priority = self.device_policy_value(
+            str(self.adjustable_surplus_load),
+            'priority',
+            0,
+        )
 
     def __getattr__(self, name: str):
         if name == 'home_battery':
@@ -965,7 +969,6 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
         [
             _alias('max_solar_charge_w', 'ems.devices.HOME_BATTERY.capabilities.max_absorb_w', battery_capabilities.get('max_absorb_w')),
             _alias('max_battery_discharge_w', 'ems.devices.HOME_BATTERY.capabilities.max_produce_w', battery_capabilities.get('max_produce_w')),
-            _alias('adjustable_surplus_load_priority', 'ems.devices.HOME_BATTERY.policy.priority', battery_policy.get('priority')),
             _alias('battery_protect_soc', 'ems.devices.HOME_BATTERY.guard.protect_soc', battery_guard.get('protect_soc')),
             _alias('battery_protect_soc_recovery_margin', 'ems.devices.HOME_BATTERY.guard.protect_soc_recovery_margin', battery_guard.get('protect_soc_recovery_margin')),
             _alias('battery_protect_min_cell_voltage_v', 'ems.devices.HOME_BATTERY.guard.protect_min_cell_voltage_v', battery_guard.get('protect_min_cell_voltage_v')),
@@ -1134,32 +1137,6 @@ def _materialize_dynamic_value(value: object, read_entity: Callable[[str, object
         return tuple(materialized)
     return value
 
-
-def _resolved_first_ev_priority(materialized_config: dict) -> object:
-    devices = (((materialized_config.get('ems') or {}).get('devices')) or {})
-    for device in devices.values():
-        if not isinstance(device, dict):
-            continue
-        if str(device.get('kind') or '') != 'EV_CHARGER':
-            continue
-        policy = device.get('policy') or {}
-        return policy.get('priority', 3)
-    return 3
-
-
-def _apply_dynamic_default_overrides(
-    materialized_config: dict,
-    grouped_config_plan: dict,
-) -> dict:
-    plan_devices = (((grouped_config_plan.get('ems') or {}).get('devices')) or {})
-    materialized_devices = (((materialized_config.get('ems') or {}).get('devices')) or {})
-    battery_plan = (plan_devices.get('HOME_BATTERY') or {}).get('policy', {})
-    battery_ref = battery_plan.get('priority')
-    if isinstance(battery_ref, DynamicConfigRef):
-        battery_policy = (materialized_devices.get('HOME_BATTERY') or {}).get('policy', {})
-        if battery_policy.get('priority') == battery_ref.default:
-            battery_policy['priority'] = _resolved_first_ev_priority(materialized_config)
-    return materialized_config
 
 
 def _compile_core_capabilities_plan(
@@ -2207,30 +2184,6 @@ def compile_dynamic_runtime_read_plan(compiled_plan: CompiledEMSPlan) -> dict[st
     else:
         battery_priority_static = battery_priority_value
 
-    first_ev_priority_slot = None
-    first_ev_priority_static = 3
-    for device_id, device_plan in compiled_plan.devices.items():
-        if str(device_plan.kind) != 'EV_CHARGER':
-            continue
-        ev_priority_value = (
-            device_plan.static_policy.get('priority')
-            if hasattr(device_plan.static_policy, 'get')
-            else None
-        )
-        if isinstance(ev_priority_value, DynamicConfigRef):
-            first_ev_priority_slot = unique_slots.get(_runtime_materialization_ref_key(ev_priority_value))
-            if first_ev_priority_slot is None:
-                first_ev_priority_slot = _register_dynamic_runtime_read(
-                    unique_reads,
-                    unique_slots,
-                    logical_read_counts,
-                    ev_priority_value,
-                )
-            first_ev_priority_static = ev_priority_value.default
-        elif ev_priority_value is not None:
-            first_ev_priority_static = ev_priority_value
-        break
-
     dynamic_refs_seen = 0
     for count in logical_read_counts:
         dynamic_refs_seen += int(count)
@@ -2251,8 +2204,6 @@ def compile_dynamic_runtime_read_plan(compiled_plan: CompiledEMSPlan) -> dict[st
         'home_battery_dynamic_fields': home_battery_dynamic_fields,
         'home_battery_priority_slot': battery_priority_slot,
         'home_battery_priority_static': battery_priority_static,
-        'first_ev_priority_slot': first_ev_priority_slot,
-        'first_ev_priority_static': first_ev_priority_static,
         'dynamic_refs_seen': int(dynamic_refs_seen),
         'dynamic_refs_unique': int(dynamic_refs_unique),
         'dynamic_ref_cache_hits': max(0, int(dynamic_refs_seen) - int(dynamic_refs_unique)),
@@ -2329,30 +2280,14 @@ def _resolve_home_battery_priority_from_snapshot(
     compiled_plan: CompiledEMSPlan,
     device_values: dict[str, dict],
 ) -> object:
-    policy_priority = (
-        battery_plan.grouped_device_plan.get('policy', {}).get('priority')
-        if hasattr(battery_plan.grouped_device_plan, 'get')
-        else None
-    )
-    resolved_priority = _resolve_snapshot_backed_section_value(
+    # Device-owned surplus priority: HOME_BATTERY never inherits EV priority.
+    return _resolve_snapshot_backed_section_value(
         battery_plan,
         battery_values,
         'policy',
         'priority',
         3,
     )
-    if isinstance(policy_priority, DynamicConfigRef) and resolved_priority == policy_priority.default:
-        for device_id, device_plan in compiled_plan.devices.items():
-            if str(device_plan.kind) != 'EV_CHARGER':
-                continue
-            return _resolve_snapshot_backed_section_value(
-                device_plan,
-                device_values.get(str(device_id), {}),
-                'policy',
-                'priority',
-                3,
-            )
-    return resolved_priority
 
 
 def _policy_runtime_device_plan(compiled_plan: CompiledEMSPlan, device_id: str) -> Optional[StaticDevicePlan]:
@@ -2721,18 +2656,6 @@ def build_dynamic_runtime_snapshot(
     resolved_battery_priority = battery_priority_static
     if battery_priority_slot is not None:
         resolved_battery_priority = dynamic_runtime_read_values[int(battery_priority_slot)]
-    if isinstance(battery_priority_value := (
-        compiled_plan.home_battery.grouped_device_plan.get('policy', {}).get('priority')
-        if hasattr(compiled_plan.home_battery.grouped_device_plan, 'get')
-        else None
-    ), DynamicConfigRef) and resolved_battery_priority == battery_priority_value.default:
-        first_ev_priority_slot = runtime_read_plan.get('first_ev_priority_slot')
-        first_ev_priority = runtime_read_plan.get('first_ev_priority_static', 3)
-        if first_ev_priority_slot is not None:
-            first_ev_priority = dynamic_runtime_read_values[int(first_ev_priority_slot)]
-        home_battery_values.setdefault('policy', {})
-        home_battery_values['policy']['priority'] = first_ev_priority
-    elif battery_priority_slot is not None:
         home_battery_values.setdefault('policy', {})
         home_battery_values['policy']['priority'] = resolved_battery_priority
     _record_core_config_metric(metrics, 'policy_engine_core_config_home_battery_ms', home_battery_started_ts)
@@ -2803,7 +2726,6 @@ def _materialize_core_config_via_resolved_config_for_tests(
     read_entity: Callable[[str, object], object],
 ) -> CoreConfig:
     resolved_config = _materialize_dynamic_value(plan.grouped_config_plan, read_entity)
-    resolved_config = _apply_dynamic_default_overrides(resolved_config, plan.grouped_config_plan)
     return _build_core_config_from_grouped_value_config(resolved_config)
 
 
@@ -3173,10 +3095,7 @@ def _resolve_home_battery_priority_from_plan(
     read_entity: Callable[[str, object], object],
 ) -> object:
     policy = _require_mapping_value(_require_mapping_value(battery_device_plan, 'policy'), 'priority')
-    resolved_priority = _resolve_core_config_value(policy, read_entity, 3)
-    if isinstance(policy, DynamicConfigRef) and resolved_priority == policy.default:
-        return _first_ev_priority(core_devices)
-    return resolved_priority
+    return _resolve_core_config_value(policy, read_entity, 3)
 
 
 def _materialize_home_battery_from_plan(
@@ -3264,7 +3183,7 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
         'HOME_BATTERY',
         devices.get('HOME_BATTERY'),
         read_entity,
-        default_priority=_first_ev_priority(core_devices),
+        default_priority=3,
     )
     core_devices['HOME_BATTERY'] = home_battery
     core_config = CoreConfig(
@@ -3363,16 +3282,17 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.adjustable_surplus_activation = core_config.global_config.adjustable_surplus_activation_w
     if core_config.surplus_freeze_s is None:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
-    if core_config.adjustable_surplus_load_priority is None:
-        core_config.adjustable_surplus_load_priority = core_config.home_battery.policy.priority
+    selected_adjustable = core_config.device_by_id(str(core_config.adjustable_surplus_load))
+    if selected_adjustable is not None:
+        core_config.adjustable_surplus_load_priority = getattr(
+            getattr(selected_adjustable, 'policy', None),
+            'priority',
+            0,
+        )
+    elif core_config.adjustable_surplus_load_priority is None:
+        core_config.adjustable_surplus_load_priority = 0
     return core_config
 
-
-def _first_ev_priority(core_devices: dict[str, object]) -> object:
-    for device in core_devices.values():
-        if str(getattr(device, 'kind', '')) == 'EV_CHARGER':
-            return getattr(getattr(device, 'policy', None), 'priority', 3)
-    return 3
 
 
 def _parse_policy_engine_interval_seconds(raw_value):

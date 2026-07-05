@@ -1,5 +1,8 @@
 import pytest
-from ems_core.domain.models import ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile
+from ems_core.domain.models import (
+    ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile,
+    HaeoNetZeroPlan,
+)
 from ems_core.domain.ev_power import ev_min_power_w
 from ems_core.net_zero.engine import compute_net_zero_engine_outputs
 from ems_adapter.config_loader import (
@@ -584,6 +587,66 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
     assert policies['RELAY3'].enabled is True
     assert policies['RELAY3'].target_w == 750
     assert {item['device_id'] for item in out.attrs['device_policies']} >= {'RELAY1', 'RELAY2', 'RELAY3'}
+
+
+@pytest.mark.unit
+def test_engine_uses_selected_device_priority_not_compat_role_scalar():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='HOME_BATTERY',
+        adjustable_surplus_load_priority=2,
+        ev_priority=3,
+        adjustable_surplus_activation=2000,
+    )
+    # Simulate a stale legacy role-owned scalar. The engine must ignore it.
+    cfg.adjustable_surplus_load_priority = 99
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
+        make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=False,
+    )
+
+    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'EV_CHARGER')
+    assert target['priority'] == 3
+    assert out.attrs['adjustable_surplus_load_priority'] == 3
+
+
+@pytest.mark.unit
+def test_engine_haeo_role_switch_uses_runtime_selected_device_priority():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_surplus_load='EV_CHARGER',
+        adjustable_primary_load='HOME_BATTERY',
+        adjustable_surplus_load_priority=2,
+        ev_priority=3,
+        adjustable_surplus_activation=2000,
+    )
+    plan = HaeoNetZeroPlan(
+        active=True,
+        primary_device_id='EV_CHARGER',
+        adjustable_device_id='HOME_BATTERY',
+        device_limits_w={'HOME_BATTERY': 3700, 'EV_CHARGER': 6400},
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
+        make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=False,
+        haeo_nz_plan=plan,
+    )
+
+    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'HOME_BATTERY')
+    assert target['priority'] == 2
+    assert out.attrs['adjustable_surplus_load'] == 'HOME_BATTERY'
+    assert out.attrs['adjustable_surplus_load_priority'] == 2
 
 
 @pytest.mark.unit

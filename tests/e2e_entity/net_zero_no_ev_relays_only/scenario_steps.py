@@ -19,7 +19,7 @@ def build_harness(project_root):
         E['adjustable_surplus_load']: 'HOME_BATTERY',
         E['adjustable_primary_load']: '',
         E['adjustable_surplus_activation']: 2000,
-        E['adjustable_surplus_load_priority']: 4,
+        E['devices']['HOME_BATTERY']['priority']: 4,
         E['devices']['RELAY1']['priority']: 2,
         E['devices']['RELAY2']['priority']: 1,
         E['devices']['RELAY1']['surplus_allowed']: True,

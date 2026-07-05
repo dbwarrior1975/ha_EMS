@@ -274,6 +274,14 @@ Nama kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
   - Aloitus: 2.
   - Nosta jos haluat vakaamman hard_off-vapautuksen ja vahemman sahaysta kynnyksen tuntumassa.
 
+### Surplus-priority contract
+
+- Priority kuuluu aina devicelle, ei `adjustable`-roolille.
+- `HOME_BATTERY.policy.priority`, `EV_CHARGER.policy.priority` ja relay-devicejen priorityt ovat authoritative.
+- Kun `adjustable_surplus_load` vaihtuu, allocator kayttaa uuden valitun devicen omaa prioritya.
+- Diagnostiikan `adjustable_surplus_load_priority` on vain valitun devicen prioritysta johdettu compatibility-kentta.
+- HA-helper `ems_adjustable_surplus_load_priority` on legacy-niminen; nykyisessa tuotantobindingissa se omistaa HOME_BATTERYn device-priorityn.
+
 ## 3. Combo A: primary EV_CHARGER, surplus HOME_BATTERY
 
 ### 3.1 Tyypillinen kayttotapaus
@@ -287,8 +295,8 @@ Nama kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
 - ems_adjustable_primary_load = EV_CHARGER
 - ems_adjustable_surplus_load = HOME_BATTERY
 - ems_adjustable_surplus_activation_w = 2500 W
-- ems_adjustable_surplus_load_priority = 4
-- ems_ev_priority = 3
+- ems_adjustable_surplus_load_priority = 4 (legacy helper name; HOME_BATTERYn oma surplus-priority)
+- ems_surplus_ev_priority = 3
 - ems_surplus_relay1_priority = 2
 - ems_surplus_relay2_priority = 1
 - ems_nz_battery_floor_ev_active_w = 0 W
@@ -339,8 +347,8 @@ Selvennys activation-parametriin (tarkea):
 - ems_adjustable_primary_load = HOME_BATTERY
 - ems_adjustable_surplus_load = EV_CHARGER
 - ems_adjustable_surplus_activation_w = 2000-2600 W
-- ems_adjustable_surplus_load_priority = 3 tai 4
-- ems_ev_priority = 2 tai 3
+- ems_surplus_ev_priority = 2 tai 3
+- ems_adjustable_surplus_load_priority = HOME_BATTERYn oma priority (ei EV:n adjustable-roolin priority)
 - ems_surplus_relay1_priority = 2
 - ems_surplus_relay2_priority = 1
 - ems_ev_min_power_w = 1380 W
@@ -361,7 +369,7 @@ Selvennys activation-parametriin (tarkea):
 
 - EV aktivoituu liian herkästi:
   - Nosta ems_adjustable_surplus_activation_w arvoa.
-  - Laske ems_adjustable_surplus_load_priority, jos releiden halutaan aktivoituvan ensin.
+  - Laske ems_surplus_ev_priority-arvoa, jos releiden halutaan aktivoituvan ensin.
 
 - Akku jaa alle maksimin vaikka HOME_BATTERY on primary:
   - Tarkista `quarter_energy_balance_kwh` ja `rpnz_w` traceista.

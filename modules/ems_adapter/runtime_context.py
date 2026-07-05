@@ -832,7 +832,6 @@ def build_runtime_entities_from_grouped_config(config):
         'adjustable_surplus_activation',
         'max_solar_charge_w',
         'max_battery_discharge_w',
-        'adjustable_surplus_load_priority',
         'battery_protect_soc',
         'battery_protect_soc_recovery_margin',
         'battery_protect_min_cell_voltage_v',
@@ -910,6 +909,7 @@ def build_runtime_entities_from_grouped_config(config):
             if kind == 'BATTERY':
                 entry['target_w'] = adapter.get('target_w')
                 entry['measured_power_w'] = adapter.get('measured_power_w')
+                entry['priority'] = policy.get('priority')
             elif kind == 'EV_CHARGER':
                 ev_device_ids.append(str(device_id))
                 min_absorb_w = capabilities.get('min_absorb_w')

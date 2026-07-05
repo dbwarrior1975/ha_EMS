@@ -999,7 +999,7 @@ def test_dynamic_fields_refresh_with_static_context_cache_hit(
 
 
 @pytest.mark.unit
-def test_dynamic_default_override_battery_priority_updates_on_cache_hit_when_ev_priority_changes(project_root, monkeypatch):
+def test_ev_priority_change_does_not_mutate_battery_priority_on_cache_hit(project_root, monkeypatch):
     first_cfg, second_cfg = _assert_dynamic_value_updates_on_static_cache_hit(
         project_root,
         monkeypatch,
@@ -1008,11 +1008,13 @@ def test_dynamic_default_override_battery_priority_updates_on_cache_hit_when_ev_
             ENT['devices']['EV_CHARGER']['priority']: 4,
         },
         lambda values: values.__setitem__(ENT['devices']['EV_CHARGER']['priority'], 9),
-        lambda cfg: cfg.home_battery.policy.priority,
+        lambda cfg: cfg.ev_charger.policy.priority,
     )
 
-    assert first_cfg.home_battery.policy.priority == 4
-    assert second_cfg.home_battery.policy.priority == 9
+    assert first_cfg.home_battery.policy.priority == 3
+    assert second_cfg.home_battery.policy.priority == 3
+    assert first_cfg.ev_charger.policy.priority == 4
+    assert second_cfg.ev_charger.policy.priority == 9
 
 
 @pytest.mark.unit

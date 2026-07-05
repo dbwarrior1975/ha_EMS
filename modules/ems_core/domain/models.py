@@ -308,8 +308,15 @@ class CoreConfig:
             self.adjustable_surplus_activation = self.global_config.adjustable_surplus_activation_w
         if self.surplus_freeze_s is None:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
-        if self.adjustable_surplus_load_priority is None:
-            self.adjustable_surplus_load_priority = self.home_battery.policy.priority
+        selected_adjustable = self.device_by_id(str(self.adjustable_surplus_load))
+        if selected_adjustable is not None:
+            self.adjustable_surplus_load_priority = getattr(
+                getattr(selected_adjustable, 'policy', None),
+                'priority',
+                0,
+            )
+        elif self.adjustable_surplus_load_priority is None:
+            self.adjustable_surplus_load_priority = 0
     def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
         if self.devices is None:
             return None

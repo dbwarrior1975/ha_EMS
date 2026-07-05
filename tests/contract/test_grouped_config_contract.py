@@ -30,7 +30,6 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
         'adjustable_surplus_load',
         'adjustable_primary_load',
         'adjustable_surplus_activation',
-        'adjustable_surplus_load_priority',
         'battery_protect_soc',
         'battery_protect_soc_recovery_margin',
         'battery_protect_min_cell_voltage_v',
@@ -85,7 +84,6 @@ def test_grouped_config_aliases_cover_runtime_alias_fields(project_root):
         'adjustable_surplus_load',
         'adjustable_primary_load',
         'adjustable_surplus_activation',
-        'adjustable_surplus_load_priority',
         'haeo_stale_timeout_s',
         'surplus_freeze_s',
     }

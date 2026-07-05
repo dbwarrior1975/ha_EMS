@@ -306,12 +306,19 @@ Keskeiset config-avaimet (EMS):
 20. `adjustable_surplus_load`
 21. `adjustable_primary_load`
 22. `adjustable_surplus_activation`
-23. `adjustable_surplus_load_priority`
-24. relekohtaiset power/priority-avaimet device-id:n mukaan
-25. EV-kohtaiset power/priority-avaimet device-id:n mukaan
+23. device-kohtaiset surplus-priority-avaimet device-id:n mukaan
+24. relekohtaiset power-avaimet device-id:n mukaan
+25. EV-kohtaiset power-avaimet device-id:n mukaan
 26. adapteri-/debug-polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
 27. `surplus_freeze_s`
 28. `haeo_stale_timeout_s`
+
+Priority-contract: `DevicePolicy.priority` on ainoa surplus-prioriteetin authoritative lahde.
+`adjustable_surplus_load_priority` voi nakya diagnostiikassa vain valitun devicen
+johdettuna compatibility-arvona; se ei ole erillinen konfiguroitava rooliprioriteetti.
+HOME_BATTERY voi edelleen sitoutua vanhan nimiseen HA-helperiin
+`input_number.ems_adjustable_surplus_load_priority`, mutta helper omistaa silloin vain
+HOME_BATTERYn device-prioriteetin.
 
 Keskeiset surplus-state-avaimet (EMS):
 
