@@ -8,6 +8,14 @@ from ems_adapter.config_loader import (
     runtime_alias_index,
     load_and_validate_grouped_ems_config,
 )
+from ems_adapter.direct_runtime import (
+    RUNTIME_SCHEMA_VERSION,
+    RuntimePacketSchemaError,
+    parse_policy_config_cached,
+    parse_tick_frame_v2,
+    reset_direct_runtime_cache,
+)
+from ems_core.domain.models import CorePolicyEngineConfig
 from ems_adapter.ha_adapter import get_bool as _get_bool
 from ems_adapter.ha_adapter import get_float as _get_float
 from ems_adapter.ha_adapter import get_int as _get_int
@@ -100,6 +108,11 @@ _RUNTIME_CONTEXT_LAST_METRICS = {
     'policy_engine_runtime_packet_parse_ms': 0,
     'policy_engine_runtime_packet_missing_fields': 0,
     'policy_engine_runtime_packet_schema_version': 0,
+    'policy_engine_runtime_policy_config_revision': 0,
+    'policy_engine_runtime_policy_config_cache_hit': False,
+    'policy_engine_runtime_policy_config_parse_ms': 0,
+    'policy_engine_runtime_tick_frame_parse_ms': 0,
+    'policy_engine_direct_runtime_total_ms': 0,
     'policy_engine_dynamic_config_audit_entries': 0,
     'policy_engine_dynamic_runtime_snapshot_dict_nodes': 0,
     'policy_engine_dynamic_runtime_snapshot_tuple_nodes': 0,
@@ -121,6 +134,7 @@ _RUNTIME_CONTEXT_AUDIT_STATE = {
 
 
 def _reset_runtime_context_config_cache():
+    reset_direct_runtime_cache()
     _RUNTIME_CONTEXT_CONFIG_CACHE.clear()
     _RUNTIME_CONTEXT_CONFIG_CACHE.update(
         {
@@ -177,6 +191,11 @@ def _reset_runtime_context_metrics():
             'policy_engine_runtime_packet_parse_ms': 0,
             'policy_engine_runtime_packet_missing_fields': 0,
             'policy_engine_runtime_packet_schema_version': 0,
+            'policy_engine_runtime_policy_config_revision': 0,
+            'policy_engine_runtime_policy_config_cache_hit': False,
+            'policy_engine_runtime_policy_config_parse_ms': 0,
+            'policy_engine_runtime_tick_frame_parse_ms': 0,
+            'policy_engine_direct_runtime_total_ms': 0,
             'policy_engine_dynamic_config_audit_entries': 0,
             'policy_engine_dynamic_runtime_snapshot_dict_nodes': 0,
             'policy_engine_dynamic_runtime_snapshot_tuple_nodes': 0,
@@ -238,7 +257,7 @@ def _load_grouped_config_cached(path):
         grouped_entities = build_runtime_entities_from_grouped_config(grouped_config)
         runtime_entity_registry_ms = _elapsed_ms(registry_started_ts, time.time())
         core_config_plan = compile_core_config_plan_from_grouped_config(grouped_config)
-        if getattr(core_config_plan, 'runtime_packet_plan', None) is not None:
+        if getattr(core_config_plan, 'static_topology', None) is not None:
             dynamic_runtime_read_plan = {}
         else:
             dynamic_runtime_read_plan = compile_dynamic_runtime_read_plan(core_config_plan)
@@ -321,31 +340,41 @@ def _read_grouped_entity(entity_id, default, read_bool, read_float, read_int, re
     return read_str(entity_id, default)
 
 
-def _read_runtime_packet_attrs(read_attrs, entity_id):
+def _read_runtime_packet_attrs(read_attrs, entity_id, source_name):
+    source_path = str(source_name) + '.source_entity'
     if not callable(read_attrs):
-        return {}
+        raise RuntimePacketSchemaError(
+            source_path,
+            'attribute reader unavailable for ' + str(entity_id),
+        )
     attrs = read_attrs(str(entity_id), {})
-    if isinstance(attrs, dict):
-        return attrs
-    return {}
+    if not isinstance(attrs, dict):
+        raise RuntimePacketSchemaError(
+            source_path,
+            'source ' + str(entity_id) + ' did not return an attribute mapping',
+        )
+    if 'schema_version' not in attrs:
+        raise RuntimePacketSchemaError(
+            str(source_name) + '.schema_version',
+            'missing from source entity ' + str(entity_id),
+        )
+    return attrs
 
 
-def read_runtime_packets(read_attrs, runtime_packet_plan):
+def read_runtime_packets(read_attrs, static_topology):
     started_ts = time.time()
     packets = {}
-    reads = 0
     sources = (
-        ('inputs_and_profiles', getattr(runtime_packet_plan, 'inputs_and_profiles_entity_id', '')),
-        ('devices', getattr(runtime_packet_plan, 'devices_entity_id', '')),
-        ('surplus_state', getattr(runtime_packet_plan, 'surplus_state_entity_id', '')),
+        ('policy_config', static_topology.policy_config_entity_id),
+        ('measurements', static_topology.measurements_entity_id),
+        ('policy_state', static_topology.policy_state_entity_id),
     )
     for source_name, entity_id in sources:
-        packets[source_name] = _read_runtime_packet_attrs(read_attrs, entity_id)
-        reads += 1
+        packets[source_name] = _read_runtime_packet_attrs(read_attrs, entity_id, source_name)
     return packets, {
-        'reads': int(reads),
+        'reads': 3,
         'read_ms': _elapsed_ms(started_ts, time.time()),
-        'schema_version': int(getattr(runtime_packet_plan, 'schema_version', 1) or 1),
+        'schema_version': RUNTIME_SCHEMA_VERSION,
     }
 
 
@@ -504,29 +533,45 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
         dynamic_underlying_ha_s['value'] += max(0.0, time.time() - started_ts)
         return value
 
-    runtime_packet_plan = getattr(core_config_plan, 'runtime_packet_plan', None)
-    if runtime_packet_plan is not None:
-        core_config_started_ts = _runtime_context_profile_started_ts()
-        runtime_packets, packet_read_metrics = read_runtime_packets(read_attrs, runtime_packet_plan)
-        materialize_metrics = {} if RUNTIME_CONTEXT_DETAILED_METRICS_ENABLED else None
-        grouped_cfg = build_policy_context_view(
-            core_config_plan,
-            grouped_reader,
-            metrics=materialize_metrics,
-            dynamic_runtime_read_plan=dynamic_runtime_read_plan,
-            dynamic_runtime_read_values=(),
-            runtime_packets=runtime_packets,
+    static_topology = getattr(core_config_plan, 'static_topology', None)
+    if static_topology is not None:
+        direct_started_ts = _runtime_context_profile_started_ts()
+        runtime_packets, packet_read_metrics = read_runtime_packets(read_attrs, static_topology)
+
+        policy_engine_values = getattr(core_config_plan, 'policy_engine', {}) or {}
+        policy_engine_cfg = CorePolicyEngineConfig(
+            interval_seconds=float(policy_engine_values.get('interval_seconds', 5.0) or 5.0),
+            diagnostics_interval_seconds=float(
+                policy_engine_values.get('diagnostics_interval_seconds', 30.0) or 30.0
+            ),
         )
+
+        config_parse_started_ts = _runtime_context_profile_started_ts()
+        runtime_cfg, config_cache_hit = parse_policy_config_cached(
+            static_topology,
+            runtime_packets.get('policy_config', {}),
+            policy_engine_cfg,
+        )
+        config_parse_ms = _elapsed_ms(config_parse_started_ts, time.time())
+
+        frame_parse_started_ts = _runtime_context_profile_started_ts()
+        tick_frame = parse_tick_frame_v2(
+            static_topology,
+            runtime_cfg,
+            runtime_packets.get('measurements', {}),
+            runtime_packets.get('policy_state', {}),
+            time.time(),
+        )
+        frame_parse_ms = _elapsed_ms(frame_parse_started_ts, time.time())
+        direct_total_ms = _elapsed_ms(direct_started_ts, time.time())
+
         packet_reads = int(packet_read_metrics.get('reads', 0) or 0)
         packet_read_ms = int(packet_read_metrics.get('read_ms', 0) or 0)
-        packet_schema_version = int(packet_read_metrics.get('schema_version', 1) or 1)
         dynamic_read_totals['total_reads'] = packet_reads
         dynamic_read_totals['underlying_reads'] = packet_reads
         dynamic_read_totals['cache_hits'] = 0
+
         if RUNTIME_CONTEXT_DETAILED_METRICS_ENABLED:
-            total_core_config_ms = _elapsed_ms(core_config_started_ts, time.time())
-            if isinstance(materialize_metrics, dict):
-                materialize_metrics['policy_engine_core_config_materialize_total_ms'] = max(0, int(total_core_config_ms))
             _RUNTIME_CONTEXT_LAST_METRICS.update(
                 {
                     'policy_engine_config_signature_ms': config_signature_ms,
@@ -534,40 +579,41 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
                     'policy_engine_static_context_cache_hits': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('hits', 0) or 0),
                     'policy_engine_static_context_cache_misses': int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('misses', 0) or 0),
                     'policy_engine_static_context_build_ms': max(0, int(static_context_build_ms)),
-                    'policy_engine_dynamic_config_reads_ms': max(0, int(packet_read_ms)),
+                    'policy_engine_dynamic_config_reads_ms': max(0, packet_read_ms),
                     'policy_engine_dynamic_config_logical_reads': packet_reads,
-                    'policy_engine_dynamic_config_reader_total_ms': max(0, int(packet_read_ms)),
+                    'policy_engine_dynamic_config_reader_total_ms': max(0, packet_read_ms),
                     'policy_engine_dynamic_config_reader_overhead_ms': 0,
                     'policy_engine_dynamic_config_audit_overhead_ms': 0,
                     'policy_engine_dynamic_config_full_audit_collected': False,
                     'policy_engine_dynamic_config_unique_reads': packet_reads,
                     'policy_engine_runtime_packet_reads': packet_reads,
-                    'policy_engine_runtime_packet_read_ms': max(0, int(packet_read_ms)),
-                    'policy_engine_runtime_packet_schema_version': packet_schema_version,
+                    'policy_engine_runtime_packet_read_ms': max(0, packet_read_ms),
+                    'policy_engine_runtime_packet_schema_version': RUNTIME_SCHEMA_VERSION,
+                    'policy_engine_runtime_packet_parse_ms': max(0, config_parse_ms + frame_parse_ms),
+                    'policy_engine_runtime_packet_missing_fields': 0,
+                    'policy_engine_runtime_policy_config_revision': int(runtime_cfg.revision),
+                    'policy_engine_runtime_policy_config_cache_hit': bool(config_cache_hit),
+                    'policy_engine_runtime_policy_config_parse_ms': max(0, config_parse_ms),
+                    'policy_engine_runtime_tick_frame_parse_ms': max(0, frame_parse_ms),
                     'policy_engine_dynamic_config_audit_entries': 0,
-                    'policy_engine_dynamic_read_plan_apply_total_ms': max(0, int(packet_read_ms)),
-                    'policy_engine_dynamic_read_underlying_ha_ms': max(0, int(packet_read_ms)),
+                    'policy_engine_dynamic_read_plan_apply_total_ms': max(0, packet_read_ms),
+                    'policy_engine_dynamic_read_underlying_ha_ms': max(0, packet_read_ms),
                     'policy_engine_dynamic_read_wrapper_overhead_ms': 0,
                     'policy_engine_dynamic_read_audit_update_ms': 0,
                     'policy_engine_dynamic_read_audit_build_ms': 0,
                     'policy_engine_dynamic_read_audit_sort_ms': 0,
                     'policy_engine_runtime_entity_registry_ms': max(0, int(runtime_entity_registry_ms)),
-                    'policy_engine_core_config_build_ms': max(0, int(total_core_config_ms - packet_read_ms)),
+                    'policy_engine_core_config_build_ms': 0,
+                    'policy_engine_core_config_materialize_total_ms': 0,
+                    'policy_engine_dynamic_runtime_snapshot_ms': 0,
+                    'policy_engine_policy_context_view_ms': 0,
+                    'policy_engine_core_config_unexplained_overhead_ms': 0,
+                    'policy_engine_direct_runtime_total_ms': max(0, direct_total_ms),
                 }
-            )
-            if isinstance(materialize_metrics, dict):
-                _RUNTIME_CONTEXT_LAST_METRICS.update(materialize_metrics)
-            _RUNTIME_CONTEXT_LAST_METRICS['policy_engine_core_config_unexplained_overhead_ms'] = max(
-                0,
-                int(
-                    (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_core_config_materialize_total_ms', 0) or 0)
-                    - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_dynamic_config_reads_ms', 0) or 0)
-                    - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_dynamic_runtime_snapshot_ms', 0) or 0)
-                    - (_RUNTIME_CONTEXT_LAST_METRICS.get('policy_engine_policy_context_view_ms', 0) or 0)
-                ),
             )
         else:
             _RUNTIME_CONTEXT_LAST_METRICS.clear()
+
         _RUNTIME_CONTEXT_LAST_DYNAMIC_READ_AUDIT.update(
             {
                 'entries': (),
@@ -577,7 +623,9 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
                 'full_audit_collected': False,
             }
         )
-        return grouped_cfg, grouped_entities, {
+        direct_entities = dict(grouped_entities or {})
+        direct_entities['_direct_tick_frame'] = tick_frame
+        return runtime_cfg, direct_entities, {
             'enabled': True,
             'ok': None,
             'source': 'grouped_config',
@@ -585,6 +633,8 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
             'reason': 'loaded',
             'config_cache_hit': cache_hit,
             'runtime_packet_mode': True,
+            'runtime_schema_version': RUNTIME_SCHEMA_VERSION,
+            'policy_config_revision': int(runtime_cfg.revision),
         }, grouped_config
 
     core_config_started_ts = _runtime_context_profile_started_ts()
@@ -828,9 +878,9 @@ def build_runtime_entities_from_grouped_config(config):
         ent['active_surplus_devices'] = state.get('active_surplus_devices')
         ent['previous_device_state'] = state.get('previous_device_state')
     if runtime_packet_mode:
-        ent['runtime_packet_mode'] = True
+        # Direct v2 policy state is canonical. Active surplus state is maintained
+        # by the dispatch-state applier's own sensor and must not alias the command sensor.
         ent['previous_device_state'] = ent.get('previous_device_state') or CANONICAL_POLICY_OUTPUTS['policy_state']
-        ent['active_surplus_devices'] = ent.get('active_surplus_devices') or CANONICAL_POLICY_OUTPUTS['dispatch_command']
     ent['device_policies'] = CANONICAL_POLICY_OUTPUTS['device_policies']
     ent['dispatch_command'] = CANONICAL_POLICY_OUTPUTS['dispatch_command']
     ent['policy_state'] = CANONICAL_POLICY_OUTPUTS['policy_state']

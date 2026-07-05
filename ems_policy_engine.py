@@ -1,7 +1,6 @@
-import hashlib
-import json
-
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
+from ems_adapter.direct_runtime import PolicyResult, RuntimePacketSchemaError
+from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
 from ems_core.net_zero.engine import (
@@ -32,10 +31,13 @@ _POLICY_ENGINE_TIMER_STATE = {
     'ticks_seen': 0,
     'runs_seen': 0,
     'skipped_ticks': 0,
-    'previous_device_policies_hash': None,
-    'previous_dispatch_command_hash': None,
-    'previous_policy_state_hash': None,
-    'previous_warning_signature': None,
+    'previous_device_policies_key': None,
+    'previous_dispatch_command_key': None,
+    'previous_policy_state_key': None,
+    'previous_warning_key': None,
+    'device_policies_version': 0,
+    'dispatch_command_version': 0,
+    'policy_state_version': 0,
     'previous_diagnostics_publish_ms': 0,
 }
 
@@ -58,39 +60,39 @@ def _policy_output_contract_attrs():
     }
 
 
-def _json_stable(value):
+def _stable_key(value):
     if isinstance(value, dict):
         normalized = {}
         for key, item in value.items():
-            normalized[str(key)] = _json_stable(item)
-        return normalized
+            normalized[str(key)] = _stable_key(item)
+        keys = list(normalized.keys())
+        keys.sort()
+        pairs = []
+        for key in keys:
+            pairs.append((key, normalized[key]))
+        return tuple(pairs)
     if isinstance(value, (list, tuple)):
-        normalized = []
+        items = []
         for item in value:
-            normalized.append(_json_stable(item))
-        return normalized
+            items.append(_stable_key(item))
+        return tuple(items)
     if isinstance(value, set):
-        sortable_items = []
+        items = []
         for item in value:
-            normalized_item = _json_stable(item)
-            sortable_items.append((_stable_json_text(normalized_item), normalized_item))
-        sortable_items.sort()
-        normalized = []
-        for _serialized_item, normalized_item in sortable_items:
-            normalized.append(normalized_item)
-        return normalized
+            items.append(repr(_stable_key(item)))
+        items.sort()
+        return tuple(items)
     if isinstance(value, (bool, int, float, str)) or value is None:
         return value
     return str(value)
 
 
-def _stable_json_text(value):
-    return json.dumps(value, sort_keys=True, separators=(',', ':'))
-
-
-def _payload_hash(payload):
-    serialized = _stable_json_text(_json_stable(payload))
-    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:16]
+def _next_monotonic_version(state_key, changed):
+    current = int(_POLICY_ENGINE_TIMER_STATE.get(state_key, 0) or 0)
+    if changed:
+        current += 1
+        _POLICY_ENGINE_TIMER_STATE[state_key] = current
+    return current
 
 
 def read_core_config():
@@ -100,7 +102,7 @@ def read_core_config():
 
 def read_config():
     return read_core_config()
-    
+
 def _valid_runtime_value(value):
     return value not in (None, 'unknown', 'unavailable', 'none', '')
 
@@ -142,46 +144,15 @@ def _cfg_attr(obj, name, default=None):
     return getattr(obj, name, default)
 
 
-def _runtime_packet_mode(entities):
-    return bool((entities or {}).get('runtime_packet_mode', False))
-
-
 def read_profiles(cfg, entities=None):
+    # Direct schema-v2 ticks use RuntimePolicyConfig.profiles without this projection.
     entities = entities or {}
-    if not _runtime_packet_mode(entities):
-        return Profiles(
-            control=_enum(ControlProfile, get_str(entities.get('control_profile', ''), 'AUTOMATIC'), ControlProfile.AUTOMATIC),
-            goal=_enum(GoalProfile, get_str(entities.get('goal_profile', ''), 'NET_ZERO'), GoalProfile.NET_ZERO),
-            forecast=_enum(ForecastProfile, get_str(entities.get('forecast_profile', ''), 'NONE'), ForecastProfile.NONE),
-            guard=_enum(GuardProfile, get_str(entities.get('guard_profile', ''), 'NORMAL_LIMITS'), GuardProfile.NORMAL_LIMITS),
-        )
-    cfg_profiles = getattr(cfg, 'profiles', None)
     return Profiles(
-        control=_enum(ControlProfile, _cfg_attr(cfg_profiles, 'control', get_str(entities.get('control_profile', ''), 'AUTOMATIC')), ControlProfile.AUTOMATIC),
-        goal=_enum(GoalProfile, _cfg_attr(cfg_profiles, 'goal', get_str(entities.get('goal_profile', ''), 'NET_ZERO')), GoalProfile.NET_ZERO),
-        forecast=_enum(ForecastProfile, _cfg_attr(cfg_profiles, 'forecast', get_str(entities.get('forecast_profile', ''), 'NONE')), ForecastProfile.NONE),
-        guard=_enum(GuardProfile, _cfg_attr(cfg_profiles, 'guard', get_str(entities.get('guard_profile', ''), 'NORMAL_LIMITS')), GuardProfile.NORMAL_LIMITS),
+        control=_enum(ControlProfile, get_str(entities.get('control_profile', ''), 'AUTOMATIC'), ControlProfile.AUTOMATIC),
+        goal=_enum(GoalProfile, get_str(entities.get('goal_profile', ''), 'NET_ZERO'), GoalProfile.NET_ZERO),
+        forecast=_enum(ForecastProfile, get_str(entities.get('forecast_profile', ''), 'NONE'), ForecastProfile.NONE),
+        guard=_enum(GuardProfile, get_str(entities.get('guard_profile', ''), 'NORMAL_LIMITS'), GuardProfile.NORMAL_LIMITS),
     )
-
-
-def _cfg_policy_runtime_facts(cfg):
-    policy_runtime_facts = getattr(cfg, 'policy_runtime_facts', None)
-    if callable(policy_runtime_facts):
-        facts = policy_runtime_facts()
-        if isinstance(facts, dict):
-            return facts
-    return {}
-
-
-def _ev_state_payload_from_values(adapter, policy):
-    current_a = _as_int((adapter or {}).get('current_a'), 0)
-    enabled = _as_bool((adapter or {}).get('enabled'), False)
-    return {
-        'enabled': enabled,
-        'current_a': current_a,
-        'surplus_allowed': _as_bool((policy or {}).get('surplus_allowed'), False),
-        'active': bool(enabled and current_a > 0),
-    }
 
 
 def _ev_state_payload(device):
@@ -196,166 +167,50 @@ def _ev_state_payload(device):
     }
 
 
-def _battery_heartbeat_age_s(now_ts, cfg, entities):
-    heartbeat_entity = (entities or {}).get('battery_heartbeat')
-    if heartbeat_entity:
-        return age_seconds(heartbeat_entity, now_ts)
-    heartbeat_value = None
-    home_battery_guard_value = getattr(cfg, 'home_battery_guard_value', None)
-    if callable(home_battery_guard_value):
-        heartbeat_value = home_battery_guard_value('heartbeat', None)
-    if _valid_runtime_value(heartbeat_value):
-        return 0.0
-    return 999999.0
-
-
 def read_measurements(now_ts, cfg, entities):
+    # Direct schema-v2 ticks pass TickFrame straight into guard/NET_ZERO and never call this function.
     entities = entities or {}
-    if not _runtime_packet_mode(entities):
-        device_entities = entities.get('devices', {}) or {}
-        active_surplus_device_ids = set(_read_active_surplus_device_ids(entities))
-        relay_states = {}
-        ev_states = {}
-        for device_id, device in device_entities.items():
-            if not isinstance(device, dict):
-                continue
-            kind = str(device.get('kind') or '')
-            if kind == 'RELAY':
-                relay_states[str(device_id)] = {
-                    'enabled': get_bool(device.get('enabled', '')),
-                    'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
-                    'force_on': get_bool(device.get('force_on', '')),
-                    'active': str(device_id) in active_surplus_device_ids,
-                }
-            elif kind == 'EV_CHARGER':
-                ev_states[str(device_id)] = _ev_state_payload(device)
-        return RuntimeMeasurements(
-            now_ts=now_ts,
-            soc=get_float(entities.get('soc', ''), None),
-            min_cell_voltage_v=get_float(entities.get('min_cell_voltage_v', ''), None),
-            battery_heartbeat_age_s=age_seconds(entities.get('battery_heartbeat', ''), now_ts),
-            grid_power_w=get_float(entities.get('grid_power_w', ''), 0),
-            current_battery_setpoint_w=get_float(entities.get('current_battery_sp', ''), 100),
-            quarter_energy_balance_kwh=get_float(entities.get('quarter_energy_balance_kwh', ''), 0),
-            pv_power_w=get_float(entities.get('pv_power_w', ''), None),
-            relay_states=relay_states,
-            ev_states=ev_states,
-        )
-    facts = _cfg_policy_runtime_facts(cfg)
-    kind_by_id = facts.get('device_kind_by_id', {}) or {}
-    policy_by_id = facts.get('device_policy_by_id', {}) or {}
-    adapter_by_id = facts.get('device_adapter_by_id', {}) or {}
-    active_surplus_device_ids = set(_read_active_surplus_device_ids(cfg, entities))
+    device_entities = entities.get('devices', {}) or {}
+    active_surplus_device_ids = set(_read_active_surplus_device_ids(entities))
     relay_states = {}
     ev_states = {}
-    if kind_by_id:
-        for device_id, kind in kind_by_id.items():
-            device_id = str(device_id)
-            kind = str(kind or '')
-            adapter = adapter_by_id.get(device_id, {}) or {}
-            policy = policy_by_id.get(device_id, {}) or {}
-            if kind == 'RELAY':
-                relay_states[device_id] = {
-                    'enabled': _as_bool(adapter.get('enabled'), False),
-                    'surplus_allowed': _as_bool(policy.get('surplus_allowed'), False),
-                    'force_on': _as_bool(policy.get('force_on'), False),
-                    'active': device_id in active_surplus_device_ids,
-                }
-            elif kind == 'EV_CHARGER':
-                ev_states[device_id] = _ev_state_payload_from_values(adapter, policy)
-    else:
-        device_entities = entities.get('devices', {}) or {}
-        for device_id, device in device_entities.items():
-            if not isinstance(device, dict):
-                continue
-            kind = str(device.get('kind') or '')
-            if kind == 'RELAY':
-                relay_states[str(device_id)] = {
-                    'enabled': get_bool(device.get('enabled', '')),
-                    'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
-                    'force_on': get_bool(device.get('force_on', '')),
-                    'active': str(device_id) in active_surplus_device_ids,
-                }
-            elif kind == 'EV_CHARGER':
-                ev_states[str(device_id)] = _ev_state_payload(device)
-
-    home_guard = getattr(cfg, 'home_battery_guard_value', None)
-    device_adapter = getattr(cfg, 'device_adapter_value', None)
-    runtime = getattr(cfg, 'runtime', None)
+    for device_id, device in device_entities.items():
+        if not isinstance(device, dict):
+            continue
+        kind = str(device.get('kind') or '')
+        if kind == 'RELAY':
+            relay_states[str(device_id)] = {
+                'enabled': get_bool(device.get('enabled', '')),
+                'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
+                'force_on': get_bool(device.get('force_on', '')),
+                'active': str(device_id) in active_surplus_device_ids,
+            }
+        elif kind == 'EV_CHARGER':
+            ev_states[str(device_id)] = _ev_state_payload(device)
     return RuntimeMeasurements(
         now_ts=now_ts,
-        soc=_as_float(home_guard('soc', None), None) if callable(home_guard) else get_float(entities.get('soc', ''), None),
-        min_cell_voltage_v=_as_float(home_guard('min_cell_voltage_v', None), None) if callable(home_guard) else get_float(entities.get('min_cell_voltage_v', ''), None),
-        battery_heartbeat_age_s=_battery_heartbeat_age_s(now_ts, cfg, entities),
-        grid_power_w=_as_float(_cfg_attr(runtime, 'grid_power_w', None), get_float(entities.get('grid_power_w', ''), 0)),
-        current_battery_setpoint_w=_as_float(device_adapter('HOME_BATTERY', 'target_w', None), get_float(entities.get('current_battery_sp', ''), 100)) if callable(device_adapter) else get_float(entities.get('current_battery_sp', ''), 100),
-        quarter_energy_balance_kwh=_as_float(_cfg_attr(runtime, 'quarter_energy_balance_kwh', None), get_float(entities.get('quarter_energy_balance_kwh', ''), 0)),
-        pv_power_w=_as_float(_cfg_attr(runtime, 'pv_power_w', None), get_float(entities.get('pv_power_w', ''), None)),
+        soc=get_float(entities.get('soc', ''), None),
+        min_cell_voltage_v=get_float(entities.get('min_cell_voltage_v', ''), None),
+        battery_heartbeat_age_s=age_seconds(entities.get('battery_heartbeat', ''), now_ts),
+        grid_power_w=get_float(entities.get('grid_power_w', ''), 0),
+        current_battery_setpoint_w=get_float(entities.get('current_battery_sp', ''), 100),
+        quarter_energy_balance_kwh=get_float(entities.get('quarter_energy_balance_kwh', ''), 0),
+        pv_power_w=get_float(entities.get('pv_power_w', ''), None),
         relay_states=relay_states,
         ev_states=ev_states,
     )
 
 
-def _forecast_from_cfg_haeo(value):
-    if isinstance(value, dict):
-        forecast = value.get('forecast')
-        if isinstance(forecast, (list, tuple)):
-            return forecast
-    if isinstance(value, (list, tuple)):
-        return value
-    return None
-
-
-def _haeo_fresh_source_is_fresh(value, entity_id, now_ts, timeout_s):
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        # Numeric packet values are treated as source age seconds when plausible.
-        return float(value) < float(timeout_s)
-    if entity_id:
-        return age_seconds(entity_id, now_ts) < float(timeout_s)
-    return False
-
-
 def read_haeo(now_ts, profiles, cfg, entities):
+    # Direct schema-v2 ticks derive HaeoTargets from TickFrame and never call this function.
     entities = entities or {}
     configured = configured_forecast(profiles.control, profiles.forecast)
-    if not _runtime_packet_mode(entities):
-        batt_age = age_seconds(entities.get('haeo_battery_active_power_fresh_source', ''), now_ts)
-        ev_age = age_seconds(entities.get('haeo_ev_active_power_fresh_source', ''), now_ts)
-        fresh = batt_age < cfg.haeo_stale_timeout_s and ev_age < cfg.haeo_stale_timeout_s
-        eff = effective_forecast(configured, fresh)
-        batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
-        ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
-        return HaeoTargets(
-            effective_forecast=eff,
-            configured_forecast=configured,
-            fresh=fresh,
-            battery_target_kw=latest_forecast_value_at_or_before(batt_forecast, now_ts, 0),
-            ev_target_kw=max(latest_forecast_value_at_or_before(ev_forecast, now_ts, 0), 0),
-        )
-    haeo_cfg = getattr(cfg, 'haeo', None)
-    timeout_s = getattr(cfg, 'haeo_stale_timeout_s', 300)
-    batt_fresh = _haeo_fresh_source_is_fresh(
-        _cfg_attr(haeo_cfg, 'battery_fresh_source', None),
-        entities.get('haeo_battery_active_power_fresh_source', ''),
-        now_ts,
-        timeout_s,
-    )
-    ev_fresh = _haeo_fresh_source_is_fresh(
-        _cfg_attr(haeo_cfg, 'ev_fresh_source', None),
-        entities.get('haeo_ev_active_power_fresh_source', ''),
-        now_ts,
-        timeout_s,
-    )
-    fresh = bool(batt_fresh and ev_fresh)
+    batt_age = age_seconds(entities.get('haeo_battery_active_power_fresh_source', ''), now_ts)
+    ev_age = age_seconds(entities.get('haeo_ev_active_power_fresh_source', ''), now_ts)
+    fresh = batt_age < cfg.haeo_stale_timeout_s and ev_age < cfg.haeo_stale_timeout_s
     eff = effective_forecast(configured, fresh)
-    batt_forecast = _forecast_from_cfg_haeo(_cfg_attr(haeo_cfg, 'battery_power_active', None))
-    ev_forecast = _forecast_from_cfg_haeo(_cfg_attr(haeo_cfg, 'ev_power_active', None))
-    if batt_forecast is None:
-        batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
-    if ev_forecast is None:
-        ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
+    batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
+    ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
     return HaeoTargets(
         effective_forecast=eff,
         configured_forecast=configured,
@@ -548,10 +403,8 @@ def _read_previous_force_on_device_ids(entities):
     return _parse_active_device_ids(_policy_state_attr(entities, 'prev_force_on_device_ids', ()))
 
 
-def _device_policies_hash(attrs):
-    return _payload_hash({
-        'device_policies': attrs.get('device_policies', ()),
-    })
+def _device_policies_key(attrs):
+    return _stable_key(attrs.get('device_policies', ()))
 
 
 def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
@@ -564,21 +417,23 @@ def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
     return freeze_until_ts
 
 
-def _dispatch_command_attrs(attrs):
+def _dispatch_command_key(attrs):
+    return (
+        str(attrs.get('surplus_device_dispatch_action', '') or ''),
+        str(attrs.get('surplus_device_dispatch_decision', '') or ''),
+        str(attrs.get('surplus_device_dispatch_device_id', '') or ''),
+        _stable_key(attrs.get('surplus_device_dispatch_target', '')),
+        _stable_key(attrs.get('surplus_device_targets', ())),
+        _canonical_surplus_freeze_until_ts_for_dispatch(attrs),
+        str(attrs.get('surplus_state_clear_reason', '') or ''),
+    )
+
+
+def _dispatch_command_attrs(attrs, version=0):
     freeze_until_ts = _canonical_surplus_freeze_until_ts_for_dispatch(attrs)
-    command_hash = _payload_hash({
-        'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
-        'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
-        'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
-        'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
-        'surplus_device_targets': attrs.get('surplus_device_targets', ()),
-        'surplus_freeze_until_ts': freeze_until_ts,
-        'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
-    })
     return {
-        'dispatch_command_hash': command_hash,
-        'dispatch_command_state_kind': 'content_hash',
-        'dispatch_command_version': command_hash,
+        'dispatch_command_state_kind': 'monotonic_version',
+        'dispatch_command_version': int(version),
         'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
         'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
         'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
@@ -590,25 +445,28 @@ def _dispatch_command_attrs(attrs):
     }
 
 
-def _policy_state_payload(entities, attrs):
-    prev_force_on_device_ids = _parse_active_device_ids(
-        attrs.get(
-            'prev_force_on_device_ids',
-            _policy_state_attr(entities, 'prev_force_on_device_ids', ()),
-        )
+def _policy_state_key(attrs, previous_force_on_device_ids=()):
+    return (
+        str(attrs.get('haeo_nz_quarter_key', '') or ''),
+        str(attrs.get('haeo_nz_primary_device_id', '') or ''),
+        tuple(_parse_active_device_ids(attrs.get('prev_force_on_device_ids', previous_force_on_device_ids))),
+        _stable_key(attrs.get('previous_device_state', {})),
+        _stable_key(attrs.get('previous_ev_device_states', {})),
     )
-    policy_state_hash = _payload_hash({
+
+
+def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
+    prev_force_on_device_ids = _parse_active_device_ids(
+        attrs.get('prev_force_on_device_ids', previous_force_on_device_ids)
+    )
+    return {
+        'policy_state_state_kind': 'monotonic_version',
+        'policy_state_version': int(version),
         'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
         'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
         'prev_force_on_device_ids': prev_force_on_device_ids,
-    })
-    return policy_state_hash, {
-        'policy_state_hash': policy_state_hash,
-        'policy_state_state_kind': 'content_hash',
-        'policy_state_version': policy_state_hash,
-        'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
-        'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
-        'prev_force_on_device_ids': prev_force_on_device_ids,
+        'previous_device_state': attrs.get('previous_device_state', {}),
+        'previous_ev_device_states': attrs.get('previous_ev_device_states', {}),
     }
 
 
@@ -651,11 +509,11 @@ def _update_policy_engine_effective_intervals(cfg):
     _POLICY_ENGINE_TIMER_STATE['effective_diagnostics_interval_seconds'] = _policy_engine_diagnostics_interval_seconds(cfg)
 
 
-def _policy_warning_signature(attrs):
-    return _payload_hash({
-        'net_zero_input_quality': attrs.get('net_zero_input_quality', ''),
-        'net_zero_input_warnings': attrs.get('net_zero_input_warnings', ()),
-    })
+def _policy_warning_key(attrs):
+    return (
+        str(attrs.get('net_zero_input_quality', '') or ''),
+        _stable_key(attrs.get('net_zero_input_warnings', ())),
+    )
 
 
 def _should_publish_policy_diagnostics(
@@ -708,22 +566,8 @@ def _timed_read_runtime_context():
 
 
 def _read_surplus_freeze_until_ts(cfg, entities):
-    if not _runtime_packet_mode(entities):
-        return parse_input_datetime_ts((entities or {}).get('surplus_freeze_until', ''))
-    value = _cfg_state_value(cfg, 'surplus_freeze_until', None)
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value) if float(value) > 0 else None
-    if isinstance(value, str) and value.strip():
-        text = value.strip()
-        try:
-            numeric = float(text)
-            return numeric if numeric > 0 else None
-        except ValueError:
-            pass
-    entity_id = (entities or {}).get('surplus_freeze_until')
-    if entity_id:
-        return parse_input_datetime_ts(entity_id)
-    return None
+    # Direct schema-v2 ticks read this from TickFrame.
+    return parse_input_datetime_ts((entities or {}).get('surplus_freeze_until', ''))
 
 
 def _phase_timing_attrs(timing, total_ms):
@@ -733,7 +577,7 @@ def _phase_timing_attrs(timing, total_ms):
         'policy_engine_derive_inputs_ms',
         'policy_engine_policy_compute_ms',
         'policy_engine_build_attrs_ms',
-        'policy_engine_hash_ms',
+        'policy_engine_change_detection_ms',
         'policy_engine_canonical_publish_ms',
         'policy_engine_diagnostics_decision_ms',
         'policy_engine_diagnostics_build_ms',
@@ -743,10 +587,10 @@ def _phase_timing_attrs(timing, total_ms):
         'policy_engine_guard_compute_ms',
         'policy_engine_haeo_plan_compute_ms',
         'policy_engine_net_zero_compute_ms',
-        'policy_engine_device_policies_hash_ms',
-        'policy_engine_dispatch_command_hash_ms',
-        'policy_engine_policy_state_hash_ms',
-        'policy_engine_warning_signature_hash_ms',
+        'policy_engine_device_policies_key_ms',
+        'policy_engine_dispatch_command_key_ms',
+        'policy_engine_policy_state_key_ms',
+        'policy_engine_warning_key_ms',
     )
     attrs = {'policy_engine_total_tick_duration_ms': max(0, int(total_ms))}
     measured_ms = 0
@@ -767,14 +611,19 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     total_started_ts = timing.get('policy_engine_total_tick_started_ts', run_started_ts)
     timing.setdefault('policy_engine_read_runtime_context_ms', 0)
 
+    direct_frame = (entities or {}).get('_direct_tick_frame')
     phase_started_ts = time.time()
-    
-    try:
-        profiles = read_profiles(cfg, entities)
-    except TypeError:
-        profiles = read_profiles(entities)
-    m = read_measurements(now_ts, cfg, entities)
-    timing['policy_engine_read_measurements_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    if direct_frame is not None:
+        profiles = cfg.profiles
+        m = direct_frame
+        timing['policy_engine_read_measurements_ms'] = 0
+    else:
+        try:
+            profiles = read_profiles(cfg, entities)
+        except TypeError:
+            profiles = read_profiles(entities)
+        m = read_measurements(now_ts, cfg, entities)
+        timing['policy_engine_read_measurements_ms'] = _elapsed_ms(phase_started_ts, time.time())
 
     phase_started_ts = time.time()
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
@@ -783,13 +632,25 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     timing['policy_engine_policy_compute_ms'] = timing['policy_engine_guard_compute_ms']
 
     phase_started_ts = time.time()
-    haeo = read_haeo(now_ts, profiles, cfg, entities)
-    previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
-    previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
-    active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
-    previous_device_state = _read_previous_device_state(cfg, entities)
-    previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-    timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
+    if direct_frame is not None:
+        haeo = direct_frame.haeo_targets(profiles, cfg)
+        previous_quarter_key = direct_frame.previous_quarter_key
+        previous_primary_device_id = direct_frame.previous_primary_device_id
+        previous_device_state = direct_frame.selected_previous_device_state(cfg.adjustable_surplus_load)
+        previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
+        previous_ev_device_states = direct_frame.previous_ev_device_states
+        freeze_until_ts = direct_frame.surplus_freeze_until_ts
+        adjustable_surplus_active = str(cfg.adjustable_surplus_load) in set(direct_frame.active_surplus_device_ids)
+    else:
+        haeo = read_haeo(now_ts, profiles, cfg, entities)
+        previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
+        previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
+        previous_device_state = _read_previous_device_state(cfg, entities)
+        previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
+        previous_ev_device_states = _read_previous_ev_device_states(cfg, entities)
+        freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
+        adjustable_surplus_active = _read_adjustable_surplus_active(cfg, entities)
+        timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
 
     phase_started_ts = time.time()
     derived = derive_net_zero_inputs(
@@ -818,15 +679,15 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     phase_started_ts = time.time()
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
-        freeze_until_ts=_read_surplus_freeze_until_ts(cfg, entities),
-        ev_burn_active=_read_adjustable_surplus_active(cfg, entities),
-        adjustable_surplus_active=_read_adjustable_surplus_active(cfg, entities),
+        freeze_until_ts=freeze_until_ts,
+        ev_burn_active=adjustable_surplus_active,
+        adjustable_surplus_active=adjustable_surplus_active,
         pv_power_kw=pv_power_kw,
         ev_hard_off_active=bool(previous_device_state['hard_off_active']),
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
         ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
         relay_device_states=getattr(m, 'relay_states', {}),
-        previous_ev_device_states=_read_previous_ev_device_states(cfg, entities),
+        previous_ev_device_states=previous_ev_device_states,
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
     )
@@ -842,7 +703,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     attrs.update(_policy_output_contract_attrs())
     attrs.update(
         {
-            'runtime_input_contract': 'raw_measurements_only',
+            'runtime_input_contract': 'direct_tick_frame_v2' if direct_frame is not None else 'raw_measurements_only',
+            'runtime_policy_config_revision': int(getattr(cfg, 'revision', 0) or 0),
             'net_zero_derived_source': 'internal',
             'net_zero_input_quality': derived.input_quality,
             'net_zero_input_warnings': derived.input_warnings,
@@ -866,35 +728,41 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         }
     )
     timing['policy_engine_build_attrs_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    result = PolicyResult(outputs=outputs, attrs=attrs)
 
     phase_started_ts = time.time()
-    device_policies_hash = _device_policies_hash(attrs)
-    timing['policy_engine_device_policies_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
-    attrs['device_policies_hash'] = device_policies_hash
-    attrs['device_policies_state_kind'] = 'content_hash'
-    attrs['device_policies_version'] = device_policies_hash
+    device_policies_key = _device_policies_key(result.attrs)
+    timing['policy_engine_device_policies_key_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    device_policies_changed = device_policies_key != _POLICY_ENGINE_TIMER_STATE.get('previous_device_policies_key')
+    device_policies_version = _next_monotonic_version('device_policies_version', device_policies_changed)
+    result.attrs['device_policies_state_kind'] = 'monotonic_version'
+    result.attrs['device_policies_version'] = device_policies_version
+
     phase_started_ts = time.time()
-    dispatch_command_attrs = _dispatch_command_attrs(attrs)
-    timing['policy_engine_dispatch_command_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    dispatch_command_key = _dispatch_command_key(result.attrs)
+    timing['policy_engine_dispatch_command_key_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    dispatch_command_changed = dispatch_command_key != _POLICY_ENGINE_TIMER_STATE.get('previous_dispatch_command_key')
+    dispatch_command_version = _next_monotonic_version('dispatch_command_version', dispatch_command_changed)
+    dispatch_command_attrs = _dispatch_command_attrs(result.attrs, dispatch_command_version)
+
     phase_started_ts = time.time()
-    policy_state_hash, policy_state_attrs = _policy_state_payload(entities, attrs)
-    timing['policy_engine_policy_state_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
-    dispatch_command_hash = dispatch_command_attrs['dispatch_command_hash']
+    policy_state_key = _policy_state_key(result.attrs, previous_force_on_device_ids)
+    timing['policy_engine_policy_state_key_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    policy_state_changed = policy_state_key != _POLICY_ENGINE_TIMER_STATE.get('previous_policy_state_key')
+    policy_state_version = _next_monotonic_version('policy_state_version', policy_state_changed)
+    policy_state_attrs = _policy_state_payload(result.attrs, previous_force_on_device_ids, policy_state_version)
+
     phase_started_ts = time.time()
-    warning_signature = _policy_warning_signature(attrs)
-    timing['policy_engine_warning_signature_hash_ms'] = _elapsed_ms(phase_started_ts, time.time())
-    canonical_changed = (
-        device_policies_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_device_policies_hash')
-        or dispatch_command_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_dispatch_command_hash')
-        or policy_state_hash != _POLICY_ENGINE_TIMER_STATE.get('previous_policy_state_hash')
-    )
-    warning_state_changed = warning_signature != _POLICY_ENGINE_TIMER_STATE.get('previous_warning_signature')
+    warning_key = _policy_warning_key(result.attrs)
+    timing['policy_engine_warning_key_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    warning_state_changed = warning_key != _POLICY_ENGINE_TIMER_STATE.get('previous_warning_key')
+    canonical_changed = device_policies_changed or dispatch_command_changed or policy_state_changed
     diagnostics_interval_seconds = _policy_engine_diagnostics_interval_seconds(cfg)
-    timing['policy_engine_hash_ms'] = (
-        timing['policy_engine_device_policies_hash_ms']
-        + timing['policy_engine_dispatch_command_hash_ms']
-        + timing['policy_engine_policy_state_hash_ms']
-        + timing['policy_engine_warning_signature_hash_ms']
+    timing['policy_engine_change_detection_ms'] = (
+        timing['policy_engine_device_policies_key_ms']
+        + timing['policy_engine_dispatch_command_key_ms']
+        + timing['policy_engine_policy_state_key_ms']
+        + timing['policy_engine_warning_key_ms']
     )
 
     phase_started_ts = time.time()
@@ -911,26 +779,30 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     published_device_policies = False
     published_dispatch_command = False
     published_policy_state = False
-    previous_device_state_entity = entities.get('previous_device_state') or entities.get('policy_state')
-    if previous_device_state_entity:
-        publish_sensor(
-            previous_device_state_entity,
-            _selected_previous_device_state_for_outputs(outputs)['mode'],
-            _previous_device_state_attrs_from_outputs(outputs),
-        )
-    publish_sensor(entities['device_policies'], device_policies_hash, attrs)
-    published_device_policies = True
-    publish_sensor(entities['dispatch_command'], dispatch_command_hash, dispatch_command_attrs)
-    published_dispatch_command = True
-    publish_sensor(entities['policy_state'], policy_state_hash, policy_state_attrs)
-    published_policy_state = True
+    if direct_frame is None:
+        previous_device_state_entity = entities.get('previous_device_state') or entities.get('policy_state')
+        if previous_device_state_entity:
+            publish_sensor(
+                previous_device_state_entity,
+                _selected_previous_device_state_for_outputs(outputs)['mode'],
+                _previous_device_state_attrs_from_outputs(outputs),
+            )
+    if device_policies_changed:
+        publish_sensor(entities['device_policies'], device_policies_version, result.attrs)
+        published_device_policies = True
+    if dispatch_command_changed:
+        publish_sensor(entities['dispatch_command'], dispatch_command_version, dispatch_command_attrs)
+        published_dispatch_command = True
+    if policy_state_changed:
+        publish_sensor(entities['policy_state'], policy_state_version, policy_state_attrs)
+        published_policy_state = True
     publish_ms = int(round((time.time() - publish_started_ts) * 1000.0))
     timing['policy_engine_canonical_publish_ms'] = publish_ms
     timing.setdefault('policy_engine_diagnostics_build_ms', 0)
     timing.setdefault('policy_engine_diagnostics_publish_ms', 0)
     if publish_diagnostics:
         phase_started_ts = time.time()
-        diagnostics_attrs = dict(attrs)
+        diagnostics_attrs = dict(result.attrs)
         diagnostics_attrs.update(
             {
                 'policy_engine_run_duration_ms': int(round((time.time() - run_started_ts) * 1000.0)),
@@ -956,10 +828,27 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         publish_sensor(entities['policy_diagnostics'], _trace_state(profiles, outputs), diagnostics_attrs)
         _POLICY_ENGINE_TIMER_STATE['previous_diagnostics_publish_ms'] = _elapsed_ms(phase_started_ts, time.time())
         _POLICY_ENGINE_TIMER_STATE['last_diagnostics_publish_ts'] = now_ts
-    _POLICY_ENGINE_TIMER_STATE['previous_device_policies_hash'] = device_policies_hash
-    _POLICY_ENGINE_TIMER_STATE['previous_dispatch_command_hash'] = dispatch_command_hash
-    _POLICY_ENGINE_TIMER_STATE['previous_policy_state_hash'] = policy_state_hash
-    _POLICY_ENGINE_TIMER_STATE['previous_warning_signature'] = warning_signature
+    _POLICY_ENGINE_TIMER_STATE['previous_device_policies_key'] = device_policies_key
+    _POLICY_ENGINE_TIMER_STATE['previous_dispatch_command_key'] = dispatch_command_key
+    _POLICY_ENGINE_TIMER_STATE['previous_policy_state_key'] = policy_state_key
+    _POLICY_ENGINE_TIMER_STATE['previous_warning_key'] = warning_key
+    return result
+
+
+def _publish_runtime_schema_error(exc, trigger_reason):
+    publish_sensor(
+        CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics'],
+        'RUNTIME_PACKET_INVALID',
+        {
+            'error': True,
+            'error_code': 'RUNTIME_PACKET_INVALID',
+            'error_path': getattr(exc, 'path', ''),
+            'error_message': str(exc),
+            'policy_engine_last_run_reason': str(trigger_reason or ''),
+            'policy_engine_runtime_schema_version': 2,
+            'actuator_writes_suppressed': True,
+        },
+    )
 
 
 @time_trigger('period(now, 2s)')
@@ -971,7 +860,11 @@ def ems_policy_engine_tick():
     if not _policy_engine_interval_elapsed_fast(now_ts):
         _note_policy_skip()
         return
-    cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
+    try:
+        cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
+    except RuntimePacketSchemaError as exc:
+        _publish_runtime_schema_error(exc, 'timer')
+        return
     _update_policy_engine_effective_intervals(cfg)
     if not _policy_engine_interval_elapsed(now_ts, _POLICY_ENGINE_TIMER_STATE['effective_interval_seconds']):
         _note_policy_skip()
@@ -993,7 +886,11 @@ def ems_policy_engine_loop(trigger_reason='manual'):
     import time
     now_ts = time.time()
     tick_started_ts = time.time()
-    cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
+    try:
+        cfg, entities, read_runtime_context_ms = _timed_read_runtime_context()
+    except RuntimePacketSchemaError as exc:
+        _publish_runtime_schema_error(exc, trigger_reason)
+        return
     _update_policy_engine_effective_intervals(cfg)
     if str(trigger_reason) == 'timer':
         _note_policy_tick(now_ts)

@@ -1,36 +1,25 @@
-# EMS fixed runtime packet configuration.
+# EMS schema-v2 direct runtime configuration.
 #
-# Device ownership rule:
-# - EMS_config.yaml declares only device identity/kind and immutable physical
-#   direction capabilities.
-# - sensor.ems_devices_runtime owns every adjustable device limit, policy,
-#   guard threshold/measurement and adapter state.
-# - Do not duplicate packet-owned fields in this file.
+# Ownership rule:
+# - This file owns only static topology, physical direction capabilities,
+#   role constraints, and policy-engine cadence.
+# - sensor.ems_policy_config_runtime owns slow-changing runtime policy config.
+# - sensor.ems_measurements_runtime owns fast measurements and adapter state.
+# - sensor.ems_policy_state_runtime owns state-machine / HAEO state.
+# - Packet fields are strict: missing required data fails closed.
 
 ems:
   runtime_sources:
-    inputs_and_profiles:
-      entity_id: sensor.ems_runtime_inputs_and_profiles
-    devices:
-      entity_id: sensor.ems_devices_runtime
-    surplus_state:
-      entity_id: sensor.ems_surplus_state_runtime
+    policy_config:
+      entity_id: sensor.ems_policy_config_runtime
+    measurements:
+      entity_id: sensor.ems_measurements_runtime
+    policy_state:
+      entity_id: sensor.ems_policy_state_runtime
 
   policy_engine:
     interval_seconds: 5
     diagnostics_interval_seconds: 30
-
-  global_config:
-    deadband_w: 50
-    ramp_w: 1000
-    strict_limit_w: 8000
-    surplus_freeze_s: 300
-    haeo_stale_timeout_s: 900
-    nz_battery_floor_default_w: 100
-    nz_battery_floor_ev_active_w: 100
-    adjustable_surplus_load: EV_CHARGER
-    adjustable_primary_load: HOME_BATTERY
-    adjustable_surplus_activation_w: 2000
 
   role_constraints:
     default:

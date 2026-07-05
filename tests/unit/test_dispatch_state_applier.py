@@ -251,3 +251,29 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
     assert trace['decision'] == 'CLEAR_ALL'
     assert trace['active_surplus_device_ids'] == ()
     assert trace['writes'] == ['off:RELAY1', 'off:EV_CHARGER', 'off:RELAY2', 'off:RELAY3']
+
+@pytest.mark.unit
+def test_dispatch_state_applier_fails_closed_when_runtime_context_is_invalid(monkeypatch, project_root):
+    from ems_adapter import runtime_context
+
+    harness = QuarterScenarioHarness(project_root)
+    harness.dispatch_state_applier_mod['ENT'] = {}
+
+    def _raise_context_error(*_args, **_kwargs):
+        exc = ValueError('RUNTIME_PACKET_INVALID: measurements.schema_version missing')
+        exc.path = 'measurements.schema_version'
+        raise exc
+
+    monkeypatch.setattr(runtime_context, 'read_runtime_entities', _raise_context_error)
+
+    result = harness.dispatch_state_applier_mod['ems_dispatch_state_applier_loop']()
+
+    assert result == {
+        'suppressed': True,
+        'error_code': 'RUNTIME_CONTEXT_INVALID',
+        'error_path': 'measurements.schema_version',
+    }
+    trace = harness.getattrs(DISPATCH_TRACE)
+    assert trace['actuator_writes_suppressed'] is True
+    assert trace['error_path'] == 'measurements.schema_version'
+    assert trace['writes'] == ()

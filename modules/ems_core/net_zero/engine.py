@@ -302,6 +302,17 @@ def _selected_ev_context_from_fact_maps(facts, device_id):
 
 
 def _build_policy_runtime_facts(cfg):
+    direct_maps = getattr(cfg, 'direct_policy_maps', None)
+    if isinstance(direct_maps, dict):
+        selected_ev_context_by_id = direct_maps.get('selected_ev_context_by_id')
+        if not isinstance(selected_ev_context_by_id, dict):
+            selected_ev_context_by_id = {}
+            direct_maps['selected_ev_context_by_id'] = selected_ev_context_by_id
+        if not selected_ev_context_by_id:
+            for device_id in tuple((direct_maps.get('device_ids_by_kind', {}) or {}).get('EV_CHARGER', ()) or ()):
+                selected_ev_context_by_id[str(device_id)] = _selected_ev_context_from_fact_maps(direct_maps, device_id)
+        return direct_maps
+
     facts_provider = getattr(cfg, 'policy_runtime_facts', None)
     if callable(facts_provider):
         provider_started_ts = _net_zero_profile_started_ts()
@@ -321,7 +332,7 @@ def _build_policy_runtime_facts(cfg):
         selected_ev_context_by_id = facts.get('selected_ev_context_by_id')
         if not isinstance(selected_ev_context_by_id, dict):
             selected_ev_context_by_id = {}
-            for device_id in tuple((facts.get('device_ids_by_kind', {}) or {}).get('EV_CHARGER', ()) or ()): 
+            for device_id in tuple((facts.get('device_ids_by_kind', {}) or {}).get('EV_CHARGER', ()) or ()):
                 selected_ev_context_by_id[str(device_id)] = _selected_ev_context_from_fact_maps(facts, device_id)
             facts['selected_ev_context_by_id'] = selected_ev_context_by_id
         _note_net_zero_duration_ms('policy_engine_net_zero_selected_ev_context_ms', selected_ev_context_started_ts)

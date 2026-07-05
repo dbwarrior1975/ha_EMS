@@ -1341,9 +1341,9 @@ def test_policy_outputs_publish_device_policy_contract_and_payloads(project_root
 
 
 @pytest.mark.unit
-def test_canonical_payload_hash_is_stable_for_semantically_equal_payloads(project_root):
+def test_canonical_tuple_key_is_stable_for_semantically_equal_payloads(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
-    payload_hash = harness.policy_mod['_payload_hash']
+    stable_key = harness.policy_mod['_stable_key']
 
     left = {
         'device_policies': (
@@ -1367,12 +1367,12 @@ def test_canonical_payload_hash_is_stable_for_semantically_equal_payloads(projec
         'flags': {'beta', 'alpha'},
     }
 
-    assert payload_hash(left) == payload_hash(right)
-    assert payload_hash(left) != payload_hash(changed)
+    assert stable_key(left) == stable_key(right)
+    assert stable_key(left) != stable_key(changed)
 
 
 @pytest.mark.unit
-def test_device_policies_sensor_state_is_stable_content_hash(project_root):
+def test_device_policies_sensor_uses_monotonic_version_and_only_advances_on_change(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     device_policies_entity = ENT['device_policies']
 
@@ -1396,28 +1396,22 @@ def test_device_policies_sensor_state_is_stable_content_hash(project_root):
     second_state = harness.get(device_policies_entity)
     second_attrs = harness.getattrs(device_policies_entity)
 
-    harness.set_entities(
-        {
-            ENT['control_profile']: 'MANUAL',
-        }
-    )
+    harness.set_entities({ENT['control_profile']: 'MANUAL'})
     harness._run_policy_loop()
     third_state = harness.get(device_policies_entity)
     third_attrs = harness.getattrs(device_policies_entity)
 
-    assert first_state == first_attrs['device_policies_hash']
     assert first_state == first_attrs['device_policies_version']
-    assert first_attrs['device_policies_state_kind'] == 'content_hash'
-    assert second_state == second_attrs['device_policies_hash']
-    assert first_state == second_state
-    assert first_attrs['device_policies'] == second_attrs['device_policies']
-    assert third_state == third_attrs['device_policies_hash']
-    assert third_state != second_state
+    assert first_attrs['device_policies_state_kind'] == 'monotonic_version'
+    assert second_state == first_state
+    assert second_attrs['device_policies'] == first_attrs['device_policies']
+    assert third_state == third_attrs['device_policies_version']
+    assert third_state > second_state
     assert third_attrs['device_policies'] != second_attrs['device_policies']
 
 
 @pytest.mark.unit
-def test_dispatch_command_sensor_state_is_stable_content_hash_and_carries_dispatch_attrs(project_root):
+def test_dispatch_command_sensor_uses_monotonic_version_and_carries_dispatch_attrs(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     dispatch_entity = ENT['dispatch_command']
 
@@ -1442,31 +1436,30 @@ def test_dispatch_command_sensor_state_is_stable_content_hash_and_carries_dispat
     second_attrs = harness.getattrs(dispatch_entity)
 
     harness.set_entities(
-            {
-                ENT['grid_power_w']: -3000,
-                ENT['quarter_energy_balance']: -0.7,
-                ENT['rpnz_w']: 3000,
-                ENT['required_power_consumption_kw']: 2.4,
-            }
-        )
+        {
+            ENT['grid_power_w']: -3000,
+            ENT['quarter_energy_balance']: -0.7,
+            ENT['rpnz_w']: 3000,
+            ENT['required_power_consumption_kw']: 2.4,
+        }
+    )
     harness._run_policy_loop()
     third_state = harness.get(dispatch_entity)
     third_attrs = harness.getattrs(dispatch_entity)
 
-    assert first_state == first_attrs['dispatch_command_hash']
     assert first_state == first_attrs['dispatch_command_version']
-    assert first_attrs['dispatch_command_state_kind'] == 'content_hash'
-    assert second_state == second_attrs['dispatch_command_hash']
-    assert first_state == second_state
-    assert third_state == third_attrs['dispatch_command_hash']
+    assert first_attrs['dispatch_command_state_kind'] == 'monotonic_version'
+    assert second_state == first_state
+    # The changed measurements do not alter the dispatch command in this scenario.
     assert third_state == second_state
+    assert third_attrs == second_attrs
     assert 'surplus_device_dispatch_action' in third_attrs
     assert 'surplus_device_targets' in third_attrs
     assert 'surplus_freeze_until_ts' in third_attrs
 
 
 @pytest.mark.unit
-def test_policy_state_sensor_state_is_stable_content_hash_and_carries_previous_state_fields(project_root):
+def test_policy_state_sensor_uses_monotonic_version_and_carries_previous_state_fields(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
     policy_state_entity = ENT['policy_state']
 
@@ -1476,22 +1469,16 @@ def test_policy_state_sensor_state_is_stable_content_hash_and_carries_previous_s
     harness._run_policy_loop()
     second_state = harness.get(policy_state_entity)
     second_attrs = harness.getattrs(policy_state_entity)
-    harness.set_entities(
-        {
-            ENT['devices']['RELAY1']['force_on']: True,
-        }
-    )
+    harness.set_entities({ENT['devices']['RELAY1']['force_on']: True})
     harness._run_policy_loop()
     third_state = harness.get(policy_state_entity)
     third_attrs = harness.getattrs(policy_state_entity)
 
-    assert first_state == first_attrs['policy_state_hash']
     assert first_state == first_attrs['policy_state_version']
-    assert first_attrs['policy_state_state_kind'] == 'content_hash'
-    assert second_state == second_attrs['policy_state_hash']
-    assert first_state == second_state
-    assert third_state == third_attrs['policy_state_hash']
-    assert third_state != second_state
+    assert first_attrs['policy_state_state_kind'] == 'monotonic_version'
+    assert second_state == first_state
+    assert third_state == third_attrs['policy_state_version']
+    assert third_state > second_state
     assert 'haeo_nz_quarter_key' in second_attrs
     assert 'haeo_nz_primary_device_id' in second_attrs
     assert 'prev_force_on_device_ids' in second_attrs

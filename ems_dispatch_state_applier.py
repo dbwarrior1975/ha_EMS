@@ -146,8 +146,9 @@ def _decision_text_from_device_command(action, device_id, target=''):
     return 'NOOP'
 
 
-def _read_dispatch_command():
-    entities = _load_runtime_entities()
+def _read_dispatch_command(entities=None):
+    if entities is None:
+        entities = _load_runtime_entities()
     dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
     targets = _read_surplus_device_targets_from_entity(dispatch_entity)
     action = get_attr(dispatch_entity, 'surplus_device_dispatch_action', '')
@@ -226,8 +227,24 @@ def _active_surplus_device_ids(command, entities=None):
 @time_trigger('period(now, 30s)')
 @state_trigger('sensor.ems_surplus_dispatch_command_pyscript')
 def ems_dispatch_state_applier_loop():
-    entities = _load_runtime_entities()
-    command = _read_dispatch_command()
+    try:
+        entities = _load_runtime_entities()
+    except Exception as exc:
+        publish_sensor(_entity_id('dispatch_state_applier_trace', 'sensor.ems_dispatch_state_applier_trace', {}), 'SUPPRESSED', {
+            'dispatch_state_contract': 'device_id_primary',
+            'actuator_writes_suppressed': True,
+            'error': True,
+            'error_code': 'RUNTIME_CONTEXT_INVALID',
+            'error_path': getattr(exc, 'path', ''),
+            'error_message': str(exc),
+            'writes': (),
+        })
+        return {
+            'suppressed': True,
+            'error_code': 'RUNTIME_CONTEXT_INVALID',
+            'error_path': getattr(exc, 'path', ''),
+        }
+    command = _read_dispatch_command(entities)
     decision = command['decision']
     freeze_until_ts = get_attr(command['source_entity'], 'surplus_freeze_until_ts', None)
 

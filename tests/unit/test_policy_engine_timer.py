@@ -297,7 +297,7 @@ def test_policy_engine_diagnostics_publish_decision_reasons(project_root):
 
 
 @pytest.mark.unit
-def test_policy_warning_signature_ignores_volatile_and_explanation_fields(project_root):
+def test_policy_warning_key_ignores_volatile_and_explanation_fields(project_root):
     mod = _load_policy_module(project_root)
     attrs = {
         'net_zero_input_quality': 'ok',
@@ -307,20 +307,20 @@ def test_policy_warning_signature_ignores_volatile_and_explanation_fields(projec
         'policy_engine_run_duration_ms': 1,
     }
 
-    first = mod['_policy_warning_signature'](attrs)
+    first = mod['_policy_warning_key'](attrs)
     attrs['dominant_limitation'] = 'grid'
     attrs['surplus_explanation'] = 'changed explanation'
     attrs['policy_engine_run_duration_ms'] = 999
-    second = mod['_policy_warning_signature'](attrs)
+    second = mod['_policy_warning_key'](attrs)
     attrs['net_zero_input_warnings'] = ('missing_pv', 'missing_grid')
-    third = mod['_policy_warning_signature'](attrs)
+    third = mod['_policy_warning_key'](attrs)
 
     assert first == second
     assert third != first
 
 
 @pytest.mark.unit
-def test_throttled_diagnostics_does_not_prevent_canonical_publish(project_root):
+def test_unchanged_canonical_payloads_are_not_republished_while_diagnostics_are_throttled(project_root):
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
     state = mod['_POLICY_ENGINE_TIMER_STATE']
@@ -335,9 +335,9 @@ def test_throttled_diagnostics_does_not_prevent_canonical_publish(project_root):
     mod['run_policy_loop'](110.0, cfg, entities, 'timer')
 
     published_entities = [entity for entity, _value, _attrs in published]
-    assert entities['device_policies'] in published_entities
-    assert entities['dispatch_command'] in published_entities
-    assert entities['policy_state'] in published_entities
+    assert entities['device_policies'] not in published_entities
+    assert entities['dispatch_command'] not in published_entities
+    assert entities['policy_state'] not in published_entities
     assert entities['policy_diagnostics'] not in published_entities
     assert state['last_diagnostics_publish_ts'] == 100.0
 
@@ -422,7 +422,7 @@ def test_policy_diagnostics_contains_phase_timing_fields(project_root):
         'policy_engine_derive_inputs_ms',
         'policy_engine_policy_compute_ms',
         'policy_engine_build_attrs_ms',
-        'policy_engine_hash_ms',
+        'policy_engine_change_detection_ms',
         'policy_engine_canonical_publish_ms',
         'policy_engine_diagnostics_decision_ms',
         'policy_engine_diagnostics_build_ms',
@@ -462,7 +462,7 @@ def test_policy_diagnostics_contains_policy_compute_subtiming_fields(project_roo
 
 
 @pytest.mark.unit
-def test_policy_diagnostics_contains_hash_subtiming_fields(project_root):
+def test_policy_diagnostics_contains_change_detection_subtiming_fields(project_root):
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
     cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
@@ -476,12 +476,12 @@ def test_policy_diagnostics_contains_hash_subtiming_fields(project_root):
     diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
 
     sub_ms = (
-        diagnostics_attrs['policy_engine_device_policies_hash_ms']
-        + diagnostics_attrs['policy_engine_dispatch_command_hash_ms']
-        + diagnostics_attrs['policy_engine_policy_state_hash_ms']
-        + diagnostics_attrs['policy_engine_warning_signature_hash_ms']
+        diagnostics_attrs['policy_engine_device_policies_key_ms']
+        + diagnostics_attrs['policy_engine_dispatch_command_key_ms']
+        + diagnostics_attrs['policy_engine_policy_state_key_ms']
+        + diagnostics_attrs['policy_engine_warning_key_ms']
     )
-    assert diagnostics_attrs['policy_engine_hash_ms'] == sub_ms
+    assert diagnostics_attrs['policy_engine_change_detection_ms'] == sub_ms
 
 
 @pytest.mark.unit
@@ -613,7 +613,7 @@ def test_context_cache_timing_fields_are_diagnostics_only(project_root):
 
 
 @pytest.mark.unit
-def test_policy_engine_hash_boundary_ignores_timer_diagnostics(project_root):
+def test_policy_engine_tuple_key_boundary_ignores_timer_diagnostics(project_root):
     mod = _load_policy_module(project_root)
     attrs = {
         'device_policies': (
@@ -623,16 +623,16 @@ def test_policy_engine_hash_boundary_ignores_timer_diagnostics(project_root):
         'policy_engine_last_tick_ts': 10.0,
     }
 
-    first_hash = mod['_device_policies_hash'](attrs)
+    first_key = mod['_device_policies_key'](attrs)
     attrs['policy_engine_ticks_seen'] = 99
     attrs['policy_engine_last_tick_ts'] = 1234.0
-    second_hash = mod['_device_policies_hash'](attrs)
+    second_key = mod['_device_policies_key'](attrs)
 
-    assert first_hash == second_hash
+    assert first_key == second_key
 
 
 @pytest.mark.unit
-def test_phase_timing_fields_do_not_change_canonical_hashes(project_root):
+def test_phase_timing_fields_do_not_change_canonical_keys(project_root):
     mod = _load_policy_module(project_root)
     attrs = {
         'device_policies': (
@@ -649,11 +649,9 @@ def test_phase_timing_fields_do_not_change_canonical_hashes(project_root):
         'haeo_nz_primary_device_id': 'HOME_BATTERY',
         'prev_force_on_device_ids': ('EV_CHARGER',),
     }
-    entities = {'policy_state': ''}
-
-    first_device_hash = mod['_device_policies_hash'](attrs)
-    first_dispatch_hash = mod['_dispatch_command_attrs'](attrs)['dispatch_command_hash']
-    first_policy_state_hash = mod['_policy_state_payload'](entities, attrs)[0]
+    first_device_key = mod['_device_policies_key'](attrs)
+    first_dispatch_key = mod['_dispatch_command_key'](attrs)
+    first_policy_state_key = mod['_policy_state_key'](attrs, attrs['prev_force_on_device_ids'])
 
     attrs.update(
         {
@@ -663,7 +661,7 @@ def test_phase_timing_fields_do_not_change_canonical_hashes(project_root):
             'policy_engine_derive_inputs_ms': 1,
             'policy_engine_policy_compute_ms': 22,
             'policy_engine_build_attrs_ms': 9,
-            'policy_engine_hash_ms': 3,
+            'policy_engine_change_detection_ms': 3,
             'policy_engine_canonical_publish_ms': 4,
             'policy_engine_diagnostics_decision_ms': 1,
             'policy_engine_diagnostics_build_ms': 2,
@@ -672,13 +670,13 @@ def test_phase_timing_fields_do_not_change_canonical_hashes(project_root):
         }
     )
 
-    assert mod['_device_policies_hash'](attrs) == first_device_hash
-    assert mod['_dispatch_command_attrs'](attrs)['dispatch_command_hash'] == first_dispatch_hash
-    assert mod['_policy_state_payload'](entities, attrs)[0] == first_policy_state_hash
+    assert mod['_device_policies_key'](attrs) == first_device_key
+    assert mod['_dispatch_command_key'](attrs) == first_dispatch_key
+    assert mod['_policy_state_key'](attrs, attrs['prev_force_on_device_ids']) == first_policy_state_key
 
 
 @pytest.mark.unit
-def test_dispatch_command_hash_stable_for_repeated_clear_all_with_only_now_ts_change(project_root):
+def test_dispatch_command_key_stable_for_repeated_clear_all_with_only_now_ts_change(project_root):
     mod = _load_policy_module(project_root)
     attrs_100 = {
         'surplus_device_dispatch_action': 'CLEAR_ALL',
@@ -691,16 +689,18 @@ def test_dispatch_command_hash_stable_for_repeated_clear_all_with_only_now_ts_ch
     }
     attrs_105 = dict(attrs_100, surplus_freeze_until_ts=105.0)
 
-    first = mod['_dispatch_command_attrs'](attrs_100)
-    second = mod['_dispatch_command_attrs'](attrs_105)
+    first_key = mod['_dispatch_command_key'](attrs_100)
+    second_key = mod['_dispatch_command_key'](attrs_105)
+    first_attrs = mod['_dispatch_command_attrs'](attrs_100)
+    second_attrs = mod['_dispatch_command_attrs'](attrs_105)
 
-    assert first['dispatch_command_hash'] == second['dispatch_command_hash']
-    assert first['surplus_freeze_until_ts'] is None
-    assert second['surplus_freeze_until_ts'] is None
+    assert first_key == second_key
+    assert first_attrs['surplus_freeze_until_ts'] is None
+    assert second_attrs['surplus_freeze_until_ts'] is None
 
 
 @pytest.mark.unit
-def test_dispatch_command_hash_keeps_activate_freeze_until_ts(project_root):
+def test_dispatch_command_key_keeps_activate_freeze_until_ts(project_root):
     mod = _load_policy_module(project_root)
     attrs_130 = {
         'surplus_device_dispatch_action': 'ACTIVATE',
@@ -713,12 +713,14 @@ def test_dispatch_command_hash_keeps_activate_freeze_until_ts(project_root):
     }
     attrs_135 = dict(attrs_130, surplus_freeze_until_ts=135.0)
 
-    first = mod['_dispatch_command_attrs'](attrs_130)
-    second = mod['_dispatch_command_attrs'](attrs_135)
+    first_key = mod['_dispatch_command_key'](attrs_130)
+    second_key = mod['_dispatch_command_key'](attrs_135)
+    first_attrs = mod['_dispatch_command_attrs'](attrs_130)
+    second_attrs = mod['_dispatch_command_attrs'](attrs_135)
 
-    assert first['dispatch_command_hash'] != second['dispatch_command_hash']
-    assert first['surplus_freeze_until_ts'] == 130.0
-    assert second['surplus_freeze_until_ts'] == 135.0
+    assert first_key != second_key
+    assert first_attrs['surplus_freeze_until_ts'] == 130.0
+    assert second_attrs['surplus_freeze_until_ts'] == 135.0
 
 
 @pytest.mark.unit
@@ -765,8 +767,6 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     dispatches = [item for item in published if item[0] == entities['dispatch_command']]
     diagnostics = [item for item in published if item[0] == entities['policy_diagnostics']]
 
-    assert len(dispatches) == 1
-    assert dispatches[0][2]['surplus_freeze_until_ts'] is None
-    assert dispatches[0][1] == first_dispatch[1]
+    assert dispatches == []
     assert diagnostics == []
     assert state['last_diagnostics_publish_ts'] == 100.0

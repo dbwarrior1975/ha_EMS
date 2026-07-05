@@ -444,8 +444,25 @@ def _publish_writer_trace(victron, device_traces, entities=None):
     'input_select.ems_control_profile'
 )
 def ems_actuator_writers_loop():
-    entities = _load_runtime_entities()
-    cfg = _load_core_config()
+    entities = {}
+    try:
+        entities = _load_runtime_entities()
+        cfg = _load_core_config()
+    except Exception as exc:
+        trace_ent = _ent('actuator_writer_trace', 'sensor.ems_actuator_writer_trace', entities)
+        publish_sensor(trace_ent, 'SUPPRESSED', {
+            'writer_policy_contract': 'device_policy_primary',
+            'actuator_writes_suppressed': True,
+            'error': True,
+            'error_code': 'RUNTIME_CONTEXT_INVALID',
+            'error_path': getattr(exc, 'path', ''),
+            'error_message': str(exc),
+        })
+        return {
+            'suppressed': True,
+            'error_code': 'RUNTIME_CONTEXT_INVALID',
+            'error_path': getattr(exc, 'path', ''),
+        }
     victron = _write_battery_actuator(entities)
     device_traces = {}
     for device in getattr(cfg, 'devices', {}).values():

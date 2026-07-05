@@ -1018,3 +1018,27 @@ def test_writer_repeated_identical_battery_policy_respects_deadband_without_repe
     assert mod['_TEST_CALLS'] == [
         ('set_number', ENT['actuator_battery_setpoint_w'], 500),
     ]
+
+@pytest.mark.unit
+def test_writer_loop_fails_closed_when_runtime_context_is_invalid(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+
+    def _raise_context_error(*_args, **_kwargs):
+        exc = ValueError('RUNTIME_PACKET_INVALID: measurements.schema_version missing')
+        exc.path = 'measurements.schema_version'
+        raise exc
+
+    mod['read_core_config'] = _raise_context_error
+
+    result = mod['ems_actuator_writers_loop']()
+
+    assert result == {
+        'suppressed': True,
+        'error_code': 'RUNTIME_CONTEXT_INVALID',
+        'error_path': 'measurements.schema_version',
+    }
+    assert mod['_TEST_CALLS'] == []
+    trace = state['sensor.ems_actuator_writer_trace']
+    assert trace['value'] == 'SUPPRESSED'
+    assert trace['attrs']['actuator_writes_suppressed'] is True
+    assert trace['attrs']['error_path'] == 'measurements.schema_version'
