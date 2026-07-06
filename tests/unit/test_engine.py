@@ -1,10 +1,10 @@
 import pytest
 from ems_core.domain.models import (
     ControlProfile, GoalProfile, GuardProfile, DominantLimitation, ForecastProfile,
-    HaeoNetZeroPlan,
+    HaeoNetZeroPlan, DeviceControlContext,
 )
 from ems_core.domain.ev_power import ev_min_power_w
-from ems_core.net_zero.engine import compute_net_zero_engine_outputs
+from ems_core.net_zero.engine import compute_net_zero_engine_outputs, compute_primary_device_target_w
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
     build_policy_context_view,
@@ -236,6 +236,8 @@ def _garage_ev_device_config():
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.garage_ev_min_power_w',
             'max_absorb_w': 'input_number.garage_ev_max_power_w',
@@ -541,6 +543,8 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
                 'capabilities': {
                     'can_absorb_w': True,
                     'can_produce_w': False,
+                    'supports_primary_regulation': False,
+                    'supports_residual_regulation': False,
                     'uses_hard_off_lifecycle': False,
                     'min_absorb_w': 'input_number.ems_relay3_nominal_absorb_w',
                     'max_absorb_w': 'input_number.ems_relay3_power_w',
@@ -1062,7 +1066,7 @@ def test_engine_adjustable_surplus_activation_overrides_threshold_source():
 
 
 @pytest.mark.unit
-def test_engine_same_target_combo_emits_fallback_warning_attrs():
+def test_engine_same_target_combo_is_reported_invalid_without_cross_combo_fallback():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
@@ -1080,9 +1084,9 @@ def test_engine_same_target_combo_emits_fallback_warning_attrs():
     )
 
     assert out.attrs['primary_surplus_combo_valid'] is False
-    assert out.attrs['primary_surplus_combo_reason'] == 'fallback_to_cross_combo'
-    assert out.attrs['primary_surplus_combo_fallback_active'] is True
-    assert 'fallback_to_cross_combo' in out.attrs['primary_surplus_combo_warning']
+    assert out.attrs['primary_surplus_combo_reason'] == 'unsupported_same_target_combo'
+    assert out.attrs['primary_surplus_combo_fallback_active'] is False
+    assert out.attrs['primary_surplus_combo_warning'] == ''
 
 
 @pytest.mark.unit
@@ -1706,3 +1710,62 @@ def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_batte
 
     assert out.battery_target_w == 0
     assert out.attrs['surplus_adjustable_active'] is (not expected_floor_hold)
+
+
+@pytest.mark.unit
+def test_generic_primary_target_supports_heat_pump_like_context_without_ev_adapter_fields():
+    device = DeviceControlContext(
+        device_id='SYNTHETIC_HEAT_PUMP',
+        kind='HEAT_PUMP',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=200.0,
+        max_absorb_w=2000.0,
+        max_produce_w=0.0,
+        step_w=100.0,
+        supports_primary_regulation=True,
+        supports_residual_regulation=False,
+        uses_hard_off_lifecycle=False,
+        priority=50,
+        current_measured_power_w=750.0,
+    )
+
+    assert compute_primary_device_target_w(device, 50.0) == 200.0
+    assert compute_primary_device_target_w(device, 240.0) == 200.0
+    assert compute_primary_device_target_w(device, 1375.0) == 1300.0
+    assert compute_primary_device_target_w(device, 2500.0) == 2000.0
+
+
+@pytest.mark.unit
+def test_primary_target_eligibility_is_capability_driven_not_kind_driven():
+    unsupported_ev = DeviceControlContext(
+        device_id='EV_TEST',
+        kind='EV_CHARGER',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=100.0,
+        max_absorb_w=1000.0,
+        max_produce_w=0.0,
+        step_w=100.0,
+        supports_primary_regulation=False,
+        supports_residual_regulation=False,
+        uses_hard_off_lifecycle=False,
+        priority=10,
+    )
+    neutral_primary = DeviceControlContext(
+        device_id='GENERIC_TEST',
+        kind='TEST_DEVICE',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=100.0,
+        max_absorb_w=1000.0,
+        max_produce_w=0.0,
+        step_w=100.0,
+        supports_primary_regulation=True,
+        supports_residual_regulation=False,
+        uses_hard_off_lifecycle=False,
+        priority=10,
+    )
+
+    assert compute_primary_device_target_w(unsupported_ev, 750.0) == 0.0
+    assert compute_primary_device_target_w(neutral_primary, 750.0) == 700.0

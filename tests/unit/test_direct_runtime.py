@@ -62,6 +62,8 @@ def _policy_packet(*, revision=17):
                     'max_produce_w': -4000,
                     'step_w': 50,
                     'uses_hard_off_lifecycle': False,
+                    'supports_primary_regulation': True,
+                    'supports_residual_regulation': True,
                 },
                 'policy': {
                     'priority': 3,
@@ -81,6 +83,8 @@ def _policy_packet(*, revision=17):
                     'max_produce_w': 0,
                     'step_w': 400,
                     'uses_hard_off_lifecycle': True,
+                    'supports_primary_regulation': True,
+                    'supports_residual_regulation': False,
                 },
                 'policy': {
                     'priority': 4,
@@ -103,6 +107,8 @@ def _policy_packet(*, revision=17):
                     'max_produce_w': 0,
                     'step_w': 2600,
                     'uses_hard_off_lifecycle': False,
+                    'supports_primary_regulation': False,
+                    'supports_residual_regulation': False,
                 },
                 'policy': {
                     'priority': 1,
@@ -117,6 +123,8 @@ def _policy_packet(*, revision=17):
                     'max_produce_w': 0,
                     'step_w': 5600,
                     'uses_hard_off_lifecycle': False,
+                    'supports_primary_regulation': False,
+                    'supports_residual_regulation': False,
                 },
                 'policy': {
                     'priority': 2,
@@ -390,6 +398,50 @@ def test_direct_parser_rejects_non_boolean_hard_off_lifecycle_capability(project
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+@pytest.mark.parametrize('value', (True, False))
+def test_direct_parser_accepts_explicit_regulation_capability_booleans(project_root, field, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=187)
+    packet['devices']['EV_CHARGER']['capabilities'][field] = value
+
+    cfg, cache_hit = parse_policy_config_cached(topology, packet)
+
+    assert cache_hit is False
+    assert cfg.direct_policy_maps['device_capabilities_by_id']['EV_CHARGER'][field] is value
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+def test_direct_parser_rejects_missing_regulation_capability(project_root, field):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=188)
+    del packet['devices']['EV_CHARGER']['capabilities'][field]
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == f'policy_config.devices.EV_CHARGER.capabilities.{field}'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+@pytest.mark.parametrize('value', ('true', 1, 0, None, 'unknown'))
+def test_direct_parser_rejects_non_boolean_regulation_capability(project_root, field, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=189)
+    packet['devices']['EV_CHARGER']['capabilities'][field] = value
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == f'policy_config.devices.EV_CHARGER.capabilities.{field}'
+
+
+@pytest.mark.unit
 def test_policy_config_rejects_relay_as_adjustable_surplus_load(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
@@ -406,6 +458,49 @@ def test_policy_config_rejects_relay_as_adjustable_surplus_load(project_root):
         parse_policy_config_cached(topology, packet)
 
     assert exc.value.path == 'policy_config.config.adjustable_surplus_load'
+
+
+@pytest.mark.unit
+def test_direct_parser_rejects_primary_without_primary_regulation_capability(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=190)
+    packet['devices']['HOME_BATTERY']['capabilities']['supports_primary_regulation'] = False
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_primary_load'
+    assert 'does not support primary regulation' in str(exc.value)
+
+
+@pytest.mark.unit
+def test_direct_parser_rejects_combination_without_residual_regulator(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=191)
+    packet['devices']['HOME_BATTERY']['capabilities']['supports_residual_regulation'] = False
+    packet['devices']['EV_CHARGER']['capabilities']['supports_residual_regulation'] = False
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_primary_load'
+    assert 'no residual regulator capability' in str(exc.value)
+
+
+@pytest.mark.unit
+def test_direct_parser_rejects_explicit_same_primary_and_surplus_device(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=192)
+    packet['config']['adjustable_primary_load'] = packet['config']['adjustable_surplus_load']
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_primary_load'
+    assert 'same device' in str(exc.value)
 
 
 @pytest.mark.unit

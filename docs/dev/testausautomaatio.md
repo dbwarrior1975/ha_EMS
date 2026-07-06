@@ -30,12 +30,14 @@ Nykyinen koko testisetti ajetaan samalla komennolla:
 pytest -q tests
 ```
 
-Viimeisin varmennettu tila nykyisessa siivousvaiheessa:
+Viimeisin varmennettu tila capability-driven NET_ZERO -refactorin jalkeen:
 
-1. `python3 -m pytest -q tests`
-2. `python3 -m pytest -q tests/e2e_entity`
-3. `python3 -m pytest -q tests/smoke/test_pyscript_ast_compat.py`
-4. `python3 -m pytest -q`
+1. lopullisesta toimitus-ZIPista purettu full suite: `468 passed, 0 failed, 1 xfailed`
+2. e2e: `37 passed, 1 xfailed`
+3. contract: `66 passed`
+4. smoke: `8 passed`
+5. baseline ennen refactoria: `446 passed, 0 failed, 1 xfailed`
+6. uusia failure-ID:ita baselineen verrattuna: ei yhtaan
 
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
@@ -156,6 +158,11 @@ kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
 5. `battery_write_enabled`-attribuutin olemassaolon
 6. `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-battery fallbackit ja selitteet
 7. HAEO-avusteiset battery-targetit `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-tiloissa
+8. strict `supports_primary_regulation` / `supports_residual_regulation` -capabilityt
+9. capability-driven residual-regulaattorin valinnan
+10. geneerisen `quantize_absorb_target_w()` / primary-target-laskennan
+11. synthetic HEAT_PUMP-like contextin ilman EV current/phases/voltage -kenttia
+12. invalidit role-yhdistelmat ilman hiljaista EV/BATTERY fallbackia
 
 ### Writer-semantiiikka
 
@@ -183,6 +190,22 @@ kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
 2. `rpnz_w = 10 W` -> release deadbandin rajalla
 3. `rpnz_w = 11 W` -> ei releasea taman saannon perusteella
 4. `rpnz_w = 0 W` ja `-1 W` -> release edelleen tapahtuu
+
+
+### Capability-driven lifecycle ja role-regressiot
+
+Nykyinen regressiosuoja kattaa:
+
+1. `HOME_BATTERY primary / EV adjustable` hard-off release-counterin
+2. `EV primary / HOME_BATTERY adjustable` saman consecutive-cycle-sopimuksen
+3. recovery-ehdon katkeamisen -> counter reset `0`
+4. RPC-kynnyksen yksittainen ylitys ei vapauta hard-offia
+5. `previous_device_states[device_id]`-omistuksen
+6. usean lifecycle-device-staten riippumattomuuden
+7. primary-kelpoisuuden capabilitylla, ei `kind == EV_CHARGER` -ehdolla
+
+Production-role regression on tiedostossa:
+`tests/e2e_entity/hard_off_on_low_pv/test_06_release_counter_role_independent.py`.
 
 ### Policy diagnostics
 
@@ -217,7 +240,7 @@ Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 
 Jokaisessa splitatussa e2e-kansiossa on oma `EMS_config.yaml`. Vaihejako ja
 tarinakuvaus loytyvat itse testitiedostoista, scenario-helperista seka
-`docs/dev/e2e_tests_stories.md`:sta.
+itse testitiedostoista ja scenario-helperista.
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 

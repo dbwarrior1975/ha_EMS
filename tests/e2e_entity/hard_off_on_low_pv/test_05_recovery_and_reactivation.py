@@ -132,7 +132,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 270,
-            'note': 't270 recovered PV and RPC cross the ADJUSTABLE threshold so normal EV activation resumes',
+            'note': 't270 first consecutive recovery-ready cycle keeps EV hard-off',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=19.0,
@@ -149,7 +149,39 @@ def test_05_recovery_and_reactivation(project_root):
                 'surplus_explanation': 'Raw RPC 5.800 kW >= EV_CHARGER threshold 5.060 kW',
                 'surplus_next_target': 'ADJUSTABLE',
                 'ev_low_pv_cycles': 0,
+                'ev_hard_off_active': True,
+                'ev_hard_off_release_ready_cycles': 1,
+                'pv_power_kw': 5.9,
+            },
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+            },
+            'expect_values': {
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 8,
+            },
+        },
+        {
+            'at_s': 300,
+            'note': 't300 second consecutive recovery-ready cycle releases hard-off and resumes EV activation',
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=19.0,
+                required_power_consumption_kw=5.8,
+                at_s=300,
+                pv_power_kw=5.9,
+            ),
+            'expect_derived': expect_derived_for_net_zero_intent(
+                rpnz_w=19.0,
+                required_power_consumption_kw=5.8,
+                at_s=300,
+            ),
+            'expect_policy': {
+                'surplus_explanation': 'Raw RPC 5.800 kW >= RELAY2 threshold 5.000 kW',
+                'surplus_next_target': 'RELAY2',
+                'ev_low_pv_cycles': 0,
                 'ev_hard_off_active': False,
+                'ev_hard_off_release_ready_cycles': 2,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {

@@ -43,6 +43,8 @@ def _core_cfg_with_selected_custom_ev(
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
@@ -307,6 +309,8 @@ def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_sele
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',

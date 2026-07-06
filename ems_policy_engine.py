@@ -1,5 +1,6 @@
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_adapter.direct_runtime import PolicyResult, RuntimePacketSchemaError
+from ems_adapter.device_read_model import build_device_measured_power_w_by_id
 from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
@@ -695,6 +696,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_device_states=previous_device_states,
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
+        current_device_power_w_by_id=build_device_measured_power_w_by_id(cfg, m),
     )
     timing['policy_engine_net_zero_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
     timing['policy_engine_policy_compute_ms'] += (

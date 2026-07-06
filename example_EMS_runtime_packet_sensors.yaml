@@ -162,6 +162,9 @@ template:
               {
                 'HOME_BATTERY': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': true,
+                    'supports_residual_regulation': true,
                     'min_absorb_w': 0,
   
                     'max_absorb_w':
@@ -216,6 +219,9 @@ template:
   
                 'EV_CHARGER': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': true,
+                    'supports_primary_regulation': true,
+                    'supports_residual_regulation': false,
                     'min_absorb_w':
                       states('input_number.ems_ev_min_power_w'),
                 
@@ -303,6 +309,9 @@ template:
                   
                 'RELAY1': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': false,
+                    'supports_residual_regulation': false,
                     'min_absorb_w': 2600,
                     'max_absorb_w': 2600,
                     'max_produce_w': 0,
@@ -349,6 +358,9 @@ template:
   
                 'RELAY2': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': false,
+                    'supports_residual_regulation': false,
                     'min_absorb_w': 5600,
                     'max_absorb_w': 5600,
                     'max_produce_w': 0,

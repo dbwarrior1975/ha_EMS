@@ -47,15 +47,17 @@ recorder:
 Tama ei ole correctness-vaatimus. Canonical outputit ovat
 `device_policies`, `dispatch_command` ja `policy_state`.
 
-## Hash-state semantiikka
+## Monotonic version -state semantiikka
 
-Kolmen kanonisen output-sensorin `state` on sisaltopohjainen hash:
+Kolmen kanonisen output-sensorin `state` on muutoksesta eteneva versionumero:
 
-1. `device_policies` -> `device_policies_hash`
-2. `dispatch_command` -> `dispatch_command_hash`
-3. `policy_state` -> `policy_state_hash`
+1. `device_policies` -> `device_policies_version`
+2. `dispatch_command` -> `dispatch_command_version`
+3. `policy_state` -> `policy_state_version`
 
-Varsinainen payload luetaan attribuuteista. `state` ei ole monotoninen laskuri.
+Versionumero etenee vain kun kyseinen canonical payload muuttuu. Varsinainen
+payload luetaan attribuuteista. Diagnostiikassa `*_state_kind` on
+`monotonic_version`.
 
 ## Tarkeimmat seurattavat entiteetit
 
@@ -109,6 +111,43 @@ Tarkista ensin `sensor.ems_policy_diagnostics_pyscript` attribuutit:
 5. `surplus_device_dispatch_target`
 6. `surplus_device_dispatch_device_id`
 7. `surplus_device_targets`
+
+
+Capability-driven NET_ZERO -ongelmanrajauksessa tarkista myos:
+
+1. `primary_device_id`
+2. `surplus_adjustable_device_id`
+3. `residual_regulator_device_id`
+4. `primary_surplus_combo_valid`
+5. `primary_surplus_combo_reason`
+6. `primary_surplus_combo_fallback_active` (uuden normaalipolun tulee olla `false`)
+7. `primary_device_target_w`
+8. `residual_rpnz_w`
+
+Hard-off/lifecycle-seurannassa tarkista:
+
+1. `previous_device_states`
+2. `device_lifecycle_states`
+3. `hard_off_lifecycle_devices`
+4. `ev_hard_off_release_ready_cycles` (compatibility-nakyma)
+5. `ev_hard_off_release_cycles_required`
+6. `battery_to_ev_loop_risk`
+
+Jos hard-off recovery alkaa, counterin tulee kasvaa yksi per validi recovery-kierros,
+pysya hard-offissa ennen required-countia ja nollautua recovery-ehdon katketessa.
+
+### Direct-v2 runtime packet health
+
+Terveessa tuotantopolussa tarkista:
+
+1. `runtime_input_contract = direct_tick_frame_v2`
+2. `policy_engine_runtime_packet_schema_version = 2`
+3. `policy_engine_runtime_packet_missing_fields = 0`
+4. `net_zero_input_quality = ok`
+5. `config_dual_read_ok = true`, jos dual-read audit on kaytossa
+
+Puuttuva tai väärantyyppinen capability-boolean voi johtaa runtime packet invalid
+/fail-closed -polkuun.
 
 ### Invalidi tai puuttuva runtime-output
 

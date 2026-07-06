@@ -38,7 +38,7 @@ Top-level tuotantoketju koostuu kolmesta paakomponentista:
 
 Vastuut lyhyesti:
 
-1. policy engine laskee device-id-pohjaiset policy-ulostulot akulle, valitulle EV:lle ja releille
+1. policy engine laskee device-id-pohjaiset policy-ulostulot konfiguroiduille laitteille
 2. dispatch state applier muuntaa surplus-dispatch-paatokset sisaisiksi dispatch state-tiloiksi
 3. actuator writer loop kirjoittaa lopulliset ohjaukset Home Assistantin aktuaattoreille
 
@@ -88,6 +88,9 @@ Tarkeä rajaus:
 6. device capability -booleanit ovat kovia runtime-rajoja:
    `can_absorb_w=false` estaa positiivisen `target_w`:n ja `can_produce_w=false`
    estaa negatiivisen `target_w`:n
+7. schema-v2/runtime-polussa `uses_hard_off_lifecycle`,
+   `supports_primary_regulation` ja `supports_residual_regulation` ovat eksplisiittisia
+   pakollisia boolean-kenttia; stringit ja numerot eivat kelpaa boolean-arvoiksi
 
 Policy enginein ajastus on osa samaa grouped-configia:
 
@@ -125,8 +128,8 @@ skenaariokohtaisia esimerkkeja eri kardinaliteettirajoille:
 5. `tests/e2e_entity/custom_device_ids_selected_single_ev/EMS_config.yaml` kuvaa custom device-id:t
 
 Fixtureja voi kayttaa lisareferenssina, mutta tuotantoon kayttajan tulee
-kopioida ja sovittaa root example tai `docs/user/config_examples.md`:n
-minimiesimerkki. Root example ei tarkoita, etta vain sen laitemaara olisi tuettu.
+kopioida ja sovittaa root-tason `example_EMS_config.yaml` tai testattu
+skenaariokohtainen fixture. Root example ei tarkoita, etta vain sen laitemaara olisi tuettu.
 
 ## Nopeat suunnistusdokumentit
 
@@ -141,16 +144,19 @@ Kahdelle katselmoinneissa toistuvalle tarpeelle on omat dokumentit:
 
 Paikallinen quarter-balancing -tila.
 
-1. akulle lasketaan net-zero-target
-2. surplus-policy aktivoi absorboivia deviceja device-id-pohjaisessa priority orderissa
-3. selected-single EV tai kotiakku voi toimia adjustable-surplus-roolissa konfiguraation mukaan
-4. EV voi menna low-PV-tilanteessa `hard_off`-polkuun nykyisen policy-attribuutin kautta
+1. ulkoiset primary/surplus-roolit normalisoidaan heti device-id:iksi
+2. primary-laitteen kelpoisuus ratkaistaan `supports_primary_regulation`-capabilitylla
+3. residual-regulaattori johdetaan `supports_residual_regulation`-capabilitysta
+4. surplus-policy aktivoi absorboivia deviceja device-owned priority orderissa
+5. `uses_hard_off_lifecycle=true` kytkee laitteen hard-off-state machineen; release-counteria ei saa ohittaa roolin perusteella
+6. `kind` kuvaa ensisijaisesti adapteri-/read-model-identiteettia, ei geneerista NET_ZERO-kontrolloitavuutta
 
 Canonical command/state -integraatiopinta on device-id-pohjainen:
 
 1. `sensor.ems_device_policies_pyscript`
-2. `sensor.ems_active_surplus_devices`
-3. `sensor.ems_surplus_dispatch_command_pyscript`
+2. `sensor.ems_surplus_dispatch_command_pyscript`
+3. `sensor.ems_policy_state_pyscript`
+4. `sensor.ems_active_surplus_devices`
 
 Nama output-sensorit ovat EMS:n kiinteita canonical pintoja. Niita ei
 konfiguroida YAML:n `policy_outputs`- tai `diagnostics_outputs`-osioilla.
@@ -158,21 +164,21 @@ Kayttajan YAML-konfiguroitavat entity-id:t kuuluvat `runtime.*`-pintaan.
 
 Diagnostiikka- ja selityspinnat:
 
-1. `sensor.ems_policy_decision_trace_pyscript`
+1. `sensor.ems_policy_diagnostics_pyscript`
 2. `sensor.ems_dispatch_state_applier_trace`
 3. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
-Decision-tracessa voi nakya nimiarvoja kuten `RELAY1`, `RELAY2`,
-`EV_CHARGER` ja `ADJUSTABLE`, mutta uudet dashboardit ja automaatiot kannattaa
-sitouttaa `device_policies`-, `dispatch_command`- ja
-`active_surplus_devices`-payload-kenttiin.
+`policy_diagnostics` voi sisaltaa compatibility-nimia kuten `selected_ev_device_id`
+ja `ev_policy_mode`, mutta uudet dashboardit ja automaatiot kannattaa sitouttaa
+kanonisiin `device_policies`-, `dispatch_command`-, `policy_state`- ja
+`active_surplus_devices`-pintoihin seka geneerisiin diagnostiikkakenttiin.
 
-Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
+Surplus-policy voi aktivoitua kahdella nykyisella polulla:
 
-1. `control_profile = AUTOMATIC`
-2. `goal_profile = NET_ZERO`
-3. `guard_profile = NORMAL_LIMITS`
-4. effective forecast on `NONE`
+1. local: `control_profile = AUTOMATIC`, `goal_profile = NET_ZERO`,
+   `guard_profile = NORMAL_LIMITS` ja effective forecast `NONE`
+2. HAEO-plan: `control_profile = HORIZON_BY_HAEO`, `goal_profile = NET_ZERO`,
+   `guard_profile = NORMAL_LIMITS` ja aktiivinen validi HAEO NET_ZERO -plan
 
 Quarter-balance semantiikka:
 
@@ -181,6 +187,28 @@ Quarter-balance semantiikka:
 3. `rpnz_w` johdetaan EMS:n sisalla kvartaalitaseesta ja jaljella olevasta varttiajasta
 4. aktiivisen surplus-kuorman release kayttaa `10 W` practical-zero deadbandia
 5. jos `rpnz_w <= 10 W`, alin prioriteetti aktiivisista surplus-kohteista voidaan vapauttaa
+
+
+Capability-driven role semantiikka:
+
+1. sisaiset roolit ovat `primary_device_id` ja `surplus_adjustable_device_id`
+2. primaryn on tuettava `supports_primary_regulation=true`
+3. residual-regulaattori valitaan ensin primarysta, jos se tukee
+   `supports_residual_regulation=true`; muuten valitusta surplus-adjustable-devicesta
+4. jos residual-regulaattoria ei loydy, direct-v2 runtime hylkaa yhdistelman
+5. eksplisiittisesti sama device primary- ja surplus-roolissa hylataan
+6. EV/BATTERY cross-combo fallbackia ei kayteta yhdistelman hiljaiseen korjaamiseen
+7. tuotannon read-model syottaa corelle geneerisen `current_measured_power_w`-arvon;
+   EV:n A x phases x V -muunnos on adapter/read-model-semantiiikkaa
+
+Hard-off release semantiikka:
+
+1. lifecycle-state omistetaan fyysiselle devicelle `previous_device_states[device_id]`
+2. recovery vaatii PV-ehdon, RPC-ehdon ja ettei battery-to-device loop-riski ole aktiivinen
+3. recovery-ehdon on taytyttava `hard_off_release_cycles` perakkaisella kierroksella
+4. yksittainen RPC-kynnyksen ylitys ei vapauta hard-offia
+5. katkeava recovery-ehto nollaa `hard_off_release_ready_cycles`-laskurin
+6. sama laskurisopimus koskee lifecycle-devicea riippumatta primary- tai surplus-adjustable-roolista
 
 ### `MAX_EXPORT`
 
@@ -324,7 +352,8 @@ Keskeiset surplus-state-avaimet (EMS):
 
 1. `surplus_freeze_until`
 2. `active_surplus_devices`
-3. `previous_device_state`
+3. `previous_device_states` (authoritative lifecycle map)
+4. `previous_device_state` (legacy single-device compatibility view)
 
 Keskeiset releiden override- ja sallinta-avaimet (EMS):
 
@@ -347,28 +376,31 @@ Keskeiset policy-ulostuloavaimet (EMS):
 
 1. `device_policies`
 2. `dispatch_command`
-3. `active_surplus_devices`
-4. `previous_device_state`
-5. `policy_decision_trace` (diagnostiikkapeili)
+3. `policy_state`
+4. `active_surplus_devices`
+5. `previous_device_states`
+6. `policy_diagnostics` (diagnostiikka- ja selityspinta)
 
 Oleellinen tulkinta:
 
 1. `device_policies` on writerin kanoninen ohjausrajapinta
 2. `dispatch_command` on dispatch state applierin kanoninen komentorajapinta
-3. `policy_decision_trace` on diagnostiikka- ja selityspinta, ei writerin tai
+3. `policy_state` on jatkuvuustilan kanoninen state-pinta
+4. `policy_diagnostics` on diagnostiikka- ja selityspinta, ei writerin tai
    dispatch-applierin kanoninen command/state-lahde
-4. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
+5. EV:n ampeerit eivat kuulu `device_policies`-sopimukseen, vaan writerin
    actuator-rajan `target_current_a`-kenttiin
-5. `policy_decision_trace`-kentista johdetut yksittaisjulkaisut eivat ole
-   release-contractin osa
 
 Capability-semantiiikka:
 
 1. `can_absorb_w=false` estaa laitteen kayton lataus-/kulutussuuntaan
 2. `can_produce_w=false` estaa laitteen kayton purku-/tuotantosuuntaan
-3. battery policy clampataan capabilityjen mukaan ennen writeria, ja writer tekee
+3. `supports_primary_regulation=true` sallii laitteen valinnan jatkuvasti arvioitavaksi NET_ZERO-primaryksi
+4. `supports_residual_regulation=true` sallii laitteen tasata toisen primary-targetin jalkeista signed residualia
+5. `uses_hard_off_lifecycle=true` kytkee laitteen hard-off-state machineen; thresholdit ja cycle-maarat pysyvat policyssa
+6. battery policy clampataan capabilityjen mukaan ennen writeria, ja writer tekee
    saman tarkistuksen viela viimeisena turvallisuusrajana
-4. tuotanto-YAML:ssa `HOME_BATTERY.can_absorb_w=false` ja
+7. tuotanto-YAML:ssa `HOME_BATTERY.can_absorb_w=false` ja
    `HOME_BATTERY.can_produce_w=false` yhdessa on validaatiovirhe
 
 Keskeiset actuator-avaimet (EMS):
@@ -396,11 +428,14 @@ Tuetut kombinaatiot:
 1. `adjustable_primary_load = HOME_BATTERY` ja `adjustable_surplus_load = EV_CHARGER`
 2. `adjustable_primary_load = EV_CHARGER` ja `adjustable_surplus_load = HOME_BATTERY`
 
-Nykyinen runtime-yhteensopivuus:
+Nykyinen runtime-yhteensopivuus ja validointi:
 
-1. jos `adjustable_primary_load` puuttuu/tyhja, runtime kayttaa oletusta (`implicit_primary_equals_surplus`), jossa primary asetetaan samaksi kuin `adjustable_surplus_load`
-2. trace raportoi taman syylla `primary_surplus_combo_reason = implicit_primary_equals_surplus`
-3. tata ei suositella uudessa kayttoonotossa
+1. uusi kayttoonotto asettaa aina molemmat roolit eksplisiittisesti ja eri device-id:iksi
+2. direct-v2 hylkaa eksplisiittisesti saman devicen primary- ja surplus-roolissa
+3. primaryn on tuettava `supports_primary_regulation=true`
+4. valitusta yhdistelmasta on loydyttava residual-regulaattori capabilityjen perusteella
+5. jos `adjustable_primary_load` puuttuu/tyhja, compatibility-polku voi johtaa primaryn surplus-devicesta; yhdistelma kelpaa vain jos capability-validointi silti tayttyy
+6. invalidia EV/BATTERY-yhdistelmaa ei korjata hiljaisella cross-combo fallbackilla
 
 ### NET_ZERO floor-semanttiikka
 
@@ -485,7 +520,7 @@ Tarkeimmat seurattavat entiteetit:
 
 1. `sensor.ems_device_policies_pyscript`
 2. `sensor.ems_surplus_dispatch_command_pyscript`
-3. `sensor.ems_policy_decision_trace_pyscript`
+3. `sensor.ems_policy_diagnostics_pyscript`
 4. `sensor.ems_dispatch_state_applier_trace`
 5. `sensor.ems_actuator_writer_trace`
 
@@ -497,7 +532,12 @@ Erityisen hyodyllisia attribuutteja:
 4. `effective_forecast`
 5. `battery_write_enabled`
 6. `surplus_device_dispatch_action`
-7. `ev_policy_mode`
+7. `primary_device_id`
+8. `surplus_adjustable_device_id`
+9. `residual_regulator_device_id`
+10. `primary_surplus_combo_valid`
+11. `device_lifecycle_states`
+12. `ev_policy_mode` (compatibility)
 
 ## Tunnetut rajoitteet
 

@@ -1,4 +1,3 @@
-template:
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -183,8 +182,7 @@ template:
                   },
   
                   'policy': {
-                    # Legacy HA helper name; semantically this is HOME_BATTERY's
-                    # device-owned surplus priority, not an adjustable-role priority.
+
                     'priority':
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
@@ -822,8 +820,6 @@ template:
   - sensor:
       - name: "I-PACE Charged Energy Delta"
         unit_of_measurement: "kWh"
-        #device_class: energy
-        #state_class: measurement 
         state: |-
           {% set delta = states('sensor.ev_delta_kwh') | float(0) %}
           {% if is_state('input_boolean.i_pace_charging', 'on') %}

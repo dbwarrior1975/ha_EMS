@@ -110,6 +110,8 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ev_b_min_power_w',
             'max_absorb_w': 'input_number.ev_b_max_power_w',
@@ -313,6 +315,8 @@ def test_core_config_device_registry_exposes_extra_relay_without_fixed_dataclass
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': False,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': False,
             'min_absorb_w': 'input_number.ems_relay3_power_kw',
             'max_absorb_w': 'input_number.ems_relay3_power_kw',

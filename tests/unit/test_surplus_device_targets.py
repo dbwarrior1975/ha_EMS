@@ -144,6 +144,8 @@ def test_core_config_view_second_ev_adjustable_target_does_not_materialize_selec
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',

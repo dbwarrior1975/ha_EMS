@@ -495,6 +495,14 @@ def _parse_policy_config_v2(
                 _required(caps_raw, 'uses_hard_off_lifecycle', f'{device_path}.capabilities'),
                 f'{device_path}.capabilities.uses_hard_off_lifecycle',
             ),
+            'supports_primary_regulation': _strict_boolean(
+                _required(caps_raw, 'supports_primary_regulation', f'{device_path}.capabilities'),
+                f'{device_path}.capabilities.supports_primary_regulation',
+            ),
+            'supports_residual_regulation': _strict_boolean(
+                _required(caps_raw, 'supports_residual_regulation', f'{device_path}.capabilities'),
+                f'{device_path}.capabilities.supports_residual_regulation',
+            ),
         }
         for field in ('min_absorb_w', 'max_absorb_w', 'max_produce_w', 'step_w'):
             caps[field] = _number(_required(caps_raw, field, f'{device_path}.capabilities'), f'{device_path}.capabilities.{field}')
@@ -559,6 +567,31 @@ def _parse_policy_config_v2(
             )
         policy_by_id[device_id] = policy
         adapter_by_id[device_id] = adapter
+
+    primary_device_id = str(cfg_values['adjustable_primary_load'] or adjustable_device_id)
+    if cfg_values['adjustable_primary_load'] and primary_device_id == adjustable_device_id:
+        _fail(
+            'policy_config.config.adjustable_primary_load',
+            'must not reference the same device as adjustable_surplus_load',
+        )
+    primary_caps = capabilities_by_id.get(primary_device_id, {}) or {}
+    if not bool(primary_caps.get('supports_primary_regulation', False)):
+        _fail(
+            'policy_config.config.adjustable_primary_load',
+            f'{primary_device_id} does not support primary regulation',
+        )
+    residual_regulator_device_id = ''
+    if bool(primary_caps.get('supports_residual_regulation', False)):
+        residual_regulator_device_id = primary_device_id
+    else:
+        adjustable_caps = capabilities_by_id.get(adjustable_device_id, {}) or {}
+        if bool(adjustable_caps.get('supports_residual_regulation', False)):
+            residual_regulator_device_id = adjustable_device_id
+    if not residual_regulator_device_id:
+        _fail(
+            'policy_config.config.adjustable_primary_load',
+            'selected primary/adjustable combination has no residual regulator capability',
+        )
 
     parsed = RuntimePolicyConfig(
         revision=revision,

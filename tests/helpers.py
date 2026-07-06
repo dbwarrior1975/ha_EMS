@@ -99,6 +99,8 @@ def make_cfg(**overrides):
         capabilities=CoreDeviceCapabilitiesConfig(
             can_absorb_w=True,
             can_produce_w=True,
+            supports_primary_regulation=True,
+            supports_residual_regulation=True,
             min_absorb_w=0,
             max_absorb_w=float(data['max_solar_charge_w']),
             step_w=float(data['deadband_w']),
@@ -129,6 +131,8 @@ def make_cfg(**overrides):
         capabilities=CoreDeviceCapabilitiesConfig(
             can_absorb_w=True,
             can_produce_w=False,
+            supports_primary_regulation=True,
+            supports_residual_regulation=False,
             min_absorb_w=float(data['ev_min_absorb_w']),
             max_absorb_w=float(data['ev_max_absorb_w']),
             step_w=float(_ev_power.ev_current_a_to_power_w(data['ev_current_step_a'], data['ev_charger_phases'], data['ev_voltage_v'])),
@@ -157,6 +161,8 @@ def make_cfg(**overrides):
         capabilities=CoreDeviceCapabilitiesConfig(
             can_absorb_w=True,
             can_produce_w=False,
+            supports_primary_regulation=False,
+            supports_residual_regulation=False,
             min_absorb_w=int(relay_thresholds_w['RELAY1']),
             max_absorb_w=int(relay_thresholds_w['RELAY1']),
             step_w=int(relay_thresholds_w['RELAY1']),
@@ -176,6 +182,8 @@ def make_cfg(**overrides):
         capabilities=CoreDeviceCapabilitiesConfig(
             can_absorb_w=True,
             can_produce_w=False,
+            supports_primary_regulation=False,
+            supports_residual_regulation=False,
             min_absorb_w=int(relay_thresholds_w['RELAY2']),
             max_absorb_w=int(relay_thresholds_w['RELAY2']),
             step_w=int(relay_thresholds_w['RELAY2']),

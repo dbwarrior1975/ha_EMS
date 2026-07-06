@@ -136,7 +136,7 @@ def test_03_recovery_and_reactivation(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=400.0, required_power_consumption_kw=0.1, at_s=280, pv_power_kw=5.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=0.1, at_s=280),
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': True},
+                'EV_CHARGER': {'enabled': False},
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
@@ -145,11 +145,51 @@ def test_03_recovery_and_reactivation(project_root):
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
+                'ev_hard_off_active': True,
+                'ev_hard_off_release_ready_cycles': 0,
+            },
+            'expect_values': {
+                E['actuator_ev_enabled']: False,
+                E['actuator_ev_current_a']: 6,
+                E['actuator_battery_setpoint_w']: 100,
+            },
+        },
+        {
+            'at_s': 285,
+            'note': 't285 first new consecutive recovery-ready cycle increments the release counter but keeps EV hard-off.',
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=400.0, required_power_consumption_kw=2.6, at_s=285, pv_power_kw=5.0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=2.6, at_s=285),
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False},
+                'HOME_BATTERY': {'target_w': 1100},
+            },
+            'expect_policy': {
+                'surplus_freeze_until_ts': 290.0,
+                'surplus_next_target': 'RELAY1',
+                'surplus_explanation': 'Freeze active -> wait for measurements to settle',
+                'ev_hard_off_active': True,
+                'ev_hard_off_release_ready_cycles': 1,
+            },
+        },
+        {
+            'at_s': 290,
+            'note': 't290 second consecutive recovery-ready cycle reaches the configured count and releases EV hard-off.',
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=400.0, required_power_consumption_kw=2.6, at_s=290, pv_power_kw=5.0),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=2.6, at_s=290),
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': True},
+                'HOME_BATTERY': {'target_w': 2000},
+            },
+            'expect_policy': {
+                'surplus_freeze_until_ts': 305.0,
+                'surplus_next_target': 'RELAY1',
+                'surplus_explanation': 'Raw RPC 2.600 kW >= RELAY1 threshold 2.500 kW',
+                'ev_hard_off_active': False,
+                'ev_hard_off_release_ready_cycles': 2,
             },
             'expect_values': {
                 E['actuator_ev_enabled']: True,
                 E['actuator_ev_current_a']: 28,
-                E['actuator_battery_setpoint_w']: 100,
             },
         },
     ]

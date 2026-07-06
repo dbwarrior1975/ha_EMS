@@ -36,21 +36,29 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: true
+        supports_primary_regulation: true
+        supports_residual_regulation: true
 
     EV_CHARGER:
       kind: EV_CHARGER
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        supports_primary_regulation: true
+        supports_residual_regulation: false
 
     RELAY1:
       kind: RELAY
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        supports_primary_regulation: false
+        supports_residual_regulation: false
 
     RELAY2:
       kind: RELAY
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        supports_primary_regulation: false
+        supports_residual_regulation: false

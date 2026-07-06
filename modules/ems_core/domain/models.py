@@ -78,11 +78,41 @@ class CoreGlobalConfig:
 class CoreDeviceCapabilitiesConfig:
     can_absorb_w: bool
     can_produce_w: bool
+    supports_primary_regulation: bool
+    supports_residual_regulation: bool
     min_absorb_w: ScalarRef
     max_absorb_w: ScalarRef
     step_w: ScalarRef
     max_produce_w: Optional[ScalarRef] = None
     uses_hard_off_lifecycle: bool = False
+
+
+@dataclass
+class DeviceControlContext:
+    device_id: str
+    kind: str
+    can_absorb_w: bool
+    can_produce_w: bool
+    min_absorb_w: float
+    max_absorb_w: float
+    max_produce_w: float
+    step_w: float
+    supports_primary_regulation: bool
+    supports_residual_regulation: bool
+    uses_hard_off_lifecycle: bool
+    priority: int
+    current_measured_power_w: float = 0.0
+
+
+@dataclass
+class HardOffLifecycleTransition:
+    low_pv_cycles: int
+    hard_off_release_ready_cycles: int
+    hard_off_active: bool
+    activation_allowed: bool
+    release_allowed: bool
+    recovery_condition: bool
+    mode: str
 
 
 @dataclass

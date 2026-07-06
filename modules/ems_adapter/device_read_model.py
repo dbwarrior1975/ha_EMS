@@ -98,6 +98,38 @@ def build_device_states(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDev
     return _build_device_states_from_core_config(cfg, m)
 
 
+def build_device_measured_power_w_by_id(cfg: CoreConfig, m: RuntimeMeasurements) -> dict[str, float]:
+    measured = {}
+    devices = getattr(cfg, 'devices', {}) or {}
+    if not hasattr(devices, 'values'):
+        return measured
+    for device in devices.values():
+        device_id = str(device.device_id)
+        kind = str(device.kind)
+        if device_id == _BATTERY_ID or kind == 'BATTERY':
+            measured[device_id] = float(m.current_battery_setpoint_w)
+            continue
+        if kind == 'EV_CHARGER':
+            ev_runtime = _ev_runtime_state(m, device_id)
+            ev_current_a = int(ev_runtime.get('current_a', 0) or 0)
+            measured[device_id] = float(
+                ev_current_a_to_power_w(
+                    ev_current_a,
+                    _ev_adapter_int(getattr(device.adapter, 'phases', None), 1),
+                    _ev_adapter_float(getattr(device.adapter, 'voltage_v', None), 230.0),
+                )
+            )
+            continue
+        if kind == 'RELAY':
+            relay_runtime = _relay_runtime_state(m, device_id)
+            measured[device_id] = float(
+                _relay_nominal_absorb_w(cfg, device_id) if relay_runtime.get('active') else 0
+            )
+            continue
+        measured[device_id] = 0.0
+    return measured
+
+
 def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDeviceState, ...]:
     battery_target_w = int(round(float(m.current_battery_setpoint_w)))
     battery_available = (
