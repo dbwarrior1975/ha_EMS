@@ -201,11 +201,16 @@ PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
 PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     'BATTERY': {
         'priority': 0,
+        'surplus_allowed': False,
+        'activation_threshold_w': 1.0,
+        'surplus_dispatch_mode': 'max_absorb',
         'default_min_absorb_w': 0.0,
     },
     'EV_CHARGER': {
         'priority': 0,
         'surplus_allowed': False,
+        'activation_threshold_w': 1.0,
+        'surplus_dispatch_mode': 'max_absorb',
         'force_on': False,
         'low_pv_threshold_w': 1600.0,
         'hard_off_low_pv_cycles': 15,
@@ -214,6 +219,8 @@ PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     'RELAY': {
         'priority': 0,
         'surplus_allowed': False,
+        'activation_threshold_w': 1.0,
+        'surplus_dispatch_mode': 'fixed',
         'force_on': False,
     },
 }
@@ -258,7 +265,7 @@ ALLOWED_CAPABILITIES_KEYS = frozenset(
         'supports_residual_regulation',
     )
 )
-ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'default_min_absorb_w'))
+ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode', 'default_min_absorb_w'))
 ALLOWED_BATTERY_GUARD_KEYS = frozenset(
     (
         'soc',
@@ -275,6 +282,8 @@ ALLOWED_EV_POLICY_KEYS = frozenset(
     (
         'priority',
         'surplus_allowed',
+        'activation_threshold_w',
+        'surplus_dispatch_mode',
         'force_on',
         'low_pv_threshold_w',
         'hard_off_low_pv_cycles',
@@ -282,7 +291,7 @@ ALLOWED_EV_POLICY_KEYS = frozenset(
     )
 )
 ALLOWED_EV_ADAPTER_KEYS = frozenset(('enabled', 'current_a', 'current_step_a', 'phases', 'voltage_v'))
-ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'force_on'))
+ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode', 'force_on'))
 ALLOWED_RELAY_ADAPTER_KEYS = frozenset(('enabled',))
 
 
@@ -1238,6 +1247,9 @@ def _compile_core_battery_device_plan(
                 f'{device_path}.policy.priority',
                 default_priority,
             ),
+            'surplus_allowed': _compile_dynamic_value(policy.get('surplus_allowed', False), f'{device_path}.policy.surplus_allowed', False),
+            'activation_threshold_w': _compile_dynamic_value(policy.get('activation_threshold_w', 1.0), f'{device_path}.policy.activation_threshold_w', 1.0),
+            'surplus_dispatch_mode': _compile_dynamic_value(policy.get('surplus_dispatch_mode', 'max_absorb'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'default_min_absorb_w': _compile_dynamic_value(
                 _require_mapping_value(policy, 'default_min_absorb_w'),
                 f'{device_path}.policy.default_min_absorb_w',
@@ -1278,6 +1290,8 @@ def _compile_core_ev_device_plan(device_id: str, device: object) -> dict[str, ob
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', 3),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
+            'activation_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'activation_threshold_w'), f'{device_path}.policy.activation_threshold_w', 1.0),
+            'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
             'low_pv_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'low_pv_threshold_w'), f'{device_path}.policy.low_pv_threshold_w', 1.6),
             'hard_off_low_pv_cycles': _compile_dynamic_value(_require_mapping_value(policy, 'hard_off_low_pv_cycles'), f'{device_path}.policy.hard_off_low_pv_cycles', 2),
@@ -1313,6 +1327,8 @@ def _compile_core_relay_device_plan(device_id: str, device: object) -> dict[str,
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', relay_default),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
+            'activation_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'activation_threshold_w'), f'{device_path}.policy.activation_threshold_w', 1.0),
+            'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'fixed'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
         },
         'adapter': {
@@ -2032,12 +2048,20 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             'supports_primary_regulation',
             'supports_residual_regulation',
         )
-        policy_fields = ('priority', 'default_min_absorb_w') if kind == 'BATTERY' else ('priority',)
+        policy_fields = (
+            'priority',
+            'surplus_allowed',
+            'activation_threshold_w',
+            'surplus_dispatch_mode',
+            'default_min_absorb_w',
+        ) if kind == 'BATTERY' else ('priority',)
         adapter_fields = ()
         if kind == 'EV_CHARGER':
             policy_fields = (
                 'priority',
                 'surplus_allowed',
+                'activation_threshold_w',
+                'surplus_dispatch_mode',
                 'force_on',
                 'low_pv_threshold_w',
                 'hard_off_low_pv_cycles',
@@ -2054,6 +2078,8 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             policy_fields = (
                 'priority',
                 'surplus_allowed',
+                'activation_threshold_w',
+                'surplus_dispatch_mode',
                 'force_on',
             )
             adapter_fields = (
@@ -2940,6 +2966,9 @@ def _build_view_battery_device(plan: StaticDevicePlan, values: dict) -> CoreBatt
         capabilities=_build_view_capabilities(capabilities),
         policy=CoreBatteryPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
+            surplus_allowed=bool(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', False)),
+            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
+            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
             default_min_absorb_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'default_min_absorb_w'),
         ),
         guard=CoreBatteryGuardConfig(
@@ -2979,6 +3008,8 @@ def _build_view_ev_device(plan: StaticDevicePlan, values: dict) -> CoreEvCharger
         policy=CoreEvPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
             surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
+            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
+            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
             force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
             low_pv_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'low_pv_threshold_w', 1.6),
             hard_off_low_pv_cycles=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'hard_off_low_pv_cycles', 2),
@@ -3015,6 +3046,8 @@ def _build_view_relay_device(plan: StaticDevicePlan, values: dict) -> CoreRelayD
         policy=CoreRelayPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 0),
             surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
+            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
+            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'fixed')),
             force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
         ),
         adapter=CoreRelayAdapterConfig(
@@ -3163,6 +3196,17 @@ def _materialize_home_battery_from_plan(
         ),
         policy=CoreBatteryPolicyConfig(
             priority=_resolve_home_battery_priority_from_plan(device, core_devices, read_entity),
+            surplus_allowed=bool(
+                _resolve_core_config_value(policy.get('surplus_allowed', False), read_entity, False)
+            ),
+            activation_threshold_w=(
+                _resolve_core_config_value(policy.get('activation_threshold_w'), read_entity, None)
+                if 'activation_threshold_w' in policy
+                else None
+            ),
+            surplus_dispatch_mode=str(
+                _resolve_core_config_value(policy.get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')
+            ),
             default_min_absorb_w=_resolve_core_config_value(_require_mapping_value(policy, 'default_min_absorb_w'), read_entity, 0.0)
             if 'default_min_absorb_w' in policy
             else None,
@@ -3451,6 +3495,12 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             ALLOWED_BATTERY_POLICY_KEYS,
             issues,
         )
+        if 'surplus_allowed' in device['policy']:
+            _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
+        if bool(device['policy'].get('surplus_allowed', False)):
+            _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
+            if device['policy'].get('surplus_dispatch_mode') not in ('max_absorb', 'fixed'):
+                issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
 
     if device_id == 'HOME_BATTERY' and isinstance(device.get('adapter'), dict):
         _validate_unknown_fields(
@@ -3476,9 +3526,14 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_required_entities(
             device['policy'],
             f'{device_path}.policy',
-            ('priority', 'surplus_allowed', 'force_on', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
+            ('priority', 'force_on', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
             issues,
         )
+        _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
+        _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
+        dispatch_mode = device['policy'].get('surplus_dispatch_mode')
+        if dispatch_mode not in ('max_absorb', 'fixed'):
+            issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
 
     if kind == 'EV_CHARGER' and isinstance(device.get('adapter'), dict):
         _validate_unknown_fields(
@@ -3509,9 +3564,14 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             _validate_required_entities(
                 device['policy'],
                 f'{device_path}.policy',
-                ('priority', 'surplus_allowed', 'force_on'),
+                ('priority', 'force_on'),
                 issues,
             )
+            _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
+            _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
+            dispatch_mode = device['policy'].get('surplus_dispatch_mode')
+            if dispatch_mode not in ('max_absorb', 'fixed'):
+                issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
         if isinstance(device.get('adapter'), dict):
             _validate_unknown_fields(
                 device['adapter'],
@@ -3660,28 +3720,6 @@ def _validate_device_capability_semantics(ems: dict, devices: dict, issues: list
     if not isinstance(global_config, dict):
         return
 
-    adjustable_surplus_load = global_config.get('adjustable_surplus_load')
-    if isinstance(adjustable_surplus_load, str) and adjustable_surplus_load in devices:
-        adjustable_device = devices.get(adjustable_surplus_load, {})
-        adjustable_kind = str(adjustable_device.get('kind', '') or '') if isinstance(adjustable_device, dict) else ''
-        if adjustable_kind not in ('BATTERY', 'EV_CHARGER'):
-            issues.append(
-                _issue(
-                    'ems.global_config.adjustable_surplus_load',
-                    SEVERITY_ERROR,
-                    'adjustable_surplus_load must reference a BATTERY or EV_CHARGER device',
-                )
-            )
-        adjustable_caps = adjustable_device.get('capabilities') if isinstance(adjustable_device, dict) else None
-        if isinstance(adjustable_caps, dict) and adjustable_caps.get('can_absorb_w') is False:
-            issues.append(
-                _issue(
-                    'ems.global_config.adjustable_surplus_load',
-                    SEVERITY_ERROR,
-                    'adjustable_surplus_load must reference a device with can_absorb_w=true',
-                )
-            )
-
 
 def _validate_role_constraints(role_constraints: dict, devices: dict, issues: list[ConfigValidationIssue]) -> None:
     for role_key, value in role_constraints.items():
@@ -3717,6 +3755,21 @@ def _validate_required_entities(section: dict, section_path: str, fields: tuple[
             continue
         if not _is_valid_entity_id(section[field]):
             issues.append(_issue(f'{section_path}.{field}', SEVERITY_ERROR, 'must be a non-empty entity id string'))
+
+
+def _validate_entity_or_bool(
+    container: dict,
+    path: str,
+    field: str,
+    issues: list[ConfigValidationIssue],
+) -> None:
+    if field not in container:
+        issues.append(_issue(path, SEVERITY_ERROR, 'missing required field'))
+        return
+    value = container[field]
+    if isinstance(value, bool) or _is_valid_entity_id(value):
+        return
+    issues.append(_issue(path, SEVERITY_ERROR, 'must be an entity id string or boolean constant'))
 
 
 def _validate_entity_or_number(
@@ -3850,6 +3903,9 @@ def _build_core_battery_device(
                 read_entity,
                 default_priority,
             ),
+            surplus_allowed=bool(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_allowed', False), read_entity, False)),
+            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(device, 'policy').get('activation_threshold_w', 1.0), read_entity, 1.0),
+            surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')),
             default_min_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'default_min_absorb_w'), read_entity, 0.0)
             if 'default_min_absorb_w' in _require_mapping_value(device, 'policy')
             else None,
@@ -3887,6 +3943,8 @@ def _build_core_ev_device(device_id: str, device: object, read_entity: Optional[
         policy=CoreEvPolicyConfig(
             priority=_resolve_core_config_value(_require_mapping_value(policy_section, 'priority'), read_entity, 3),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_allowed'), read_entity, ''),
+            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(policy_section, 'activation_threshold_w'), read_entity, 1.0),
+            surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_dispatch_mode'), read_entity, 'max_absorb')),
             force_on=_resolve_core_config_value(_require_mapping_value(policy_section, 'force_on'), read_entity, ''),
             low_pv_threshold_w=_resolve_core_config_value(_require_mapping_value(policy_section, 'low_pv_threshold_w'), read_entity, 1.6),
             hard_off_low_pv_cycles=_resolve_core_config_value(_require_mapping_value(policy_section, 'hard_off_low_pv_cycles'), read_entity, 2),
@@ -3921,6 +3979,8 @@ def _build_core_relay_device(device_id: str, device: object, read_entity: Option
                 2 if device_id == 'RELAY1' else 1,
             ),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_allowed'), read_entity, ''),
+            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'activation_threshold_w'), read_entity, 1.0),
+            surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_dispatch_mode'), read_entity, 'fixed')),
             force_on=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'force_on'), read_entity, ''),
         ),
         adapter=CoreRelayAdapterConfig(

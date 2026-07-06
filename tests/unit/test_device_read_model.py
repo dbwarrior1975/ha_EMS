@@ -99,6 +99,8 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
     grouped_config['ems']['devices']['EV_A']['capabilities']['step_w'] = 'input_number.ev_a_power_step_w'
     grouped_config['ems']['devices']['EV_A']['policy']['priority'] = 'input_number.ev_a_priority'
     grouped_config['ems']['devices']['EV_A']['policy']['surplus_allowed'] = 'input_boolean.ev_a_surplus_allowed'
+    grouped_config['ems']['devices']['EV_A']['policy']['activation_threshold_w'] = 'input_number.ev_a_activation_threshold_w'
+    grouped_config['ems']['devices']['EV_A']['policy']['surplus_dispatch_mode'] = 'max_absorb'
     grouped_config['ems']['devices']['EV_A']['policy']['force_on'] = 'input_boolean.ev_a_force_on'
     grouped_config['ems']['devices']['EV_A']['policy']['low_pv_threshold_w'] = 'input_number.ev_a_low_pv_threshold_w'
     grouped_config['ems']['devices']['EV_A']['policy']['hard_off_low_pv_cycles'] = 'input_number.ev_a_low_pv_cycles'
@@ -120,6 +122,8 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
         'policy': {
             'priority': 'input_number.ev_b_priority',
             'surplus_allowed': 'input_boolean.ev_b_surplus_allowed',
+            'activation_threshold_w': 'input_number.ev_b_activation_threshold_w',
+            'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ev_b_force_on',
             'low_pv_threshold_w': 'input_number.ev_b_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ev_b_low_pv_cycles',
@@ -144,6 +148,7 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
         'input_number.ev_a_power_step_w': 230,
         'input_number.ev_a_priority': 8,
         'input_boolean.ev_a_surplus_allowed': True,
+        'input_number.ev_a_activation_threshold_w': 2400,
         'input_boolean.ev_a_force_on': False,
         'input_number.ev_a_low_pv_threshold_w': 1600,
         'input_number.ev_a_low_pv_cycles': 2,
@@ -158,6 +163,7 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
         'input_number.ev_b_power_step_w': 690,
         'input_number.ev_b_priority': 6,
         'input_boolean.ev_b_surplus_allowed': True,
+        'input_number.ev_b_activation_threshold_w': 4200,
         'input_boolean.ev_b_force_on': False,
         'input_number.ev_b_low_pv_threshold_w': 1600,
         'input_number.ev_b_low_pv_cycles': 2,
@@ -325,6 +331,8 @@ def test_core_config_device_registry_exposes_extra_relay_without_fixed_dataclass
         'policy': {
             'priority': 'input_number.ems_surplus_relay3_priority',
             'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
+            'activation_threshold_w': 'input_number.ems_relay3_power_kw',
+            'surplus_dispatch_mode': 'fixed',
             'force_on': 'input_boolean.ems_relay3_force_on',
         },
         'adapter': {

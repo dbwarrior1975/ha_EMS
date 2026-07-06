@@ -53,6 +53,8 @@ def _core_cfg_with_selected_custom_ev(
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
+            'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
@@ -104,6 +106,7 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_ev_garage_power_step_w': 2300,
         'input_number.ems_surplus_ev_garage_priority': 4,
         'input_boolean.ems_ev_garage_surplus_allowed': True,
+        'input_number.ems_ev_garage_activation_threshold_w': 2400,
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,
         'input_number.ems_ev_garage_release_cycles': 2,
@@ -319,6 +322,8 @@ def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_sele
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
+            'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
@@ -341,6 +346,7 @@ def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_sele
         'input_number.ems_ev_garage_power_step_w': 2300,
         'input_number.ems_surplus_ev_garage_priority': 4,
         'input_boolean.ems_ev_garage_surplus_allowed': True,
+        'input_number.ems_ev_garage_activation_threshold_w': 2400,
         'input_boolean.ems_ev_garage_force_on': False,
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,

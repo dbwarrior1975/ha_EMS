@@ -148,6 +148,63 @@ def test_validate_rejects_unknown_role_constraint_device(project_root):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('value', ('true', 1, 0, None, 'unknown'))
+def test_validate_rejects_non_boolean_surplus_allowed(project_root, value):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['policy']['surplus_allowed'] = value
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.devices.EV_CHARGER.policy.surplus_allowed' in _error_paths(result)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', (0, -1, -0.5))
+def test_validate_rejects_non_positive_surplus_activation_threshold(project_root, value):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = value
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.devices.EV_CHARGER.policy.activation_threshold_w' in _error_paths(result)
+
+
+@pytest.mark.unit
+def test_validate_accepts_positive_numeric_surplus_activation_threshold(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = 4400
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is True
+
+
+@pytest.mark.unit
+def test_validate_rejects_unknown_surplus_dispatch_mode(project_root):
+    config = _load_example(project_root)
+    config['ems']['devices']['EV_CHARGER']['policy']['surplus_dispatch_mode'] = 'stepped'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert 'ems.devices.EV_CHARGER.policy.surplus_dispatch_mode' in _error_paths(result)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('field', ('surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode'))
+def test_validate_rejects_missing_required_ev_surplus_policy_field(project_root, field):
+    config = _load_example(project_root)
+    del config['ems']['devices']['EV_CHARGER']['policy'][field]
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is False
+    assert f'ems.devices.EV_CHARGER.policy.{field}' in _error_paths(result)
+
+
+@pytest.mark.unit
 def test_validate_rejects_invalid_ev_phases_numeric_constant(project_root):
     config = _load_example(project_root)
     config['ems']['devices']['EV_CHARGER']['adapter']['phases'] = 0
@@ -1063,18 +1120,13 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
 
 
 @pytest.mark.unit
-def test_grouped_config_rejects_relay_as_literal_adjustable_surplus_load(project_root):
+def test_grouped_config_allows_legacy_adjustable_surplus_alias_to_reference_relay(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     config['ems']['global_config']['adjustable_surplus_load'] = 'RELAY1'
 
     result = validate_grouped_ems_config(config)
 
-    assert result.ok is False
-    assert any(
-        issue.path == 'ems.global_config.adjustable_surplus_load'
-        and issue.message == 'adjustable_surplus_load must reference a BATTERY or EV_CHARGER device'
-        for issue in result.errors
-    )
+    assert result.ok is True
 
 
 @pytest.mark.unit

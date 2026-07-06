@@ -92,6 +92,19 @@ def make_cfg(**overrides):
     for device_id, policy_overrides in (data.pop('relay_policies', {}) or {}).items():
         relay_policies.setdefault(str(device_id), {}).update(policy_overrides or {})
     ev_priority = int(data.pop('ev_priority'))
+    legacy_surplus_device_id = str(data['adjustable_surplus_load'])
+    battery_surplus_allowed = bool(
+        overrides.get('battery_surplus_allowed', legacy_surplus_device_id == 'HOME_BATTERY')
+    )
+    ev_surplus_allowed = bool(
+        overrides.get('ev_surplus_allowed', legacy_surplus_device_id == 'EV_CHARGER')
+    )
+    battery_activation_threshold_w = float(
+        overrides.get('battery_activation_threshold_w', data['adjustable_surplus_activation'])
+    )
+    ev_activation_threshold_w = float(
+        overrides.get('ev_activation_threshold_w', data['adjustable_surplus_activation'])
+    )
 
     home_battery = CoreBatteryDeviceConfig(
         device_id='HOME_BATTERY',
@@ -109,6 +122,9 @@ def make_cfg(**overrides):
         ),
         policy=CoreBatteryPolicyConfig(
             priority=int(data['adjustable_surplus_load_priority']),
+            surplus_allowed=battery_surplus_allowed,
+            activation_threshold_w=battery_activation_threshold_w,
+            surplus_dispatch_mode='max_absorb',
             default_min_absorb_w=None,
         ),
         guard=CoreBatteryGuardConfig(
@@ -141,11 +157,13 @@ def make_cfg(**overrides):
         ),
         policy=CoreEvPolicyConfig(
             priority=ev_priority,
-            surplus_allowed=bool(overrides.get('ev_surplus_allowed', True)),
+            surplus_allowed=ev_surplus_allowed,
             force_on=bool(data['ev_force_on']),
             low_pv_threshold_w=float(data['ev_hard_off_pv_threshold_kw']),
             hard_off_low_pv_cycles=int(data['ev_hard_off_low_pv_cycles']),
             hard_off_release_cycles=int(data['ev_hard_off_release_cycles']),
+            activation_threshold_w=ev_activation_threshold_w,
+            surplus_dispatch_mode='max_absorb',
         ),
         adapter=CoreEvAdapterConfig(
             enabled='switch.ev_enabled',
@@ -173,6 +191,8 @@ def make_cfg(**overrides):
             priority=int(relay_priorities['RELAY1']),
             surplus_allowed=bool(relay_policies['RELAY1'].get('surplus_allowed', True)),
             force_on=bool(relay_policies['RELAY1'].get('force_on', False)),
+            activation_threshold_w=int(relay_thresholds_w['RELAY1']),
+            surplus_dispatch_mode='fixed',
         ),
         adapter=CoreRelayAdapterConfig(enabled='switch.relay1'),
     )
@@ -194,6 +214,8 @@ def make_cfg(**overrides):
             priority=int(relay_priorities['RELAY2']),
             surplus_allowed=bool(relay_policies['RELAY2'].get('surplus_allowed', True)),
             force_on=bool(relay_policies['RELAY2'].get('force_on', False)),
+            activation_threshold_w=int(relay_thresholds_w['RELAY2']),
+            surplus_dispatch_mode='fixed',
         ),
         adapter=CoreRelayAdapterConfig(enabled='switch.relay2'),
     )

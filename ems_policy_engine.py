@@ -619,6 +619,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
 
     direct_frame = (entities or {}).get('_direct_tick_frame')
     phase_started_ts = time.time()
+    legacy_surplus_device_id = str(getattr(cfg, 'adjustable_surplus_load', '') or '')
     if direct_frame is not None:
         profiles = cfg.profiles
         m = direct_frame
@@ -642,11 +643,12 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         haeo = direct_frame.haeo_targets(profiles, cfg)
         previous_quarter_key = direct_frame.previous_quarter_key
         previous_primary_device_id = direct_frame.previous_primary_device_id
-        previous_device_state = direct_frame.selected_previous_device_state(cfg.adjustable_surplus_load)
+        previous_device_state = direct_frame.selected_previous_device_state(legacy_surplus_device_id)
         previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
         previous_device_states = direct_frame.previous_device_states
         freeze_until_ts = direct_frame.surplus_freeze_until_ts
-        adjustable_surplus_active = str(cfg.adjustable_surplus_load) in set(direct_frame.active_surplus_device_ids)
+        active_surplus_device_ids = tuple(direct_frame.active_surplus_device_ids)
+        adjustable_surplus_active = legacy_surplus_device_id in set(active_surplus_device_ids)
     else:
         haeo = read_haeo(now_ts, profiles, cfg, entities)
         previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
@@ -655,7 +657,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
         previous_device_states = _read_previous_device_states(cfg, entities)
         freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
-        adjustable_surplus_active = _read_adjustable_surplus_active(cfg, entities)
+        active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
+        adjustable_surplus_active = legacy_surplus_device_id in set(active_surplus_device_ids)
         timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
 
     phase_started_ts = time.time()
@@ -697,6 +700,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
         current_device_power_w_by_id=build_device_measured_power_w_by_id(cfg, m),
+        active_surplus_device_ids=active_surplus_device_ids,
     )
     timing['policy_engine_net_zero_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
     timing['policy_engine_policy_compute_ms'] += (

@@ -639,6 +639,21 @@ def _device_policy_value(cfg, device_id, field, default=None, facts=None):
     return getattr(policy, field, default)
 
 
+def _runtime_policy_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ('true', 'on', '1', 'yes'):
+            return True
+        if text in ('false', 'off', '0', 'no', '', 'unknown', 'unavailable', 'none'):
+            return False
+        return bool(default)
+    if value is None:
+        return bool(default)
+    return bool(value)
+
+
 def _device_can_absorb(cfg, device_id, facts=None):
     return bool(_device_capability(cfg, device_id, 'can_absorb_w', False, facts=facts))
 
@@ -676,11 +691,16 @@ def _device_control_context(cfg, device_id, *, current_measured_power_w=0.0, fac
     )
 
 
-def _derive_residual_regulator_device_id(primary_device, surplus_adjustable_device):
+def _derive_residual_regulator_device_id(primary_device, configured_devices):
     if primary_device is not None and primary_device.supports_residual_regulation:
         return primary_device.device_id
-    if surplus_adjustable_device is not None and surplus_adjustable_device.supports_residual_regulation:
-        return surplus_adjustable_device.device_id
+    for device in tuple(configured_devices or ()):
+        if device is None:
+            continue
+        if primary_device is not None and device.device_id == primary_device.device_id:
+            continue
+        if device.supports_residual_regulation:
+            return device.device_id
     return ''
 
 
@@ -828,11 +848,20 @@ def _default_ev_device_id(cfg, facts=None):
     return 'EV_CHARGER'
 
 
+def _default_primary_device_id(cfg, facts=None):
+    for device_id in _ordered_device_ids(cfg, facts=facts):
+        if _device_supports_primary_regulation(cfg, device_id, facts=facts):
+            return str(device_id)
+    return ''
+
+
 def _selected_ev_device_id_for_roles(cfg, adjustable_surplus_load, adjustable_primary_load='', facts=None):
-    if _is_ev_device_id(cfg, adjustable_surplus_load, facts=facts):
-        return str(adjustable_surplus_load)
+    # Compatibility selection is deterministic, but primary EV execution wins over
+    # a legacy surplus EV alias so stepped primary regulation cannot be redirected.
     if _is_ev_device_id(cfg, adjustable_primary_load, facts=facts):
         return str(adjustable_primary_load)
+    if _is_ev_device_id(cfg, adjustable_surplus_load, facts=facts):
+        return str(adjustable_surplus_load)
     return _default_ev_device_id(cfg, facts=facts)
 
 
@@ -1092,6 +1121,239 @@ def _ev_device_ids_payload(cfg, facts=None):
     return tuple(payload)
 
 
+def _ordered_device_ids(cfg, facts=None):
+    ordered = []
+    if facts is not None:
+        for device_id in (facts.get('device_kind_by_id', {}) or {}):
+            text = str(device_id)
+            if text not in ordered:
+                ordered.append(text)
+    if not ordered:
+        devices = getattr(cfg, 'devices', {}) or {}
+        if isinstance(devices, dict):
+            for device_id in devices:
+                text = str(device_id)
+                if text not in ordered:
+                    ordered.append(text)
+    if not ordered:
+        for kind in ('BATTERY', 'EV_CHARGER', 'RELAY'):
+            for device_id in _device_ids_by_kind(cfg, kind, facts=facts):
+                text = str(device_id)
+                if text not in ordered:
+                    ordered.append(text)
+    return tuple(ordered)
+
+
+def _surplus_activation_threshold_w(cfg, device_id, legacy_adjustable_device_id='', facts=None):
+    raw = _device_policy_value(cfg, device_id, 'activation_threshold_w', None, facts=None)
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        parsed = 0.0
+    if parsed > 0.0:
+        return parsed, 'device_policy.activation_threshold_w'
+    if str(device_id) == str(legacy_adjustable_device_id or ''):
+        legacy = float(_cfg_scalar_value(cfg, 'adjustable_surplus_activation', 0) or 0)
+        if legacy > 0.0:
+            return legacy, 'compat_adjustable_surplus_activation_w'
+    # Compatibility fallback for fixed physical loads. This is not kind-driven.
+    min_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0)
+    max_w = float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0)
+    if min_w > 0.0 and abs(max_w - min_w) < 0.5:
+        return max_w, 'compat_fixed_absorb_capability'
+    return 0.0, 'missing_device_policy.activation_threshold_w'
+
+
+def _surplus_dispatch_mode(cfg, device_id, facts=None):
+    mode = str(_device_policy_value(cfg, device_id, 'surplus_dispatch_mode', '', facts=None) or '')
+    if mode in ('max_absorb', 'fixed'):
+        return mode
+    min_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0)
+    max_w = float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0)
+    return 'fixed' if min_w > 0.0 and abs(max_w - min_w) < 0.5 else 'max_absorb'
+
+
+def _surplus_target_w_for_device(cfg, device_id, dispatch_mode, facts=None):
+    if str(dispatch_mode) == 'fixed':
+        min_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0)
+        max_w = float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0)
+        if min_w > 0.0:
+            return int(round(min_w))
+        return int(round(max(max_w, 0.0)))
+    return int(round(max(float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0), 0.0)))
+
+
+def _generic_surplus_candidate_contexts(
+    cfg,
+    *,
+    active_device_ids,
+    lifecycle_transitions_by_id,
+    primary_device_id='',
+    legacy_adjustable_device_id='',
+    runtime_device_states=None,
+    facts=None,
+):
+    active_set = set()
+    for item in (active_device_ids or ()):
+        active_set.add(str(item))
+    runtime_state_by_id = {}
+    for state_device_id, state in (runtime_device_states or {}).items():
+        runtime_state_by_id[str(state_device_id)] = dict(state or {})
+    contexts = []
+    for device_id in _ordered_device_ids(cfg, facts=facts):
+        if (
+            str(device_id) == str(primary_device_id or '')
+            and not _device_supports_residual_regulation(cfg, device_id, facts=facts)
+        ):
+            # A primary-only regulator owns its target for the tick and must not be
+            # dispatched twice. Production battery semantics are different: when the
+            # primary also owns residual regulation, the existing surplus stack may
+            # legitimately use the same candidate as an activation gate while final
+            # DevicePolicy ownership remains singular.
+            continue
+        state = runtime_state_by_id.get(str(device_id), {})
+        can_absorb = _device_can_absorb(cfg, device_id, facts=facts)
+        surplus_allowed = _runtime_policy_bool(
+            state.get(
+                'surplus_allowed',
+                _device_policy_value(cfg, device_id, 'surplus_allowed', False, facts=None),
+            )
+        )
+        is_active = str(device_id) in active_set
+        # Retain an already-active device as a disabled target long enough for the
+        # allocator to emit a release when eligibility/capability is withdrawn.
+        if not is_active and (not can_absorb or not surplus_allowed):
+            continue
+        threshold_w, threshold_source = _surplus_activation_threshold_w(
+            cfg, device_id, legacy_adjustable_device_id, facts=facts
+        )
+        transition = (lifecycle_transitions_by_id or {}).get(str(device_id))
+        activation_allowed = True if transition is None else bool(transition.activation_allowed)
+        contexts.append(
+            {
+                'device_id': str(device_id),
+                'decision_name': 'ADJUSTABLE' if str(device_id) == str(legacy_adjustable_device_id or '') else str(device_id),
+                'priority': int(_device_policy_value(cfg, device_id, 'priority', 0, facts=None) or 0),
+                'activation_threshold_w': threshold_w,
+                'surplus_dispatch_mode': _surplus_dispatch_mode(cfg, device_id, facts=facts),
+                'enabled': bool(can_absorb and surplus_allowed and threshold_w > 0.0),
+                'force_on': _runtime_policy_bool(
+                    state.get(
+                        'force_on',
+                        _device_policy_value(cfg, device_id, 'force_on', False, facts=None),
+                    )
+                ),
+                'active': is_active,
+                'activation_allowed': activation_allowed,
+                'threshold_source': threshold_source,
+            }
+        )
+    ordered = []
+    for context in contexts:
+        insert_at = len(ordered)
+        index = 0
+        while index < len(ordered):
+            if int(context['priority']) > int(ordered[index]['priority']):
+                insert_at = index
+                break
+            index += 1
+        ordered.insert(insert_at, context)
+    return tuple(ordered)
+
+
+def _surplus_target_by_device_id(targets):
+    result = {}
+    for target in (targets or ()):
+        result[str(target.device_id)] = target
+    return result
+
+
+def _lifecycle_transition_maps(
+    cfg,
+    profiles,
+    m,
+    nz,
+    *,
+    previous_device_states,
+    active_device_ids,
+    primary_device_id,
+    legacy_adjustable_device_id,
+    pv_power_kw,
+    current_power_by_id,
+    facts=None,
+):
+    transitions = {}
+    next_states = _normalize_previous_device_states(previous_device_states)
+    active_set = set()
+    for item in (active_device_ids or ()):
+        active_set.add(str(item))
+    lifecycle_enabled = (
+        profiles.control == ControlProfile.AUTOMATIC
+        and profiles.goal == GoalProfile.NET_ZERO
+        and profiles.guard == GuardProfile.NORMAL_LIMITS
+    )
+    for device_id in _hard_off_lifecycle_device_ids(cfg, facts=facts):
+        device_id = str(device_id)
+        previous = next_states.get(device_id, _default_previous_device_state(device_id))
+        participates = (
+            device_id == str(primary_device_id or '')
+            or (
+                _device_can_absorb(cfg, device_id, facts=facts)
+                and _runtime_policy_bool(_device_policy_value(cfg, device_id, 'surplus_allowed', False, facts=None))
+            )
+        )
+        if not participates:
+            next_states.setdefault(device_id, previous)
+            continue
+        context = _device_control_context(
+            cfg,
+            device_id,
+            current_measured_power_w=(current_power_by_id or {}).get(device_id, 0.0),
+            facts=facts,
+        )
+        raw_low_pv = float(_device_policy_value(cfg, device_id, 'low_pv_threshold_w', 0, facts=None) or 0)
+        low_pv_threshold_kw = raw_low_pv / 1000.0 if raw_low_pv > 50.0 else raw_low_pv
+        threshold_w, _source = _surplus_activation_threshold_w(
+            cfg, device_id, legacy_adjustable_device_id, facts=facts
+        )
+        if device_id == str(primary_device_id or ''):
+            # Primary lifecycle recovery preserves the established EV-minimum threshold;
+            # a surplus activation threshold is a different policy concern.
+            threshold_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0)
+        requested_active = (
+            float(nz.rpnz_w) > 0.0
+            if device_id == str(primary_device_id or '')
+            else device_id in active_set
+        )
+        low_pv = pv_power_kw is not None and float(pv_power_kw) < low_pv_threshold_kw
+        loop_risk = low_pv and float(m.current_battery_setpoint_w) < 0.0
+        transition = compute_hard_off_lifecycle_transition(
+            context,
+            previous,
+            lifecycle_enabled=lifecycle_enabled,
+            requested_active=(requested_active and not loop_risk),
+            pv_power_w=pv_power_kw,
+            low_pv_threshold_w=low_pv_threshold_kw,
+            rpc_w=float(nz.required_power_consumption_kw),
+            release_rpc_threshold_w=float(max(threshold_w, 0.0)) / 1000.0,
+            loop_risk=loop_risk,
+            hard_off_low_pv_cycles=int(_device_policy_value(cfg, device_id, 'hard_off_low_pv_cycles', 1, facts=None) or 1),
+            hard_off_release_cycles=int(_device_policy_value(cfg, device_id, 'hard_off_release_cycles', 1, facts=None) or 1),
+        )
+        transitions[device_id] = transition
+        next_states[device_id] = _normalize_previous_device_state_entry(
+            device_id,
+            {
+                'device_id': device_id,
+                'mode': transition.mode,
+                'low_pv_cycles': transition.low_pv_cycles,
+                'hard_off_release_ready_cycles': transition.hard_off_release_ready_cycles,
+                'hard_off_active': transition.hard_off_active,
+            },
+        )
+    return transitions, next_states
+
+
 def _relay_runtime_candidates(cfg, relay_device_states, facts=None):
     candidates = []
     state_map = relay_device_states or {}
@@ -1195,6 +1457,16 @@ def _device_policy_payloads(device_policies):
     return tuple(payloads)
 
 
+def _surplus_targets_by_device_id_payload(targets, device_policies):
+    policy_target_w_by_id = {}
+    for policy in device_policies or ():
+        policy_target_w_by_id[str(policy.device_id)] = int(policy.target_w)
+    payload = {}
+    for target in targets or ():
+        payload[str(target.device_id)] = int(policy_target_w_by_id.get(str(target.device_id), 0))
+    return payload
+
+
 def _legacy_bridge_metrics(cfg):
     if not hasattr(cfg, 'legacy_device_bridge_count'):
         return 0, {}
@@ -1222,28 +1494,18 @@ def _build_device_policies(
     *,
     battery_target_w,
     battery_write_enabled,
-    ev_target_w,
-    ev_policy_mode,
-    adjustable_ev_device_id,
+    ev_policies_by_id,
     relay_policies,
     facts=None,
 ):
-    selected_ev_device_id = str(adjustable_ev_device_id or _selected_ev_device_id(cfg, '', facts=facts))
+    ev_policy_by_id = {}
+    for device_id, policy in (ev_policies_by_id or {}).items():
+        ev_policy_by_id[str(device_id)] = dict(policy or {})
     relay_policy_by_id = {}
     for relay_policy in relay_policies:
         relay_policy_by_id[str(relay_policy['device_id'])] = relay_policy
 
-    ordered_device_ids = []
-    if facts is not None:
-        for device_id in (facts.get('device_kind_by_id', {}) or {}):
-            ordered_device_ids.append(str(device_id))
-    if not ordered_device_ids:
-        for kind in ('BATTERY', 'EV_CHARGER', 'RELAY'):
-            for device_id in _device_ids_by_kind(cfg, kind, facts=facts):
-                text = str(device_id)
-                if text not in ordered_device_ids:
-                    ordered_device_ids.append(text)
-
+    ordered_device_ids = list(_ordered_device_ids(cfg, facts=facts))
     policies = []
     for device_id in ordered_device_ids:
         kind = _device_kind(cfg, device_id, facts=facts)
@@ -1259,26 +1521,24 @@ def _build_device_policies(
             )
             continue
         if kind == 'EV_CHARGER':
-            if device_id == selected_ev_device_id:
-                policies.append(
-                    DevicePolicy(
-                        device_id=device_id,
-                        target_w=int(round(float(ev_target_w))),
-                        enabled=float(ev_target_w) > 0.0,
-                        mode=str(ev_policy_mode),
-                        reason='ev_policy',
-                    )
+            ev_policy = ev_policy_by_id.get(
+                device_id,
+                {
+                    'target_w': 0,
+                    'enabled': False,
+                    'mode': 'restore_min',
+                    'reason': 'ev_policy_inactive',
+                },
+            )
+            policies.append(
+                DevicePolicy(
+                    device_id=device_id,
+                    target_w=int(round(float(ev_policy.get('target_w', 0) or 0))),
+                    enabled=bool(ev_policy.get('enabled', False)),
+                    mode=str(ev_policy.get('mode', 'restore_min') or 'restore_min'),
+                    reason=str(ev_policy.get('reason', 'ev_policy') or 'ev_policy'),
                 )
-            else:
-                policies.append(
-                    DevicePolicy(
-                        device_id=device_id,
-                        target_w=0,
-                        enabled=False,
-                        mode='restore_min',
-                        reason='inactive_ev_policy',
-                    )
-                )
+            )
             continue
         if kind == 'RELAY':
             relay_policy = relay_policy_by_id.get(device_id, {'device_id': device_id, 'command': 0})
@@ -1310,7 +1570,7 @@ def _battery_target_and_authority(
     adjustable_surplus_active=False,
     separate_primary_regulation=False,
     haeo_nz_plan=None,
-    surplus_adjustable_device_id='',
+    battery_surplus_target=None,
     facts=None,
 ):
     battery_min_floor_w = None
@@ -1339,14 +1599,21 @@ def _battery_target_and_authority(
     if profiles.goal == GoalProfile.NET_ZERO:
         effective_rpnz_w = nz.rpnz_w
         min_charge_floor_w = float(cfg.nz_battery_floor_default_w)
+        battery_surplus_active = bool(
+            battery_surplus_target is not None and getattr(battery_surplus_target, 'active', False)
+        )
         primary_practical_zero_active = bool(separate_primary_regulation) and (
-            bool(primary_active) or bool(adjustable_surplus_active)
+            bool(primary_active) or battery_surplus_active
         )
         primary_material_positive_rpnz = bool(separate_primary_regulation) and float(nz.rpnz_w) > (
             RPNZ_PRACTICAL_ZERO_W if primary_practical_zero_active else 0.0
         )
-        adjustable_is_home_battery = str(surplus_adjustable_device_id or '') == 'HOME_BATTERY'
-        configured_activation_w = float(cfg.adjustable_surplus_activation)
+        battery_surplus_configured = battery_surplus_target is not None
+        configured_activation_w = (
+            float(getattr(battery_surplus_target, 'threshold_w', 0) or 0)
+            if battery_surplus_configured
+            else 0.0
+        )
 
         if separate_primary_regulation:
             # EV primary path does not use legacy battery default floor.
@@ -1403,17 +1670,17 @@ def _battery_target_and_authority(
 
         if (
             separate_primary_regulation
-            and adjustable_is_home_battery
-            and bool(adjustable_surplus_active)
+            and battery_surplus_configured
+            and battery_surplus_active
             and float(nz.rpnz_w) >= 0.0
         ):
             activation_clamped_w = min(max(configured_activation_w, 0.0), float(cfg.max_solar_charge_w))
             raw = int(round(activation_clamped_w))
 
         activation_gate_active = (
-            adjustable_is_home_battery
+            battery_surplus_configured
             and configured_activation_w > 0.0
-            and (not bool(adjustable_surplus_active))
+            and (not battery_surplus_active)
             and float(nz.required_power_consumption_kw) < (configured_activation_w / 1000.0)
         )
         if activation_gate_active:
@@ -1531,6 +1798,130 @@ def _ev_policy_mode_and_target_w(
     return 'restore_min', restore_min_w
 
 
+def _ev_surplus_policy_for_device(
+    profiles,
+    cfg,
+    device_id,
+    ev_context,
+    haeo,
+    *,
+    surplus_target=None,
+    lifecycle_transition=None,
+    dispatch_decision=None,
+    combo_change_requires_clear=False,
+    pv_power_kw=None,
+    current_battery_setpoint_w=0.0,
+    rpnz_w=0.0,
+    haeo_nz_plan=None,
+    facts=None,
+):
+    device_id = str(device_id)
+    active = bool(getattr(surplus_target, 'active', False))
+    release_pending = bool(
+        dispatch_decision is not None and str(getattr(dispatch_decision, 'release', '') or '') == device_id
+    )
+    clear_pending = bool(
+        profiles.goal == GoalProfile.NET_ZERO
+        and (
+            combo_change_requires_clear
+            or (
+                surplus_target is not None
+                and dispatch_decision is not None
+                and bool(getattr(dispatch_decision, 'clear_all', False))
+            )
+        )
+    )
+    low_pv = (
+        pv_power_kw is not None
+        and float(pv_power_kw) < float(getattr(ev_context, 'hard_off_pv_threshold_kw', 0.0) or 0.0)
+    )
+    loop_risk = low_pv and float(current_battery_setpoint_w or 0.0) < 0.0
+    release_allowed = bool(
+        lifecycle_transition is not None and getattr(lifecycle_transition, 'release_allowed', False)
+    )
+    burn_active = (active or release_allowed) and not clear_pending
+
+    target_w = float(ev_strategy_target_w(profiles, ev_context, haeo, burn_active))
+    if (
+        burn_active
+        and active
+        and (not release_pending)
+        and float(rpnz_w) > 0.0
+        and surplus_target is not None
+    ):
+        # Preserve the established one-cycle active surplus EV target while a
+        # goal transition clears the dispatch stack. The rule is per device,
+        # not selected-EV driven.
+        target_w = float(
+            _surplus_target_w_for_device(
+                cfg,
+                device_id,
+                getattr(surplus_target, 'surplus_dispatch_mode', ''),
+                facts=facts,
+            )
+        )
+    if (
+        profiles.goal == GoalProfile.NET_ZERO
+        and burn_active
+        and surplus_target is not None
+    ):
+        target_w = float(
+            _surplus_target_w_for_device(
+                cfg,
+                device_id,
+                getattr(surplus_target, 'surplus_dispatch_mode', ''),
+                facts=facts,
+            )
+        )
+
+    if (
+        profiles.goal == GoalProfile.NET_ZERO
+        and haeo_nz_plan is not None
+        and bool(getattr(haeo_nz_plan, 'active', False))
+        and target_w > 0.0
+    ):
+        legacy_limit_w = int(getattr(haeo_nz_plan, 'ev_limit_w', 0) or 0)
+        limit_w = float(_haeo_plan_device_limit_w(haeo_nz_plan, device_id, legacy_limit_w))
+        target_w = min(target_w, limit_w) if limit_w > 0.0 else 0.0
+
+    if loop_risk:
+        target_w = 0.0
+    if lifecycle_transition is not None and bool(getattr(lifecycle_transition, 'hard_off_active', False)):
+        return {
+            'target_w': 0.0,
+            'enabled': False,
+            'mode': 'hard_off',
+            'reason': 'ev_lifecycle_hard_off',
+        }
+    if clear_pending or (release_pending and not active):
+        return {
+            'target_w': 0.0,
+            'enabled': False,
+            'mode': 'restore_min',
+            'reason': 'ev_surplus_release',
+        }
+    if profiles.goal == GoalProfile.MAX_EXPORT and target_w <= 0.0:
+        return {
+            'target_w': 0.0,
+            'enabled': False,
+            'mode': 'hard_off' if _device_uses_hard_off_lifecycle(cfg, device_id, facts=facts) else 'restore_min',
+            'reason': 'ev_policy',
+        }
+    if target_w > 0.0:
+        return {
+            'target_w': target_w,
+            'enabled': True,
+            'mode': 'burn',
+            'reason': 'ev_surplus_policy',
+        }
+    return {
+        'target_w': 0.0,
+        'enabled': False,
+        'mode': 'restore_min',
+        'reason': 'ev_policy_inactive',
+    }
+
+
 def _primary_device_power_envelope_w(cfg, device_context, m, nz):
     return candidate_sp_net_zero(
         rpnz_w=float(nz.rpnz_w),
@@ -1605,6 +1996,7 @@ def compute_net_zero_engine_outputs(
     previous_force_on_device_ids=None,
     haeo_nz_plan=None,
     current_device_power_w_by_id=None,
+    active_surplus_device_ids=None,
 ):
     global _ACTIVE_NET_ZERO_COMPUTE_METRICS
     _reset_net_zero_compute_metrics()
@@ -1635,7 +2027,10 @@ def compute_net_zero_engine_outputs(
 
         role_normalization_started_ts = _net_zero_profile_started_ts()
         if haeo_nz_plan_active:
-            primary_device_id = str(_haeo_plan_primary_device_id(haeo_nz_plan) or '')
+            primary_device_id = str(
+                _haeo_plan_primary_device_id(haeo_nz_plan)
+                or _default_primary_device_id(cfg, facts=policy_runtime_facts)
+            )
             surplus_adjustable_device_id = str(_haeo_plan_adjustable_device_id(haeo_nz_plan) or '')
             primary_surplus_combo_source = 'HAEO_NET_ZERO_PLAN'
         else:
@@ -1645,18 +2040,15 @@ def compute_net_zero_engine_outputs(
             requested_primary_device_id = str(
                 _normalized_adjustable_primary_load(cfg, facts=policy_runtime_facts) or ''
             )
-            primary_device_id = requested_primary_device_id or surplus_adjustable_device_id
+            primary_device_id = requested_primary_device_id or _default_primary_device_id(
+                cfg, facts=policy_runtime_facts
+            )
             primary_surplus_combo_source = 'CONFIG'
 
         # Legacy external role names remain diagnostics-only aliases. Core execution keeps
         # physical device identity and derives controllability from capabilities.
         adjustable_primary_load = primary_device_id
         adjustable_surplus_load = surplus_adjustable_device_id
-        explicit_same_target = (
-            (not haeo_nz_plan_active)
-            and bool(_normalized_adjustable_primary_load(cfg, facts=policy_runtime_facts))
-            and primary_device_id == surplus_adjustable_device_id
-        )
         current_power_by_id = {}
         for device_id, power_w in (current_device_power_w_by_id or {}).items():
             current_power_by_id[str(device_id)] = float(power_w or 0.0)
@@ -1680,24 +2072,25 @@ def compute_net_zero_engine_outputs(
             current_measured_power_w=current_power_by_id.get(primary_device_id, 0.0),
             facts=policy_runtime_facts,
         )
-        surplus_adjustable_device = _device_control_context(
-            cfg,
-            surplus_adjustable_device_id,
-            current_measured_power_w=current_power_by_id.get(surplus_adjustable_device_id, 0.0),
-            facts=policy_runtime_facts,
-        )
+        configured_device_contexts = []
+        for configured_device_id in _ordered_device_ids(cfg, facts=policy_runtime_facts):
+            configured_device_contexts.append(
+                _device_control_context(
+                    cfg,
+                    configured_device_id,
+                    current_measured_power_w=current_power_by_id.get(configured_device_id, 0.0),
+                    facts=policy_runtime_facts,
+                )
+            )
         residual_regulator_device_id = _derive_residual_regulator_device_id(
-            primary_device, surplus_adjustable_device
+            primary_device, tuple(configured_device_contexts)
         )
         primary_surplus_combo_valid = bool(
             primary_device
             and primary_device.supports_primary_regulation
             and residual_regulator_device_id
-            and not explicit_same_target
         )
-        if explicit_same_target:
-            primary_surplus_combo_reason = 'unsupported_same_target_combo'
-        elif primary_device is None or not primary_device.supports_primary_regulation:
+        if primary_device is None or not primary_device.supports_primary_regulation:
             primary_surplus_combo_reason = 'primary_regulation_not_supported'
         elif not residual_regulator_device_id:
             primary_surplus_combo_reason = 'residual_regulator_not_available'
@@ -1761,7 +2154,16 @@ def compute_net_zero_engine_outputs(
 
         surplus_targets_started_ts = _net_zero_profile_started_ts()
         configured_activation_w = float(cfg.adjustable_surplus_activation)
-        adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
+        active_device_ids = set()
+        for item in (active_surplus_device_ids or ()):
+            active_device_ids.add(str(item))
+        if active_surplus_device_ids is None:
+            if bool(adjustable_surplus_active or ev_burn_active):
+                active_device_ids.add(str(adjustable_surplus_load))
+            for device_id, state in (relay_device_states or {}).items():
+                if bool((state or {}).get('active', False)):
+                    active_device_ids.add(str(device_id))
+        adjustable_active_current = str(adjustable_surplus_load) in active_device_ids
         adjustable_priority = int(
             _device_policy_value(
                 cfg,
@@ -1772,47 +2174,49 @@ def compute_net_zero_engine_outputs(
             )
             or 0
         )
-        adjustable_capable = _device_can_absorb(cfg, adjustable_surplus_load, facts=policy_runtime_facts)
-        adjustable_enabled = adjustable_capable
-        if surplus_adjustable_device_id == selected_ev_device_id and selected_ev_role == 'surplus_adjustable':
-            adjustable_enabled = adjustable_capable and bool(
-                _device_policy_value(
-                    cfg,
-                    adjustable_surplus_load,
-                    'surplus_allowed',
-                    False,
-                    facts=policy_runtime_facts,
-                )
-            )
+
+        lifecycle_transitions_by_id, lifecycle_next_states = _lifecycle_transition_maps(
+            cfg,
+            profiles,
+            m,
+            nz,
+            previous_device_states=normalized_previous_device_states,
+            active_device_ids=tuple(active_device_ids),
+            primary_device_id=primary_device_id,
+            legacy_adjustable_device_id=surplus_adjustable_device_id,
+            pv_power_kw=pv_power_kw,
+            current_power_by_id=current_power_by_id,
+            facts=policy_runtime_facts,
+        )
+        candidate_contexts = _generic_surplus_candidate_contexts(
+            cfg,
+            active_device_ids=tuple(active_device_ids),
+            lifecycle_transitions_by_id=lifecycle_transitions_by_id,
+            primary_device_id=primary_device_id,
+            legacy_adjustable_device_id=surplus_adjustable_device_id,
+            runtime_device_states=relay_device_states,
+            facts=policy_runtime_facts,
+        )
+        surplus_device_targets = build_surplus_device_targets(candidate_contexts)
+        surplus_target_by_id = _surplus_target_by_device_id(surplus_device_targets)
+
         normalized_relay_device_states = {}
         for device_id, state in (relay_device_states or {}).items():
             normalized_relay_device_states[str(device_id)] = dict(state or {})
-        relay_devices = _relay_devices(cfg, facts=policy_runtime_facts)
-        for index, relay in enumerate(relay_devices):
+        for relay in _relay_devices(cfg, facts=policy_runtime_facts):
             device_id = str(relay)
             state = normalized_relay_device_states.setdefault(device_id, {})
-            if 'surplus_allowed' not in state:
-                state['surplus_allowed'] = bool(
-                    _device_policy_value(cfg, device_id, 'surplus_allowed', False, facts=policy_runtime_facts)
-                )
-            if 'force_on' not in state:
-                state['force_on'] = bool(
-                    _device_policy_value(cfg, device_id, 'force_on', False, facts=policy_runtime_facts)
-                )
-            if 'active' not in state:
-                state['active'] = False
+            state['surplus_allowed'] = _runtime_policy_bool(
+                _device_policy_value(cfg, device_id, 'surplus_allowed', False, facts=None)
+            )
+            state['force_on'] = _runtime_policy_bool(
+                _device_policy_value(cfg, device_id, 'force_on', False, facts=None)
+            )
+            state['active'] = device_id in active_device_ids
         relay_runtime_candidates = _relay_runtime_candidates(
             cfg,
             normalized_relay_device_states,
             facts=policy_runtime_facts,
-        )
-        surplus_device_targets = build_surplus_device_targets(
-            cfg,
-            adjustable_device_id=adjustable_surplus_load,
-            adjustable_priority=adjustable_priority,
-            adjustable_active=adjustable_active_current,
-            adjustable_enabled=adjustable_enabled,
-            relay_candidates=relay_runtime_candidates,
         )
         _note_net_zero_duration_ms('policy_engine_net_zero_surplus_targets_ms', surplus_targets_started_ts)
 
@@ -1823,7 +2227,7 @@ def compute_net_zero_engine_outputs(
             now_ts=now_ts,
             freeze_until_ts=freeze_until_ts,
             freeze_s=surplus_freeze_s,
-            relay_candidates=relay_runtime_candidates,
+            relay_candidates=candidate_contexts,
             previous_force_on_device_ids=previous_force_on_device_ids or (),
         )
 
@@ -1843,13 +2247,15 @@ def compute_net_zero_engine_outputs(
             if bool(relay.get('active', False)):
                 relay_active_now = True
                 break
+        any_surplus_target_active = False
+        for target in surplus_device_targets:
+            if bool(target.active):
+                any_surplus_target_active = True
+                break
         combo_change_requires_clear = (
             haeo_nz_plan_active
             and bool(getattr(haeo_nz_plan, 'changed', False))
-            and (
-                bool(adjustable_active_current)
-                or relay_active_now
-            )
+            and any_surplus_target_active
         )
         combo_change_freeze_until_ts = (
             float(now_ts) + float(surplus_freeze_s)
@@ -1901,8 +2307,14 @@ def compute_net_zero_engine_outputs(
             )
             battery_to_ev_loop_risk = low_pv and float(m.current_battery_setpoint_w) < 0.0
             ev_min_power_kw = float(ev_min_power_w(selected_ev)) / 1000.0
+            selected_activation_threshold_w, _selected_threshold_source = _surplus_activation_threshold_w(
+                cfg,
+                selected_ev_device_id,
+                surplus_adjustable_device_id,
+                facts=policy_runtime_facts,
+            )
             hard_off_release_rpc_kw = (
-                configured_activation_w / 1000.0
+                selected_activation_threshold_w / 1000.0
                 if selected_ev_role == 'surplus_adjustable'
                 else ev_min_power_kw
             )
@@ -1927,24 +2339,39 @@ def compute_net_zero_engine_outputs(
                 current_measured_power_w=current_power_by_id.get(selected_ev_device_id, 0.0),
                 facts=policy_runtime_facts,
             )
-            lifecycle_transition = compute_hard_off_lifecycle_transition(
-                selected_ev_device_context,
-                selected_previous_ev_state,
-                lifecycle_enabled=lifecycle_enabled,
-                requested_active=(requested_active and not battery_to_ev_loop_risk),
-                pv_power_w=pv_power_kw,
-                low_pv_threshold_w=float(selected_ev.hard_off_pv_threshold_kw),
-                rpc_w=float(nz.required_power_consumption_kw),
-                release_rpc_threshold_w=float(hard_off_release_rpc_kw),
-                loop_risk=battery_to_ev_loop_risk,
-                hard_off_low_pv_cycles=int(getattr(selected_ev, 'hard_off_low_pv_cycles', 1) or 1),
-                hard_off_release_cycles=hard_off_release_cycles_required,
-            )
+            lifecycle_transition = lifecycle_transitions_by_id.get(str(selected_ev_device_id))
+            if lifecycle_transition is None:
+                # Compatibility fallback for a selected EV that is not a configured
+                # lifecycle participant. Generic participants were already evaluated above.
+                lifecycle_transition = compute_hard_off_lifecycle_transition(
+                    selected_ev_device_context,
+                    selected_previous_ev_state,
+                    lifecycle_enabled=lifecycle_enabled,
+                    requested_active=(requested_active and not battery_to_ev_loop_risk),
+                    pv_power_w=pv_power_kw,
+                    low_pv_threshold_w=float(selected_ev.hard_off_pv_threshold_kw),
+                    rpc_w=float(nz.required_power_consumption_kw),
+                    release_rpc_threshold_w=float(hard_off_release_rpc_kw),
+                    loop_risk=battery_to_ev_loop_risk,
+                    hard_off_low_pv_cycles=int(getattr(selected_ev, 'hard_off_low_pv_cycles', 1) or 1),
+                    hard_off_release_cycles=hard_off_release_cycles_required,
+                )
             next_low_pv_cycles = int(lifecycle_transition.low_pv_cycles)
             hard_off_release_ready_cycles_next = int(
                 lifecycle_transition.hard_off_release_ready_cycles
             )
             ev_hard_off_active_next = bool(lifecycle_transition.hard_off_active)
+            lifecycle_transitions_by_id[str(selected_ev_device_id)] = lifecycle_transition
+            lifecycle_next_states[str(selected_ev_device_id)] = _normalize_previous_device_state_entry(
+                selected_ev_device_id,
+                {
+                    'device_id': selected_ev_device_id,
+                    'mode': lifecycle_transition.mode,
+                    'low_pv_cycles': lifecycle_transition.low_pv_cycles,
+                    'hard_off_release_ready_cycles': lifecycle_transition.hard_off_release_ready_cycles,
+                    'hard_off_active': lifecycle_transition.hard_off_active,
+                },
+            )
 
             ev_primary_burn_active = (
                 selected_ev_role == 'primary'
@@ -1974,7 +2401,7 @@ def compute_net_zero_engine_outputs(
                 burn_active=ev_burn_for_cycle,
                 force_charge_blocked=battery_to_ev_loop_risk,
                 adjustable_surplus_active=adjustable_active_current,
-                ev_release_pending=(surplus_device_decision.release == primary_release_target),
+                ev_release_pending=(surplus_device_decision.release == selected_ev_device_id),
                 rpnz_w=nz.rpnz_w,
                 lifecycle_transition=lifecycle_transition,
                 uses_hard_off_lifecycle=selected_uses_hard_off_lifecycle,
@@ -1989,7 +2416,7 @@ def compute_net_zero_engine_outputs(
                         selected_ev_role == 'surplus_adjustable'
                         and (
                             surplus_device_decision.clear_all
-                            or surplus_device_decision.release == primary_release_target
+                            or surplus_device_decision.release == selected_ev_device_id
                         )
                     )
                 )
@@ -2045,7 +2472,7 @@ def compute_net_zero_engine_outputs(
             adjustable_surplus_active=adjustable_surplus_active,
             separate_primary_regulation=(primary_device_id != residual_regulator_device_id),
             haeo_nz_plan=haeo_nz_plan,
-            surplus_adjustable_device_id=surplus_adjustable_device_id,
+            battery_surplus_target=surplus_target_by_id.get('HOME_BATTERY'),
             facts=policy_runtime_facts,
         )
         _note_net_zero_duration_ms('policy_engine_net_zero_battery_policy_ms', battery_policy_started_ts)
@@ -2066,13 +2493,47 @@ def compute_net_zero_engine_outputs(
                 }
             )
         _note_net_zero_duration_ms('policy_engine_net_zero_relay_policy_ms', relay_policy_started_ts)
+
+        ev_policies_by_id = {}
+        for ev_device_id in _ev_devices(cfg, facts=policy_runtime_facts):
+            ev_device_id = str(ev_device_id)
+            if ev_device_id == str(primary_device_id or ''):
+                ev_policies_by_id[ev_device_id] = {
+                    'target_w': ev_target_w,
+                    'enabled': float(ev_target_w) > 0.0,
+                    'mode': ev_policy_mode,
+                    'reason': 'ev_primary_policy',
+                }
+                continue
+            ev_context = _selected_ev_context(cfg, ev_device_id, facts=policy_runtime_facts)
+            ev_policies_by_id[ev_device_id] = _ev_surplus_policy_for_device(
+                profiles,
+                cfg,
+                ev_device_id,
+                ev_context,
+                normalized_haeo,
+                surplus_target=surplus_target_by_id.get(ev_device_id),
+                lifecycle_transition=lifecycle_transitions_by_id.get(ev_device_id),
+                dispatch_decision=surplus_device_decision,
+                combo_change_requires_clear=combo_change_requires_clear,
+                pv_power_kw=pv_power_kw,
+                current_battery_setpoint_w=m.current_battery_setpoint_w,
+                rpnz_w=nz.rpnz_w,
+                haeo_nz_plan=haeo_nz_plan,
+                facts=policy_runtime_facts,
+            )
+
+        # Legacy selected-EV scalars remain compatibility views of the per-device result.
+        if selected_ev_device_id and selected_ev_device_id in ev_policies_by_id:
+            selected_ev_policy_compat = ev_policies_by_id[selected_ev_device_id]
+            ev_target_w = float(selected_ev_policy_compat.get('target_w', 0.0) or 0.0)
+            ev_policy_mode = str(selected_ev_policy_compat.get('mode', ev_policy_mode) or ev_policy_mode)
+
         device_policies = _build_device_policies(
             cfg,
             battery_target_w=battery_target_w,
             battery_write_enabled=battery_write_enabled,
-            ev_target_w=ev_target_w,
-            ev_policy_mode=ev_policy_mode,
-            adjustable_ev_device_id=selected_ev_device_id,
+            ev_policies_by_id=ev_policies_by_id,
             relay_policies=tuple(relay_policy_states),
             facts=policy_runtime_facts,
         )
@@ -2089,17 +2550,14 @@ def compute_net_zero_engine_outputs(
         if battery_policy is not None:
             battery_target_w = int(battery_policy.target_w)
             battery_write_enabled = bool(battery_policy.enabled)
-        updated_previous_device_states = _normalize_previous_device_states(normalized_previous_device_states)
+        updated_previous_device_states = _normalize_previous_device_states(lifecycle_next_states)
         if has_ev_devices and selected_ev_device_id:
+            selected_state = updated_previous_device_states.get(
+                selected_ev_device_id, _default_previous_device_state(selected_ev_device_id)
+            )
+            selected_state['mode'] = ev_policy_mode
             updated_previous_device_states[selected_ev_device_id] = _normalize_previous_device_state_entry(
-                selected_ev_device_id,
-                {
-                    'device_id': selected_ev_device_id,
-                    'mode': ev_policy_mode,
-                    'low_pv_cycles': next_low_pv_cycles,
-                    'hard_off_active': ev_hard_off_active_next,
-                    'hard_off_release_ready_cycles': hard_off_release_ready_cycles_next,
-                },
+                selected_ev_device_id, selected_state
             )
             selected_previous_ev_state_next = updated_previous_device_states[selected_ev_device_id]
         else:
@@ -2110,6 +2568,14 @@ def compute_net_zero_engine_outputs(
                 device_lifecycle_states[device_id] = updated_previous_device_states[device_id]
 
         legacy_device_bridge_count, legacy_device_bridge_counts_by_kind = _legacy_bridge_metrics(cfg)
+
+        surplus_candidate_device_ids = []
+        surplus_active_device_ids_payload = []
+        for target in surplus_device_targets:
+            surplus_candidate_device_ids.append(str(target.device_id))
+            if bool(target.active):
+                surplus_active_device_ids_payload.append(str(target.device_id))
+        surplus_candidate_stack = ' > '.join(surplus_candidate_device_ids) or 'NONE'
 
         result = NetZeroOutputs(
         battery_target_w=battery_target_w,
@@ -2139,6 +2605,15 @@ def compute_net_zero_engine_outputs(
             'surplus_device_dispatch_device_id': surplus_device_target_device_id,
             'surplus_device_dispatch_contract': 'device_id_primary',
             'surplus_device_targets': device_targets_payload(surplus_device_targets),
+            'surplus_candidates': device_targets_payload(surplus_device_targets),
+            'surplus_candidate_device_ids': tuple(surplus_candidate_device_ids),
+            'surplus_candidate_stack': surplus_candidate_stack,
+            'surplus_active_device_ids': tuple(surplus_active_device_ids_payload),
+            'surplus_next_device_id': surplus_device_next_device_id,
+            'surplus_release_device_id': surplus_device_release_device_id,
+            'surplus_targets_by_device_id': _surplus_targets_by_device_id_payload(
+                surplus_device_targets, device_policies
+            ),
             'relay_device_ids': _relay_device_ids_payload(cfg, facts=policy_runtime_facts),
             'ev_device_ids': _ev_device_ids_payload(cfg, facts=policy_runtime_facts),
             'device_policies': _device_policy_payloads(device_policies),

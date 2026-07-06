@@ -75,23 +75,19 @@ Kayttajan odotus:
 1. EV-lataus ja akun lataus ovat aktiivisempia.
 2. Releet pysyvat pois paalta.
 
-## 3.1) Miten primary ja residual valitaan
-
-NET_ZERO ei valitse saatoroolia pelkan laitetyypin perusteella.
-
-1. Kayttajan/HAEO-planin primary-rooli normalisoidaan `primary_device_id`:ksi.
-2. Primaryn on tuettava `supports_primary_regulation=true`.
-3. Residual-regulaattori valitaan capabilityn perusteella: ensin primary, muuten surplus-adjustable.
-4. Jos residual-regulaattoria ei loydy, yhdistelma on invalidi.
-5. `kind` kertoo ensisijaisesti miten laite luetaan ja miten sita ohjataan fyysisesti.
-
-Nykyisilla oletuslaitteilla:
-
-- HOME_BATTERY voi toimia primaryna ja residual-regulaattorina.
-- EV_CHARGER voi toimia primaryna, mutta residualin hoitaa HOME_BATTERY.
-- RELAY ei toimi continuous primary- tai residual-regulaattorina.
-
 ## 4) Miten surplus-logiikka palvelee strategiaa
+
+NET_ZERO kasittelee surplusia device-/policy-vetoisena kandidaattipoolina.
+Osallistuva laite tarvitsee `can_absorb_w=true` ja `surplus_allowed=true`. Sen
+jarjestys tulee omasta `priority`-arvosta, aktivointi omasta
+`activation_threshold_w`-arvosta ja aktiivinen target omasta
+`surplus_dispatch_mode`-strategiasta (`max_absorb` tai `fixed`).
+
+Useampi EV voi olla samassa poolissa. Korkeampi priority arvioidaan ensin, ja
+nykyinen strict-priority-semantikka sailyy: alempi laite ei ohita blokattua
+ylempaa first-feasible-periaatteella. Aktiiviset EV:t saavat omat
+`DevicePolicy`-targetit; release ei vaadi, etta vain yksi EV olisi "valittu".
+
 
 Surplus-dispatch-statejen idea kayttajalle:
 
@@ -103,15 +99,6 @@ Tulos:
 
 1. Kuormat kayttaytyvat ennustettavammin.
 2. Ohjaus on vakaampaa mittauskohinassa.
-
-
-Hard-off lifecycle:
-
-1. `uses_hard_off_lifecycle=true` on capability; PV-thresholdit ja cycle-maarat ovat policy-viritysta.
-2. Hard-offista vapautuminen vaatii recovery-ehdon perakkaisilla kierroksilla.
-3. Yksittainen RPC-kynnyksen ylitys ei vapauta laitetta.
-4. Katkeava recovery nollaa release-counterin.
-5. Sama laskurisopimus koskee lifecycle-devicea riippumatta siita onko se primary vai surplus-adjustable.
 
 Quarter-release kaytanto:
 
@@ -148,3 +135,4 @@ Tama on tietoinen toimintatapa, joka kannattaa kasitella erillisena riski- ja op
 1. `docs/dev/tilakaavio.md`
 2. `docs/dev/arkkitehtuuri.md`
 3. `docs/user/operointi.md`
+4. `docs/dev/ems_step_model.md`

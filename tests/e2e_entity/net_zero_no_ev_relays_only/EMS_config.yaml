@@ -1,15 +1,11 @@
-# Scenario-specific grouped config for 0 EV + relay-only E2E coverage.
-
 ems:
   profiles:
     control: input_select.ems_control_profile
     goal: input_select.ems_goal_profile
     forecast: input_select.ems_forecast_profile
     guard: input_select.ems_guard_profile
-
   policy_engine:
     interval_seconds: 5
-
   global_config:
     deadband_w: input_number.ems_deadband_w
     ramp_w: input_number.ems_ramp_max_w
@@ -21,7 +17,6 @@ ems:
     adjustable_surplus_load: input_select.ems_adjustable_surplus_load
     adjustable_primary_load: input_select.ems_adjustable_primary_load
     adjustable_surplus_activation_w: input_number.ems_adjustable_surplus_activation_w
-
   role_constraints:
     default:
       activation_threshold_w: input_number.ems_default_activation_threshold_w
@@ -29,7 +24,6 @@ ems:
       HOME_BATTERY:
         min_absorb_w: input_number.ems_home_battery_ev_primary_min_absorb_w
     HOME_BATTERY_PRIMARY: {}
-
   devices:
     HOME_BATTERY:
       kind: BATTERY
@@ -46,6 +40,9 @@ ems:
       policy:
         priority: input_number.ems_adjustable_surplus_load_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
+        surplus_allowed: true
+        activation_threshold_w: input_number.ems_adjustable_surplus_activation_w
+        surplus_dispatch_mode: max_absorb
       guard:
         soc: sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc
         min_cell_voltage_v: sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage
@@ -57,7 +54,6 @@ ems:
       adapter:
         target_w: number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point
         measured_power_w: sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
-
     RELAY1:
       kind: RELAY
       capabilities:
@@ -73,9 +69,10 @@ ems:
         priority: input_number.ems_surplus_relay1_priority
         surplus_allowed: input_boolean.ems_relay1_enabled_import_zero
         force_on: input_boolean.ems_relay1_force_on
+        activation_threshold_w: input_number.ems_relay1_power_kw
+        surplus_dispatch_mode: fixed
       adapter:
         enabled: switch.relay_1_2
-
     RELAY2:
       kind: RELAY
       capabilities:
@@ -91,20 +88,19 @@ ems:
         priority: input_number.ems_surplus_relay2_priority
         surplus_allowed: input_boolean.ems_relay2_enabled_import_zero
         force_on: input_boolean.ems_relay2_force_on
+        activation_threshold_w: input_number.ems_relay2_power_kw
+        surplus_dispatch_mode: fixed
       adapter:
         enabled: switch.relay_2_2
-
   runtime:
     grid_power_w: sensor.average_active_power_2
     quarter_energy_balance_kwh: sensor.hourly_energy_balance
     pv_power_w: sensor.pv_instant_power_2
-
   haeo:
     battery_power_active: sensor.haeo_battery_power_active
     ev_power_active: sensor.haeo_ev_battery_power_active
     battery_fresh_source: sensor.battery_active_power
     ev_fresh_source: sensor.ev_akut_active_power
-
   state:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices

@@ -30,14 +30,12 @@ Nykyinen koko testisetti ajetaan samalla komennolla:
 pytest -q tests
 ```
 
-Viimeisin varmennettu tila capability-driven NET_ZERO -refactorin jalkeen:
+Viimeisin varmennettu tila nykyisessa siivousvaiheessa:
 
-1. lopullisesta toimitus-ZIPista purettu full suite: `468 passed, 0 failed, 1 xfailed`
-2. e2e: `37 passed, 1 xfailed`
-3. contract: `66 passed`
-4. smoke: `8 passed`
-5. baseline ennen refactoria: `446 passed, 0 failed, 1 xfailed`
-6. uusia failure-ID:ita baselineen verrattuna: ei yhtaan
+1. `python3 -m pytest -q tests`
+2. `python3 -m pytest -q tests/e2e_entity`
+3. `python3 -m pytest -q tests/smoke/test_pyscript_ast_compat.py`
+4. `python3 -m pytest -q`
 
 `tests/conftest.py` asettaa projektijuurena `EMS_PROJECT_ROOT`-ymparistomuuttujan tai paattelee juuren `modules/`-hakemiston perusteella.
 
@@ -158,11 +156,6 @@ kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
 5. `battery_write_enabled`-attribuutin olemassaolon
 6. `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-battery fallbackit ja selitteet
 7. HAEO-avusteiset battery-targetit `CHEAP_GRID_CHARGE`- ja `MAX_EXPORT`-tiloissa
-8. strict `supports_primary_regulation` / `supports_residual_regulation` -capabilityt
-9. capability-driven residual-regulaattorin valinnan
-10. geneerisen `quantize_absorb_target_w()` / primary-target-laskennan
-11. synthetic HEAT_PUMP-like contextin ilman EV current/phases/voltage -kenttia
-12. invalidit role-yhdistelmat ilman hiljaista EV/BATTERY fallbackia
 
 ### Writer-semantiiikka
 
@@ -190,22 +183,6 @@ kiinteita canonical output-pintoja eika niita saa antaa YAML:ssa.
 2. `rpnz_w = 10 W` -> release deadbandin rajalla
 3. `rpnz_w = 11 W` -> ei releasea taman saannon perusteella
 4. `rpnz_w = 0 W` ja `-1 W` -> release edelleen tapahtuu
-
-
-### Capability-driven lifecycle ja role-regressiot
-
-Nykyinen regressiosuoja kattaa:
-
-1. `HOME_BATTERY primary / EV adjustable` hard-off release-counterin
-2. `EV primary / HOME_BATTERY adjustable` saman consecutive-cycle-sopimuksen
-3. recovery-ehdon katkeamisen -> counter reset `0`
-4. RPC-kynnyksen yksittainen ylitys ei vapauta hard-offia
-5. `previous_device_states[device_id]`-omistuksen
-6. usean lifecycle-device-staten riippumattomuuden
-7. primary-kelpoisuuden capabilitylla, ei `kind == EV_CHARGER` -ehdolla
-
-Production-role regression on tiedostossa:
-`tests/e2e_entity/hard_off_on_low_pv/test_06_release_counter_role_independent.py`.
 
 ### Policy diagnostics
 
@@ -240,7 +217,7 @@ Nykyiset e2e-tarinat on splitattu kansioihin. Toteutettuja tarinoita ovat:
 
 Jokaisessa splitatussa e2e-kansiossa on oma `EMS_config.yaml`. Vaihejako ja
 tarinakuvaus loytyvat itse testitiedostoista, scenario-helperista seka
-itse testitiedostoista ja scenario-helperista.
+`docs/dev/e2e_tests_stories.md`:sta.
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 
@@ -291,3 +268,27 @@ Lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 1. Ovatko puuttuvat HAEO- ja Home Assistant -konfiguraatiot toisessa repossa, jolloin osa testikattavuudesta kuuluu sinne?
 2. Pitaako quarter-harnessiin lisata aidot HAEO-skenaariot ja `DEGRADED`-e2e-skenaariot?
 3. Tarvitaanko lisaa contract- tai e2e-kattavuutta ennen ensimmaista releasea?
+
+## Surplus candidate pool -regressiokattavuus
+
+Refaktoroinnin pakollinen regressiopinta kattaa seuraavat sopimukset:
+
+1. grouped-config ja direct-v2 parseri hyvaksyvat vain strict boolean
+   `surplus_allowed` -arvot ja positiivisen `activation_threshold_w`:n
+2. `surplus_dispatch_mode` hyvaksyy vain `max_absorb` ja `fixed`
+3. `EV_A`, `EV_B` ja `RELAY1` voivat olla samassa kandidaattipoolissa
+4. EV-vs-EV ja EV-vs-relay ordering kayttavat device-owned prioritya
+5. EV-kohtaiset kynnykset ja force-on-tilat eivat vuoda laitteiden valilla
+6. hard-off state ja release-ready-counter etenevat/nollautuvat EV-kohtaisesti
+7. toinen EV voi aktivoitua ilman selected-single-rajaa ja molemmat EV:t saavat
+   omat `DevicePolicy`-tulokset
+8. neutral synthetic absorb-candidate todistaa builderin kind-agnostisuuden ilman
+   uuden production-adapterin lisaamista
+9. EV-primary stepped regulation, HOME_BATTERY primary/residual, relays ja writer
+   sailyvat regressiotesteissa
+
+Kanoninen multi-EV E2E on
+`tests/e2e_entity/net_zero_two_ev_one_relay/`. Se todistaa poolin
+`EV_GARAGE > EV_CHARGER > RELAY1`, itsenaiset kynnykset ja molempien EV:iden
+per-device writer-mappauksen.
+

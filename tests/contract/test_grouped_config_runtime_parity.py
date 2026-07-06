@@ -72,6 +72,8 @@ def _write_grouped_config_with_second_ev(project_root, tmp_path):
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
+            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
+            'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
             'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
@@ -1232,7 +1234,7 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
 
 
 @pytest.mark.unit
-def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_path, monkeypatch):
+def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(project_root, tmp_path, monkeypatch):
     grouped_path, grouped_config = _write_grouped_config_with_second_ev(project_root, tmp_path)
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
 
@@ -1260,6 +1262,7 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
             'input_number.ems_ev_garage_power_step_w': 460,
             'input_number.ems_surplus_ev_garage_priority': 4,
             'input_boolean.ems_ev_garage_surplus_allowed': True,
+            'input_number.ems_ev_garage_activation_threshold_w': 2400,
             'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
             'input_number.ems_ev_garage_low_pv_cycles': 2,
             'input_number.ems_ev_garage_release_cycles': 2,
@@ -1273,14 +1276,16 @@ def test_grouped_config_two_ev_boundary_targets_selected_ev(project_root, tmp_pa
     )
 
     harness.step(note='activate first surplus device')
-    harness.step(note='activate selected garage ev')
-    snap = harness.step(note='selected garage ev writes')
+    harness.step(note='activate higher-priority garage ev')
+    snap = harness.step(note='generic two-ev pool writes garage ev')
     trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
     policies = {item['device_id']: item for item in trace_attrs['device_policies']}
 
     assert set(harness.policy_mod['read_config']().devices) >= {'EV_CHARGER', 'EV_GARAGE'}
     assert trace_attrs['ev_device_ids'] == ('EV_CHARGER', 'EV_GARAGE')
+    assert {'EV_CHARGER', 'EV_GARAGE'} <= set(trace_attrs['surplus_candidate_device_ids'])
+    # selected_ev_device_id is a deterministic compatibility view, not pool membership.
     assert trace_attrs['selected_ev_device_id'] == 'EV_GARAGE'
     assert policies['EV_GARAGE']['enabled'] is True
     assert policies['EV_GARAGE']['target_w'] == 3680

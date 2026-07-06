@@ -118,6 +118,9 @@ class HardOffLifecycleTransition:
 @dataclass
 class CoreBatteryPolicyConfig:
     priority: ScalarRef
+    surplus_allowed: bool = False
+    activation_threshold_w: Optional[ScalarRef] = None
+    surplus_dispatch_mode: str = 'max_absorb'
     default_min_absorb_w: Optional[ScalarRef] = None
 
 
@@ -156,6 +159,8 @@ class CoreEvPolicyConfig:
     low_pv_threshold_w: ScalarRef
     hard_off_low_pv_cycles: ScalarRef
     hard_off_release_cycles: ScalarRef
+    activation_threshold_w: ScalarRef = 0
+    surplus_dispatch_mode: str = 'max_absorb'
 
 
 @dataclass
@@ -181,6 +186,8 @@ class CoreRelayPolicyConfig:
     priority: ScalarRef
     surplus_allowed: EntityRef
     force_on: EntityRef
+    activation_threshold_w: ScalarRef = 0
+    surplus_dispatch_mode: str = 'fixed'
 
 
 @dataclass
@@ -502,6 +509,8 @@ class SurplusDeviceTarget:
     enabled: bool = True
     force_on: bool = False
     active: bool = False
+    activation_allowed: bool = True
+    surplus_dispatch_mode: str = ''
     threshold_source: str = ''
     incremental_surplus_threshold_w: Optional[int] = None
 

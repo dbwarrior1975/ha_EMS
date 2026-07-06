@@ -47,17 +47,15 @@ recorder:
 Tama ei ole correctness-vaatimus. Canonical outputit ovat
 `device_policies`, `dispatch_command` ja `policy_state`.
 
-## Monotonic version -state semantiikka
+## Hash-state semantiikka
 
-Kolmen kanonisen output-sensorin `state` on muutoksesta eteneva versionumero:
+Kolmen kanonisen output-sensorin `state` on sisaltopohjainen hash:
 
-1. `device_policies` -> `device_policies_version`
-2. `dispatch_command` -> `dispatch_command_version`
-3. `policy_state` -> `policy_state_version`
+1. `device_policies` -> `device_policies_hash`
+2. `dispatch_command` -> `dispatch_command_hash`
+3. `policy_state` -> `policy_state_hash`
 
-Versionumero etenee vain kun kyseinen canonical payload muuttuu. Varsinainen
-payload luetaan attribuuteista. Diagnostiikassa `*_state_kind` on
-`monotonic_version`.
+Varsinainen payload luetaan attribuuteista. `state` ei ole monotoninen laskuri.
 
 ## Tarkeimmat seurattavat entiteetit
 
@@ -85,6 +83,28 @@ payload luetaan attribuuteista. Diagnostiikassa `*_state_kind` on
 4. `switch.relay_1_2`
 5. `switch.relay_2_2`
 
+## Surplus-kandidaattipoolin valvonta
+
+Seuraa ensisijaisesti `sensor.ems_policy_diagnostics_pyscript` -attribuutteja:
+
+1. `surplus_candidate_device_ids`: mitka laitteet ovat poolissa
+2. `surplus_candidate_stack`: strict-priority-jarjestys
+3. `surplus_active_device_ids`: mitka kandidaatit ovat aktiivisia
+4. `surplus_next_device_id`: seuraava activation-kohde
+5. `surplus_release_device_id`: seuraava release-kohde
+6. `surplus_targets_by_device_id`: per-device target/mode/active-yhteenveto
+7. `device_lifecycle_states`: device-owned hard-off/lifecycle-state
+
+Kandidaattirivista tarkista ainakin `priority`, `activation_threshold_w`,
+`surplus_dispatch_mode`, `enabled`, `force_on`, `active` ja
+`activation_allowed`. Kahden EV:n tapauksessa molempien device-id:iden pitaa
+nakya poolissa, jos molemmilla on `can_absorb_w=true` ja
+`surplus_allowed=true`.
+
+Legacy `selected_ev_device_id` ja `adjustable_surplus_load` ovat
+compatibility-diagnostiikkaa. Vianetsinnassa poolin generic kentat ja
+`device_policies` ovat authoritative.
+
 ## Troubleshooting
 
 ### EMS paattaa, mutta writer ei kirjoita
@@ -111,43 +131,6 @@ Tarkista ensin `sensor.ems_policy_diagnostics_pyscript` attribuutit:
 5. `surplus_device_dispatch_target`
 6. `surplus_device_dispatch_device_id`
 7. `surplus_device_targets`
-
-
-Capability-driven NET_ZERO -ongelmanrajauksessa tarkista myos:
-
-1. `primary_device_id`
-2. `surplus_adjustable_device_id`
-3. `residual_regulator_device_id`
-4. `primary_surplus_combo_valid`
-5. `primary_surplus_combo_reason`
-6. `primary_surplus_combo_fallback_active` (uuden normaalipolun tulee olla `false`)
-7. `primary_device_target_w`
-8. `residual_rpnz_w`
-
-Hard-off/lifecycle-seurannassa tarkista:
-
-1. `previous_device_states`
-2. `device_lifecycle_states`
-3. `hard_off_lifecycle_devices`
-4. `ev_hard_off_release_ready_cycles` (compatibility-nakyma)
-5. `ev_hard_off_release_cycles_required`
-6. `battery_to_ev_loop_risk`
-
-Jos hard-off recovery alkaa, counterin tulee kasvaa yksi per validi recovery-kierros,
-pysya hard-offissa ennen required-countia ja nollautua recovery-ehdon katketessa.
-
-### Direct-v2 runtime packet health
-
-Terveessa tuotantopolussa tarkista:
-
-1. `runtime_input_contract = direct_tick_frame_v2`
-2. `policy_engine_runtime_packet_schema_version = 2`
-3. `policy_engine_runtime_packet_missing_fields = 0`
-4. `net_zero_input_quality = ok`
-5. `config_dual_read_ok = true`, jos dual-read audit on kaytossa
-
-Puuttuva tai väärantyyppinen capability-boolean voi johtaa runtime packet invalid
-/fail-closed -polkuun.
 
 ### Invalidi tai puuttuva runtime-output
 

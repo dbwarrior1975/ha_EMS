@@ -1,61 +1,35 @@
 from ems_core.domain.models import SurplusDeviceTarget
 
 
-def _adjustable_threshold_w(cfg, adjustable_device_id):
-    configured_activation_w = float(cfg.adjustable_surplus_activation)
-    threshold_w = int(round(configured_activation_w))
-    return threshold_w, 'configured_adjustable_surplus_activation_w', None
+def build_surplus_device_targets(candidate_contexts=None):
+    """Build one strict-priority target stack from generic device contexts.
 
-
-def build_surplus_device_targets(
-    cfg,
-    *,
-    adjustable_device_id,
-    adjustable_priority,
-    adjustable_active,
-    adjustable_enabled=True,
-    relay_candidates=None,
-):
-    threshold_w, threshold_source, incremental_surplus_threshold_w = _adjustable_threshold_w(
-        cfg,
-        adjustable_device_id,
-    )
-    targets = [
-        SurplusDeviceTarget(
-            device_id=str(adjustable_device_id),
-            decision_name='ADJUSTABLE',
-            priority=int(adjustable_priority),
-            rank=1,
-            threshold_w=threshold_w,
-            enabled=bool(adjustable_enabled),
-            force_on=False,
-            active=bool(adjustable_active),
-            threshold_source=threshold_source,
-            incremental_surplus_threshold_w=incremental_surplus_threshold_w,
-        )
-    ]
-    relay_candidates = tuple(relay_candidates or ())
-    next_rank = 2
-    for relay in relay_candidates:
-        device_id = str(relay.get('device_id') or '')
-        threshold_w = max(int(round(float(relay.get('threshold_w', 0) or 0))), 0)
+    The caller owns eligibility. This module intentionally does not inspect device kind
+    or legacy adjustable-role names.
+    """
+    targets = []
+    for rank, candidate in enumerate(tuple(candidate_contexts or ()), start=1):
+        device_id = str(candidate.get('device_id') or '')
         if not device_id:
             continue
+        threshold_w = max(int(round(float(candidate.get('activation_threshold_w', 0) or 0))), 0)
         targets.append(
             SurplusDeviceTarget(
                 device_id=device_id,
-                decision_name=device_id,
-                priority=int(relay.get('priority', 0) or 0),
-                rank=next_rank,
+                decision_name=str(candidate.get('decision_name') or device_id),
+                priority=int(candidate.get('priority', 0) or 0),
+                rank=rank,
                 threshold_w=threshold_w,
-                enabled=bool(relay.get('enabled', True)),
-                force_on=bool(relay.get('force_on', False)),
-                active=bool(relay.get('active', False)),
-                threshold_source='relay_threshold_w',
+                enabled=bool(candidate.get('enabled', True)),
+                force_on=bool(candidate.get('force_on', False)),
+                active=bool(candidate.get('active', False)),
+                activation_allowed=bool(candidate.get('activation_allowed', True)),
+                surplus_dispatch_mode=str(candidate.get('surplus_dispatch_mode') or ''),
+                threshold_source=str(candidate.get('threshold_source') or 'device_policy.activation_threshold_w'),
             )
         )
-        next_rank += 1
     return tuple(targets)
+
 
 def decision_name_for_device_id(targets, device_id):
     for target in targets:
@@ -74,9 +48,12 @@ def device_targets_payload(targets):
                 'priority': int(target.priority),
                 'rank': int(target.rank),
                 'threshold_w': int(target.threshold_w),
+                'activation_threshold_w': int(target.threshold_w),
                 'enabled': bool(target.enabled),
                 'force_on': bool(target.force_on),
                 'active': bool(target.active),
+                'activation_allowed': bool(target.activation_allowed),
+                'surplus_dispatch_mode': str(target.surplus_dispatch_mode or ''),
                 'threshold_source': str(target.threshold_source or ''),
             }
         )

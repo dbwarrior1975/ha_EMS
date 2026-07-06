@@ -161,6 +161,8 @@ def test_build_core_config_from_grouped_config_keeps_extra_devices_in_registry(p
         'policy': {
             'priority': 'input_number.ems_surplus_relay3_priority',
             'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
+            'activation_threshold_w': 'input_number.ems_relay3_power_kw',
+            'surplus_dispatch_mode': 'fixed',
             'force_on': 'input_boolean.ems_relay3_force_on',
         },
         'adapter': {

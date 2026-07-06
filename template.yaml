@@ -1,3 +1,4 @@
+
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -182,11 +183,19 @@
                   },
   
                   'policy': {
-
                     'priority':
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
                       ),
+
+                    'surplus_allowed':
+                      states('input_select.ems_adjustable_surplus_load')
+                      == 'HOME_BATTERY',
+
+                    'activation_threshold_w':
+                      states('input_number.ems_adjustable_surplus_activation_w'),
+
+                    'surplus_dispatch_mode': 'max_absorb',
   
                     'default_min_absorb_w':
                       0
@@ -238,19 +247,13 @@
                       states('input_number.ems_surplus_ev_priority'),
                 
                     'surplus_allowed':
-                      true
-                      if is_state(
-                        'input_boolean.ems_surplus_adjustable_active',
-                        'on'
-                      )
-                      else false
-                      if is_state(
-                        'input_boolean.ems_surplus_adjustable_active',
-                        'off'
-                      )
-                      else states(
-                        'input_boolean.ems_surplus_adjustable_active'
-                      ),
+                      states('input_select.ems_adjustable_surplus_load')
+                      == 'EV_CHARGER',
+
+                    'activation_threshold_w':
+                      states('input_number.ems_adjustable_surplus_activation_w'),
+
+                    'surplus_dispatch_mode': 'max_absorb',
                 
                     'force_on':
                       true
@@ -337,6 +340,10 @@
                         'input_boolean.ems_relay1_enabled_import_zero'
                       ),
   
+                    'activation_threshold_w': 2600,
+
+                    'surplus_dispatch_mode': 'fixed',
+
                     'force_on':
                       true
                       if is_state(
@@ -386,6 +393,10 @@
                         'input_boolean.ems_relay2_enabled_import_zero'
                       ),
   
+                    'activation_threshold_w': 5600,
+
+                    'surplus_dispatch_mode': 'fixed',
+
                     'force_on':
                       true
                       if is_state(
@@ -820,6 +831,8 @@
   - sensor:
       - name: "I-PACE Charged Energy Delta"
         unit_of_measurement: "kWh"
+        #device_class: energy
+        #state_class: measurement 
         state: |-
           {% set delta = states('sensor.ev_delta_kwh') | float(0) %}
           {% if is_state('input_boolean.i_pace_charging', 'on') %}

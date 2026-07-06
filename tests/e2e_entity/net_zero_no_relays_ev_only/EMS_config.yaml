@@ -1,15 +1,11 @@
-# Scenario-specific grouped config for EV-only E2E coverage.
-
 ems:
   profiles:
     control: input_select.ems_control_profile
     goal: input_select.ems_goal_profile
     forecast: input_select.ems_forecast_profile
     guard: input_select.ems_guard_profile
-
   policy_engine:
     interval_seconds: 5
-
   global_config:
     deadband_w: input_number.ems_deadband_w
     ramp_w: input_number.ems_ramp_max_w
@@ -21,7 +17,6 @@ ems:
     adjustable_surplus_load: input_select.ems_adjustable_surplus_load
     adjustable_primary_load: input_select.ems_adjustable_primary_load
     adjustable_surplus_activation_w: input_number.ems_adjustable_surplus_activation_w
-
   role_constraints:
     default:
       activation_threshold_w: input_number.ems_default_activation_threshold_w
@@ -31,7 +26,6 @@ ems:
     HOME_BATTERY_PRIMARY:
       EV_CHARGER:
         activation_threshold_w: input_number.ems_ev_adjustable_activation_threshold_w
-
   devices:
     HOME_BATTERY:
       kind: BATTERY
@@ -48,6 +42,9 @@ ems:
       policy:
         priority: input_number.ems_adjustable_surplus_load_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
+        surplus_allowed: false
+        activation_threshold_w: input_number.ems_adjustable_surplus_activation_w
+        surplus_dispatch_mode: max_absorb
       guard:
         soc: sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc
         min_cell_voltage_v: sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage
@@ -59,7 +56,6 @@ ems:
       adapter:
         target_w: number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point
         measured_power_w: sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
-
     EV_CHARGER:
       kind: EV_CHARGER
       capabilities:
@@ -73,29 +69,28 @@ ems:
         step_w: input_number.ems_ev_power_step_w
       policy:
         priority: input_number.ems_surplus_ev_priority
-        surplus_allowed: input_boolean.ems_ev_surplus_allowed
+        surplus_allowed: true
         force_on: input_boolean.ems_ev_force_on
         low_pv_threshold_w: input_number.ems_ev_hard_off_pv_threshold_kw
         hard_off_low_pv_cycles: input_number.ems_ev_hard_off_low_pv_cycles
         hard_off_release_cycles: input_number.ems_ev_hard_off_release_cycles
+        activation_threshold_w: input_number.ems_adjustable_surplus_activation_w
+        surplus_dispatch_mode: max_absorb
       adapter:
         enabled: switch.charger_control
         current_a: number.charger_current_level
         current_step_a: input_number.ems_ev_current_step_a
         phases: input_number.ems_ev_charger_phases
         voltage_v: input_number.ems_ev_voltage_v
-
   runtime:
     grid_power_w: sensor.average_active_power_2
     quarter_energy_balance_kwh: sensor.hourly_energy_balance
     pv_power_w: sensor.pv_instant_power_2
-
   haeo:
     battery_power_active: sensor.haeo_battery_power_active
     ev_power_active: sensor.haeo_ev_battery_power_active
     battery_fresh_source: sensor.battery_active_power
     ev_fresh_source: sensor.ev_akut_active_power
-
   state:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices

@@ -461,13 +461,6 @@ def _parse_policy_config_v2(
             _fail(f'policy_config.config.{field}', f'unknown device id {device_id}')
 
     adjustable_device_id = cfg_values['adjustable_surplus_load']
-    adjustable_kind = str(topology.device_kind_by_id.get(adjustable_device_id, '') or '')
-    if adjustable_kind not in ('BATTERY', 'EV_CHARGER'):
-        _fail(
-            'policy_config.config.adjustable_surplus_load',
-            'must reference a BATTERY or EV_CHARGER device; '
-            f'{adjustable_device_id} has kind {adjustable_kind or "UNKNOWN"}',
-        )
 
     devices_raw = _mapping(_required(packet, 'devices', 'policy_config'), 'policy_config.devices')
     packet_device_ids = set()
@@ -510,6 +503,22 @@ def _parse_policy_config_v2(
 
         policy_raw = _mapping(_required(device, 'policy', device_path), f'{device_path}.policy')
         policy = {'priority': _integer(_required(policy_raw, 'priority', f'{device_path}.policy'), f'{device_path}.policy.priority')}
+        policy['surplus_allowed'] = _strict_boolean(
+            _required(policy_raw, 'surplus_allowed', f'{device_path}.policy'),
+            f'{device_path}.policy.surplus_allowed',
+        )
+        policy['activation_threshold_w'] = _number(
+            _required(policy_raw, 'activation_threshold_w', f'{device_path}.policy'),
+            f'{device_path}.policy.activation_threshold_w',
+        )
+        policy['surplus_dispatch_mode'] = _text(
+            _required(policy_raw, 'surplus_dispatch_mode', f'{device_path}.policy'),
+            f'{device_path}.policy.surplus_dispatch_mode',
+        )
+        if policy['surplus_dispatch_mode'] not in ('max_absorb', 'fixed'):
+            _fail(f'{device_path}.policy.surplus_dispatch_mode', 'must be max_absorb or fixed')
+        if policy['surplus_allowed'] and policy['activation_threshold_w'] <= 0.0:
+            _fail(f'{device_path}.policy.activation_threshold_w', 'must be greater than zero when surplus_allowed is true')
         adapter = {}
         if kind == 'BATTERY':
             policy['default_min_absorb_w'] = _number(
@@ -530,10 +539,6 @@ def _parse_policy_config_v2(
                 )
             policy['_guard'] = guard_values
         elif kind == 'EV_CHARGER':
-            policy['surplus_allowed'] = _boolean(
-                _required(policy_raw, 'surplus_allowed', f'{device_path}.policy'),
-                f'{device_path}.policy.surplus_allowed',
-            )
             policy['force_on'] = _boolean(
                 _required(policy_raw, 'force_on', f'{device_path}.policy'),
                 f'{device_path}.policy.force_on',
@@ -557,10 +562,6 @@ def _parse_policy_config_v2(
                 'voltage_v': _number(_required(adapter_raw, 'voltage_v', f'{device_path}.adapter_config'), f'{device_path}.adapter_config.voltage_v'),
             }
         elif kind == 'RELAY':
-            policy['surplus_allowed'] = _boolean(
-                _required(policy_raw, 'surplus_allowed', f'{device_path}.policy'),
-                f'{device_path}.policy.surplus_allowed',
-            )
             policy['force_on'] = _boolean(
                 _required(policy_raw, 'force_on', f'{device_path}.policy'),
                 f'{device_path}.policy.force_on',
@@ -568,12 +569,16 @@ def _parse_policy_config_v2(
         policy_by_id[device_id] = policy
         adapter_by_id[device_id] = adapter
 
-    primary_device_id = str(cfg_values['adjustable_primary_load'] or adjustable_device_id)
-    if cfg_values['adjustable_primary_load'] and primary_device_id == adjustable_device_id:
-        _fail(
-            'policy_config.config.adjustable_primary_load',
-            'must not reference the same device as adjustable_surplus_load',
-        )
+    requested_primary_device_id = str(cfg_values['adjustable_primary_load'] or '')
+    if requested_primary_device_id:
+        primary_device_id = requested_primary_device_id
+    else:
+        primary_device_id = ''
+        for candidate_device_id in topology.device_order:
+            candidate_caps = capabilities_by_id.get(str(candidate_device_id), {}) or {}
+            if bool(candidate_caps.get('supports_primary_regulation', False)):
+                primary_device_id = str(candidate_device_id)
+                break
     primary_caps = capabilities_by_id.get(primary_device_id, {}) or {}
     if not bool(primary_caps.get('supports_primary_regulation', False)):
         _fail(
@@ -584,9 +589,13 @@ def _parse_policy_config_v2(
     if bool(primary_caps.get('supports_residual_regulation', False)):
         residual_regulator_device_id = primary_device_id
     else:
-        adjustable_caps = capabilities_by_id.get(adjustable_device_id, {}) or {}
-        if bool(adjustable_caps.get('supports_residual_regulation', False)):
-            residual_regulator_device_id = adjustable_device_id
+        for candidate_device_id in topology.device_order:
+            if str(candidate_device_id) == primary_device_id:
+                continue
+            candidate_caps = capabilities_by_id.get(str(candidate_device_id), {}) or {}
+            if bool(candidate_caps.get('supports_residual_regulation', False)):
+                residual_regulator_device_id = str(candidate_device_id)
+                break
     if not residual_regulator_device_id:
         _fail(
             'policy_config.config.adjustable_primary_load',
