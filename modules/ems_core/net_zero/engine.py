@@ -239,6 +239,7 @@ def _selected_ev_context_from_fact_maps(facts, device_id):
             max_absorb_w=0.0,
             power_step_w=0.0,
             force_on=False,
+            uses_hard_off_lifecycle=False,
             hard_off_pv_threshold_kw=0.0,
             hard_off_low_pv_cycles=0,
             hard_off_release_cycles=0,
@@ -293,6 +294,7 @@ def _selected_ev_context_from_fact_maps(facts, device_id):
         max_absorb_w=max_absorb_w,
         power_step_w=float(power_step_w),
         force_on=force_on,
+        uses_hard_off_lifecycle=bool(capabilities.get('uses_hard_off_lifecycle', False)),
         hard_off_pv_threshold_kw=hard_off_pv_threshold_kw,
         hard_off_low_pv_cycles=_int_or_default(policy.get('hard_off_low_pv_cycles', 0), 0),
         hard_off_release_cycles=_int_or_default(policy.get('hard_off_release_cycles', 0), 0),
@@ -366,12 +368,13 @@ def _build_policy_runtime_facts(cfg):
         'step_w',
         'can_absorb_w',
         'can_produce_w',
+        'uses_hard_off_lifecycle',
     )
     for device_id in ordered_device_ids:
         kind = str(device_kind_by_id.get(device_id, '') or '')
         capabilities = {}
         for field in capability_fields:
-            default = False if field in ('can_absorb_w', 'can_produce_w') else 0
+            default = False if field in ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle') else 0
             capabilities[field] = _device_capability(cfg, device_id, field, default)
         device_capabilities_by_id[device_id] = capabilities
 
@@ -632,6 +635,35 @@ def _device_can_absorb(cfg, device_id, facts=None):
     return bool(_device_capability(cfg, device_id, 'can_absorb_w', False, facts=facts))
 
 
+def _device_uses_hard_off_lifecycle(cfg, device_id, facts=None):
+    return bool(_device_capability(cfg, device_id, 'uses_hard_off_lifecycle', False, facts=facts))
+
+
+def _hard_off_lifecycle_device_ids(cfg, facts=None):
+    lifecycle_device_ids = []
+    if facts is not None:
+        capabilities_by_id = facts.get('device_capabilities_by_id', {}) or {}
+        for device_id, capabilities in capabilities_by_id.items():
+            if bool((capabilities or {}).get('uses_hard_off_lifecycle', False)):
+                lifecycle_device_ids.append(str(device_id))
+        return tuple(lifecycle_device_ids)
+    device_ids = []
+    devices = getattr(cfg, 'devices', {}) or {}
+    if isinstance(devices, dict):
+        for device_id in devices:
+            device_ids.append(str(device_id))
+    if not device_ids:
+        for kind in ('BATTERY', 'EV_CHARGER', 'RELAY'):
+            for device_id in _device_ids_by_kind(cfg, kind, facts=facts):
+                text = str(device_id)
+                if text not in device_ids:
+                    device_ids.append(text)
+    for device_id in device_ids:
+        if _device_uses_hard_off_lifecycle(cfg, device_id, facts=facts):
+            lifecycle_device_ids.append(device_id)
+    return tuple(lifecycle_device_ids)
+
+
 def _device_response_kind(kind):
     kind = str(kind or '')
     if kind == 'BATTERY':
@@ -710,6 +742,7 @@ def _selected_ev_context(cfg, device_id, facts=None):
             max_absorb_w=0.0,
             power_step_w=0.0,
             force_on=False,
+            uses_hard_off_lifecycle=False,
             hard_off_pv_threshold_kw=0.0,
             hard_off_low_pv_cycles=0,
             hard_off_release_cycles=0,
@@ -766,6 +799,7 @@ def _selected_ev_context(cfg, device_id, facts=None):
         max_absorb_w=max_absorb_w,
         power_step_w=float(power_step_w),
         force_on=force_on,
+        uses_hard_off_lifecycle=bool(_device_capability(cfg, device_id, 'uses_hard_off_lifecycle', False, facts=facts)),
         hard_off_pv_threshold_kw=hard_off_pv_threshold_kw,
         hard_off_low_pv_cycles=_int_or_default(
             _device_policy_value(cfg, device_id, 'hard_off_low_pv_cycles', 0, facts=facts),
@@ -948,7 +982,7 @@ def _has_ev_devices(cfg, facts=None):
     return bool(_ev_devices(cfg, facts=facts))
 
 
-def _default_previous_ev_device_state(device_id=''):
+def _default_previous_device_state(device_id=''):
     return {
         'device_id': str(device_id or ''),
         'mode': '',
@@ -958,8 +992,8 @@ def _default_previous_ev_device_state(device_id=''):
     }
 
 
-def _normalize_previous_ev_device_state_entry(device_id, state):
-    normalized = _default_previous_ev_device_state(device_id)
+def _normalize_previous_device_state_entry(device_id, state):
+    normalized = _default_previous_device_state(device_id)
     state = dict(state or {})
     normalized['device_id'] = str(state.get('device_id') or device_id or '')
     normalized['mode'] = str(state.get('mode') or '')
@@ -969,11 +1003,17 @@ def _normalize_previous_ev_device_state_entry(device_id, state):
     return normalized
 
 
-def _normalize_previous_ev_device_states(previous_ev_device_states):
+def _normalize_previous_device_states(previous_device_states):
     normalized = {}
-    for device_id, state in (previous_ev_device_states or {}).items():
-        normalized[str(device_id)] = _normalize_previous_ev_device_state_entry(device_id, state)
+    for device_id, state in (previous_device_states or {}).items():
+        normalized[str(device_id)] = _normalize_previous_device_state_entry(device_id, state)
     return normalized
+
+
+# Compatibility aliases for callers/tests that still use the EV-centric names.
+_default_previous_ev_device_state = _default_previous_device_state
+_normalize_previous_ev_device_state_entry = _normalize_previous_device_state_entry
+_normalize_previous_ev_device_states = _normalize_previous_device_states
 
 
 def _enforce_device_policy_capabilities(cfg, device_policies, facts=None):
@@ -1146,7 +1186,7 @@ def _battery_target_and_authority(
             RPNZ_PRACTICAL_ZERO_W if ev_primary_practical_zero_active else 0.0
         )
         adjustable_is_home_battery = _normalized_adjustable_surplus_load(cfg, facts=facts) == 'HOME_BATTERY'
-        configured_activation_w = float(getattr(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
+        configured_activation_w = float(cfg.adjustable_surplus_activation)
 
         if use_ev_primary_mode:
             # EV primary path does not use legacy battery default floor.
@@ -1291,6 +1331,7 @@ def _ev_policy_mode_and_target_w(
     use_ev_adjustable_mode=False,
     use_ev_primary_mode=False,
     use_ev_primary_home_battery_combo=False,
+    uses_hard_off_lifecycle=False,
     haeo_nz_plan=None,
 ):
     target_w = ev_strategy_target_w(
@@ -1319,13 +1360,18 @@ def _ev_policy_mode_and_target_w(
         target_w = min(float(target_w), limit_w) if limit_w > 0 else 0.0
 
     if profiles.goal == GoalProfile.MAX_EXPORT and target_w == 0:
-        return 'hard_off', 0, 0, False
+        mode = 'hard_off' if uses_hard_off_lifecycle else 'restore_min'
+        return mode, 0, 0, False
 
     if force_charge_blocked:
         target_w = 0.0
 
     if target_w > 0:
         return 'burn', float(target_w), 0, False
+
+    if not uses_hard_off_lifecycle:
+        restore_min_w = float(ev_min_power_w(ev_context)) if use_ev_primary_mode else 0.0
+        return 'restore_min', restore_min_w, 0, False
 
     low_pv_threshold = float(ev_context.hard_off_pv_threshold_kw)
     low_pv = pv_power_kw is not None and float(pv_power_kw) < low_pv_threshold
@@ -1450,6 +1496,7 @@ def compute_net_zero_engine_outputs(
     ev_hard_off_release_ready_cycles=0,
     relay_device_states=None,
     previous_ev_device_states=None,
+    previous_device_states=None,
     previous_force_on_device_ids=None,
     haeo_nz_plan=None,
 ):
@@ -1533,10 +1580,19 @@ def compute_net_zero_engine_outputs(
         _note_net_zero_duration_ms('policy_engine_net_zero_role_normalization_ms', role_normalization_started_ts)
 
         previous_ev_state_started_ts = _net_zero_profile_started_ts()
-        normalized_previous_ev_device_states = _normalize_previous_ev_device_states(previous_ev_device_states)
-        selected_previous_ev_state = normalized_previous_ev_device_states.get(selected_ev_device_id)
+        previous_state_source = previous_device_states if previous_device_states is not None else previous_ev_device_states
+        normalized_previous_device_states = _normalize_previous_device_states(previous_state_source)
+        hard_off_lifecycle_device_ids = _hard_off_lifecycle_device_ids(cfg, facts=policy_runtime_facts)
+        selected_uses_hard_off_lifecycle = _device_uses_hard_off_lifecycle(
+            cfg,
+            selected_ev_device_id,
+            facts=policy_runtime_facts,
+        )
+        selected_previous_ev_state = normalized_previous_device_states.get(selected_ev_device_id)
         if has_ev_devices and selected_previous_ev_state is None:
-            selected_previous_ev_state = _normalize_previous_ev_device_state_entry(
+            # Preserve the legacy scalar state inputs while generic callers migrate
+            # to previous_device_states[device_id].
+            selected_previous_ev_state = _normalize_previous_device_state_entry(
                 selected_ev_device_id,
                 {
                     'device_id': selected_ev_device_id,
@@ -1546,14 +1602,19 @@ def compute_net_zero_engine_outputs(
                     'hard_off_active': ev_hard_off_active,
                 },
             )
-            normalized_previous_ev_device_states[selected_ev_device_id] = selected_previous_ev_state
+            normalized_previous_device_states[selected_ev_device_id] = selected_previous_ev_state
+        for lifecycle_device_id in hard_off_lifecycle_device_ids:
+            normalized_previous_device_states.setdefault(
+                lifecycle_device_id,
+                _default_previous_device_state(lifecycle_device_id),
+            )
         if not has_ev_devices:
-            selected_previous_ev_state = _default_previous_ev_device_state('')
+            selected_previous_ev_state = _default_previous_device_state('')
         _note_net_zero_duration_ms('policy_engine_net_zero_previous_ev_state_normalization_ms', previous_ev_state_started_ts)
         _note_net_zero_duration_ms('policy_engine_net_zero_state_parse_ms', state_parse_started_ts)
 
         surplus_targets_started_ts = _net_zero_profile_started_ts()
-        configured_activation_w = float(_cfg_scalar_value(cfg, 'adjustable_surplus_activation', 0.0) or 0.0)
+        configured_activation_w = float(cfg.adjustable_surplus_activation)
         adjustable_active_current = bool(adjustable_surplus_active or ev_burn_active)
         adjustable_priority = int(
             _device_policy_value(
@@ -1685,7 +1746,8 @@ def compute_net_zero_engine_outputs(
         ev_policy_started_ts = _net_zero_profile_started_ts()
         if has_ev_devices:
             low_pv = (
-                pv_power_kw is not None
+                selected_uses_hard_off_lifecycle
+                and pv_power_kw is not None
                 and float(pv_power_kw) < float(selected_ev.hard_off_pv_threshold_kw)
             )
             battery_to_ev_loop_risk = (
@@ -1697,7 +1759,8 @@ def compute_net_zero_engine_outputs(
             hard_off_release_rpc_kw = ev_min_power_kw if use_ev_primary_home_battery_combo else 0.0
             hard_off_release_cycles_required = max(1, int(getattr(selected_ev, 'hard_off_release_cycles', 2) or 2))
             hard_off_release_condition = (
-                use_ev_primary_home_battery_combo
+                selected_uses_hard_off_lifecycle
+                and use_ev_primary_home_battery_combo
                 and bool(selected_previous_ev_state['hard_off_active'])
                 and (pv_power_kw is not None)
                 and float(pv_power_kw) >= float(selected_ev.hard_off_pv_threshold_kw)
@@ -1761,6 +1824,7 @@ def compute_net_zero_engine_outputs(
                 use_ev_adjustable_mode=use_ev_surplus_mode,
                 use_ev_primary_mode=use_ev_primary_mode,
                 use_ev_primary_home_battery_combo=use_ev_primary_home_battery_combo,
+                uses_hard_off_lifecycle=selected_uses_hard_off_lifecycle,
                 haeo_nz_plan=haeo_nz_plan,
             )
 
@@ -1856,9 +1920,9 @@ def compute_net_zero_engine_outputs(
         if battery_policy is not None:
             battery_target_w = int(battery_policy.target_w)
             battery_write_enabled = bool(battery_policy.enabled)
-        updated_previous_ev_device_states = _normalize_previous_ev_device_states(normalized_previous_ev_device_states)
+        updated_previous_device_states = _normalize_previous_device_states(normalized_previous_device_states)
         if has_ev_devices and selected_ev_device_id:
-            updated_previous_ev_device_states[selected_ev_device_id] = _normalize_previous_ev_device_state_entry(
+            updated_previous_device_states[selected_ev_device_id] = _normalize_previous_device_state_entry(
                 selected_ev_device_id,
                 {
                     'device_id': selected_ev_device_id,
@@ -1868,9 +1932,13 @@ def compute_net_zero_engine_outputs(
                     'hard_off_release_ready_cycles': hard_off_release_ready_cycles_next,
                 },
             )
-            selected_previous_ev_state_next = updated_previous_ev_device_states[selected_ev_device_id]
+            selected_previous_ev_state_next = updated_previous_device_states[selected_ev_device_id]
         else:
-            selected_previous_ev_state_next = _default_previous_ev_device_state('')
+            selected_previous_ev_state_next = _default_previous_device_state('')
+        device_lifecycle_states = {}
+        for device_id in hard_off_lifecycle_device_ids:
+            if device_id in updated_previous_device_states:
+                device_lifecycle_states[device_id] = updated_previous_device_states[device_id]
 
         legacy_device_bridge_count, legacy_device_bridge_counts_by_kind = _legacy_bridge_metrics(cfg)
 
@@ -1924,7 +1992,11 @@ def compute_net_zero_engine_outputs(
             'ev_hard_off_active': ev_hard_off_active_next,
             'ev_hard_off_release_ready_cycles': hard_off_release_ready_cycles_next,
             'previous_device_state': selected_previous_ev_state_next,
-            'previous_ev_device_states': updated_previous_ev_device_states,
+            'previous_device_states': updated_previous_device_states,
+            'device_lifecycle_states': device_lifecycle_states,
+            'hard_off_lifecycle_devices': hard_off_lifecycle_device_ids,
+            # Compatibility view derived from the generic device-owned state map.
+            'previous_ev_device_states': updated_previous_device_states,
             'ev_hard_off_release_cycles_required': hard_off_release_cycles_required,
             'ev_hard_off_release_rpc_kw': hard_off_release_rpc_kw,
             'pv_power_kw': pv_power_kw,

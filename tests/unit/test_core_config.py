@@ -151,6 +151,7 @@ def test_build_core_config_from_grouped_config_keeps_extra_devices_in_registry(p
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'uses_hard_off_lifecycle': False,
             'min_absorb_w': 'input_number.ems_relay3_power_kw',
             'max_absorb_w': 'input_number.ems_relay3_power_kw',
             'step_w': 'input_number.ems_relay3_power_kw',

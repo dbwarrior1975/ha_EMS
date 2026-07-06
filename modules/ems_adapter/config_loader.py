@@ -244,6 +244,7 @@ ALLOWED_CAPABILITIES_KEYS = frozenset(
         'max_absorb_w',
         'step_w',
         'max_produce_w',
+        'uses_hard_off_lifecycle',
     )
 )
 ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'default_min_absorb_w'))
@@ -1160,6 +1161,11 @@ def _compile_core_capabilities_plan(
             f'{device_path}.capabilities.can_produce_w',
             False,
         ),
+        'uses_hard_off_lifecycle': _compile_dynamic_value(
+            capabilities.get('uses_hard_off_lifecycle', False),
+            f'{device_path}.capabilities.uses_hard_off_lifecycle',
+            False,
+        ),
         'min_absorb_w': _compile_dynamic_value(
             _require_mapping_value(capabilities, 'min_absorb_w'),
             f'{device_path}.capabilities.min_absorb_w',
@@ -2001,6 +2007,7 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             'step_w',
             'can_absorb_w',
             'can_produce_w',
+            'uses_hard_off_lifecycle',
         )
         policy_fields = ('priority', 'default_min_absorb_w') if kind == 'BATTERY' else ('priority',)
         adapter_fields = ()
@@ -2040,7 +2047,7 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
 
         capability_values = {}
         for field_name in capabilities_fields:
-            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w') else 0
+            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle') else 0
             value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'capabilities', str(field_name), default)
             capability_values[str(field_name)] = value
             if is_dynamic:
@@ -2884,6 +2891,7 @@ def _build_view_capabilities(values: dict) -> CoreDeviceCapabilitiesConfig:
         max_absorb_w=caps['max_absorb_w'],
         step_w=caps['step_w'],
         max_produce_w=caps.get('max_produce_w'),
+        uses_hard_off_lifecycle=bool(caps.get('uses_hard_off_lifecycle', False)),
     )
 
 
@@ -2892,6 +2900,7 @@ def _build_view_battery_device(plan: StaticDevicePlan, values: dict) -> CoreBatt
         'capabilities': {
             'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
             'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
+            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
             'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
             'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
             'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
@@ -2927,6 +2936,7 @@ def _build_view_ev_device(plan: StaticDevicePlan, values: dict) -> CoreEvCharger
         'capabilities': {
             'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
             'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
+            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
             'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
             'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
             'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
@@ -2960,6 +2970,7 @@ def _build_view_relay_device(plan: StaticDevicePlan, values: dict) -> CoreRelayD
         'capabilities': {
             'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
             'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
+            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
             'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
             'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
             'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
@@ -3512,7 +3523,7 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
         ALLOWED_CAPABILITIES_KEYS,
         issues,
     )
-    bool_fields = ('can_absorb_w', 'can_produce_w')
+    bool_fields = ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle')
     entity_or_number_fields = ('min_absorb_w', 'max_absorb_w')
     if not device_path.endswith('.EV_CHARGER'):
         entity_or_number_fields = entity_or_number_fields + ('step_w',)
@@ -3759,6 +3770,11 @@ def _build_core_capabilities(
     return CoreDeviceCapabilitiesConfig(
         can_absorb_w=bool(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'can_absorb_w'), read_entity, False)),
         can_produce_w=bool(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'can_produce_w'), read_entity, False)),
+        uses_hard_off_lifecycle=bool(_resolve_core_config_value(
+            _require_mapping_value(_require_mapping_value(device, 'capabilities'), 'uses_hard_off_lifecycle'),
+            read_entity,
+            False,
+        )),
         min_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'min_absorb_w'), read_entity, default_min_absorb_w),
         max_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'max_absorb_w'), read_entity, default_max_absorb_w),
         step_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'step_w'), read_entity, default_step_w)

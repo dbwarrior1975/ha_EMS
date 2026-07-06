@@ -297,7 +297,7 @@ def _normalize_previous_device_state_entry(device_id, state):
     return normalized
 
 
-def _read_previous_ev_device_states(cfg_or_entities, entities=None):
+def _read_previous_device_states(cfg_or_entities, entities=None):
     cfg = cfg_or_entities if entities is not None else None
     entities = entities if entities is not None else cfg_or_entities
     states = {}
@@ -335,10 +335,14 @@ def _read_previous_ev_device_states(cfg_or_entities, entities=None):
     return states
 
 
+# Compatibility alias for legacy tests/callers.
+_read_previous_ev_device_states = _read_previous_device_states
+
+
 def _read_selected_previous_device_state(cfg_or_entities, entities=None):
     cfg = cfg_or_entities if entities is not None else None
     entities = entities if entities is not None else cfg_or_entities
-    states = _read_previous_ev_device_states(cfg, entities) if cfg is not None else _read_previous_ev_device_states(entities)
+    states = _read_previous_device_states(cfg, entities) if cfg is not None else _read_previous_device_states(entities)
     adjustable_device_id = getattr(cfg, 'adjustable_surplus_load', None) if cfg is not None else None
     if not adjustable_device_id:
         adjustable_device_id = get_str((entities or {}).get('adjustable_surplus_load', ''), 'EV_CHARGER')
@@ -357,7 +361,7 @@ def _previous_device_state_attrs_from_outputs(outputs):
     selected_state = outputs.attrs.get('previous_device_state', {}) or {}
     normalized_selected = _normalize_previous_device_state_entry(device_id, selected_state)
     normalized_states = {}
-    raw_states = outputs.attrs.get('previous_ev_device_states', {}) or {}
+    raw_states = outputs.attrs.get('previous_device_states', outputs.attrs.get('previous_ev_device_states', {})) or {}
     for raw_device_id, raw_state in raw_states.items():
         normalized_states[str(raw_device_id)] = _normalize_previous_device_state_entry(raw_device_id, raw_state)
     if device_id not in normalized_states:
@@ -451,7 +455,7 @@ def _policy_state_key(attrs, previous_force_on_device_ids=()):
         str(attrs.get('haeo_nz_primary_device_id', '') or ''),
         tuple(_parse_active_device_ids(attrs.get('prev_force_on_device_ids', previous_force_on_device_ids))),
         _stable_key(attrs.get('previous_device_state', {})),
-        _stable_key(attrs.get('previous_ev_device_states', {})),
+        _stable_key(attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {}))),
     )
 
 
@@ -466,7 +470,8 @@ def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
         'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
         'prev_force_on_device_ids': prev_force_on_device_ids,
         'previous_device_state': attrs.get('previous_device_state', {}),
-        'previous_ev_device_states': attrs.get('previous_ev_device_states', {}),
+        'previous_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
+        'previous_ev_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
     }
 
 
@@ -638,7 +643,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_primary_device_id = direct_frame.previous_primary_device_id
         previous_device_state = direct_frame.selected_previous_device_state(cfg.adjustable_surplus_load)
         previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
-        previous_ev_device_states = direct_frame.previous_ev_device_states
+        previous_device_states = direct_frame.previous_device_states
         freeze_until_ts = direct_frame.surplus_freeze_until_ts
         adjustable_surplus_active = str(cfg.adjustable_surplus_load) in set(direct_frame.active_surplus_device_ids)
     else:
@@ -647,7 +652,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
         previous_device_state = _read_previous_device_state(cfg, entities)
         previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-        previous_ev_device_states = _read_previous_ev_device_states(cfg, entities)
+        previous_device_states = _read_previous_device_states(cfg, entities)
         freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
         adjustable_surplus_active = _read_adjustable_surplus_active(cfg, entities)
         timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
@@ -687,7 +692,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
         ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
         relay_device_states=getattr(m, 'relay_states', {}),
-        previous_ev_device_states=previous_ev_device_states,
+        previous_device_states=previous_device_states,
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
     )

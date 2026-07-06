@@ -61,6 +61,7 @@ def _policy_packet(*, revision=17):
                     'max_absorb_w': 3800,
                     'max_produce_w': -4000,
                     'step_w': 50,
+                    'uses_hard_off_lifecycle': False,
                 },
                 'policy': {
                     'priority': 3,
@@ -79,6 +80,7 @@ def _policy_packet(*, revision=17):
                     'max_absorb_w': 6400,
                     'max_produce_w': 0,
                     'step_w': 400,
+                    'uses_hard_off_lifecycle': True,
                 },
                 'policy': {
                     'priority': 4,
@@ -100,6 +102,7 @@ def _policy_packet(*, revision=17):
                     'max_absorb_w': 2600,
                     'max_produce_w': 0,
                     'step_w': 2600,
+                    'uses_hard_off_lifecycle': False,
                 },
                 'policy': {
                     'priority': 1,
@@ -113,6 +116,7 @@ def _policy_packet(*, revision=17):
                     'max_absorb_w': 5600,
                     'max_produce_w': 0,
                     'step_w': 5600,
+                    'uses_hard_off_lifecycle': False,
                 },
                 'policy': {
                     'priority': 2,
@@ -285,6 +289,107 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('value', (2300, 0.1))
+def test_direct_parser_accepts_positive_adjustable_surplus_activation(project_root, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=180)
+    packet['config']['adjustable_surplus_activation_w'] = value
+
+    cfg, cache_hit = parse_policy_config_cached(topology, packet)
+
+    assert cache_hit is False
+    assert cfg.adjustable_surplus_activation == float(value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', (0, -1))
+def test_direct_parser_rejects_non_positive_adjustable_surplus_activation(project_root, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=181)
+    packet['config']['adjustable_surplus_activation_w'] = value
+
+    with pytest.raises(
+        RuntimePacketSchemaError,
+        match=(
+            r'RUNTIME_PACKET_INVALID: policy_config\.config\.adjustable_surplus_activation_w '
+            r'must be greater than zero'
+        ),
+    ) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
+
+
+@pytest.mark.unit
+def test_direct_parser_rejects_missing_adjustable_surplus_activation(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=182)
+    del packet['config']['adjustable_surplus_activation_w']
+
+    with pytest.raises(RuntimePacketSchemaError, match=r'adjustable_surplus_activation_w missing') as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', ('unknown', None, True))
+def test_direct_parser_rejects_non_numeric_adjustable_surplus_activation(project_root, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=183)
+    packet['config']['adjustable_surplus_activation_w'] = value
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', (True, False))
+def test_direct_parser_accepts_explicit_hard_off_lifecycle_boolean(project_root, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=184)
+    packet['devices']['EV_CHARGER']['capabilities']['uses_hard_off_lifecycle'] = value
+
+    cfg, cache_hit = parse_policy_config_cached(topology, packet)
+
+    assert cache_hit is False
+    assert cfg.direct_policy_maps['device_capabilities_by_id']['EV_CHARGER']['uses_hard_off_lifecycle'] is value
+
+
+@pytest.mark.unit
+def test_direct_parser_rejects_missing_hard_off_lifecycle_capability(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=185)
+    del packet['devices']['EV_CHARGER']['capabilities']['uses_hard_off_lifecycle']
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.devices.EV_CHARGER.capabilities.uses_hard_off_lifecycle'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', ('true', 1, 0, None))
+def test_direct_parser_rejects_non_boolean_hard_off_lifecycle_capability(project_root, value):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=186)
+    packet['devices']['EV_CHARGER']['capabilities']['uses_hard_off_lifecycle'] = value
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.devices.EV_CHARGER.capabilities.uses_hard_off_lifecycle'
+
+
+@pytest.mark.unit
 def test_policy_config_rejects_relay_as_adjustable_surplus_load(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
@@ -312,6 +417,36 @@ def test_direct_parser_preserves_float_measurement_signed_discharge_and_runtime_
     assert cfg.direct_policy_maps['device_adapter_by_id']['EV_CHARGER']['current_step_a'] == 2
     assert cfg.adjustable_surplus_load_priority == 4
     assert frame.ev_states['EV_CHARGER']['current_a'] == 6
+
+
+@pytest.mark.unit
+def test_direct_tick_frame_preserves_generic_device_owned_lifecycle_states(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    cfg, _cache_hit = parse_policy_config_cached(topology, _policy_packet(revision=187))
+    state = _state_packet()
+    state['surplus']['previous_device_states'] = {
+        'EV_CHARGER': {
+            'device_id': 'EV_CHARGER',
+            'mode': 'hard_off',
+            'low_pv_cycles': 50,
+            'hard_off_release_ready_cycles': 7,
+            'hard_off_active': True,
+        },
+        'EV_GARAGE': {
+            'device_id': 'EV_GARAGE',
+            'mode': 'restore_min',
+            'low_pv_cycles': 3,
+            'hard_off_release_ready_cycles': 0,
+            'hard_off_active': False,
+        },
+    }
+
+    frame = parse_tick_frame_v2(topology, cfg, _measurements_packet(), state, NOW_TS)
+
+    assert frame.previous_device_states['EV_CHARGER']['low_pv_cycles'] == 50
+    assert frame.previous_device_states['EV_GARAGE']['low_pv_cycles'] == 3
+    assert frame.previous_ev_device_states == frame.previous_device_states
 
 
 @pytest.mark.unit

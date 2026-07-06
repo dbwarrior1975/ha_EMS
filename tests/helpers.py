@@ -68,7 +68,7 @@ def make_cfg(**overrides):
         nz_battery_floor_ev_active_w=0.0,
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='',
-        adjustable_surplus_activation=0.0,
+        adjustable_surplus_activation=1.0,
         adjustable_surplus_load_priority=3,
         ev_priority=3,
         surplus_freeze_s=30,
@@ -103,6 +103,7 @@ def make_cfg(**overrides):
             max_absorb_w=float(data['max_solar_charge_w']),
             step_w=float(data['deadband_w']),
             max_produce_w=float(data['max_battery_discharge_w']),
+            uses_hard_off_lifecycle=False,
         ),
         policy=CoreBatteryPolicyConfig(
             priority=int(data['adjustable_surplus_load_priority']),
@@ -132,6 +133,7 @@ def make_cfg(**overrides):
             max_absorb_w=float(data['ev_max_absorb_w']),
             step_w=float(_ev_power.ev_current_a_to_power_w(data['ev_current_step_a'], data['ev_charger_phases'], data['ev_voltage_v'])),
             max_produce_w=None,
+            uses_hard_off_lifecycle=True,
         ),
         policy=CoreEvPolicyConfig(
             priority=ev_priority,
@@ -159,6 +161,7 @@ def make_cfg(**overrides):
             max_absorb_w=int(relay_thresholds_w['RELAY1']),
             step_w=int(relay_thresholds_w['RELAY1']),
             max_produce_w=None,
+            uses_hard_off_lifecycle=False,
         ),
         policy=CoreRelayPolicyConfig(
             priority=int(relay_priorities['RELAY1']),
@@ -177,6 +180,7 @@ def make_cfg(**overrides):
             max_absorb_w=int(relay_thresholds_w['RELAY2']),
             step_w=int(relay_thresholds_w['RELAY2']),
             max_produce_w=None,
+            uses_hard_off_lifecycle=False,
         ),
         policy=CoreRelayPolicyConfig(
             priority=int(relay_priorities['RELAY2']),

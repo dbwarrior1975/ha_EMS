@@ -1,8 +1,4 @@
-#versio 07:33, jossa netto ostoista vähennetään delta akun lataus
-#versio 07:46, jossa oma kulutus tuotu myös mukaan tuottamaan battery_to_self_delta laskentaan vartin välein
-#uusi lähetymistapa
-# Home Assistant template sensor examples for the strict EMS runtime schema v2.
-# Increment policy_config.revision whenever any slow-changing policy field changes.
+template:
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -166,6 +162,9 @@
               {
                 'HOME_BATTERY': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': true,
+                    'supports_residual_regulation': true,
                     'min_absorb_w': 0,
   
                     'max_absorb_w':
@@ -184,6 +183,8 @@
                   },
   
                   'policy': {
+                    # Legacy HA helper name; semantically this is HOME_BATTERY's
+                    # device-owned surplus priority, not an adjustable-role priority.
                     'priority':
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
@@ -218,6 +219,9 @@
   
                 'EV_CHARGER': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': true,
+                    'supports_primary_regulation': true,
+                    'supports_residual_regulation': false,
                     'min_absorb_w':
                       states('input_number.ems_ev_min_power_w'),
                 
@@ -305,6 +309,9 @@
                   
                 'RELAY1': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': false,
+                    'supports_residual_regulation': false,
                     'min_absorb_w': 2600,
                     'max_absorb_w': 2600,
                     'max_produce_w': 0,
@@ -351,6 +358,9 @@
   
                 'RELAY2': {
                   'capabilities': {
+                    'uses_hard_off_lifecycle': false,
+                    'supports_primary_regulation': false,
+                    'supports_residual_regulation': false,
                     'min_absorb_w': 5600,
                     'max_absorb_w': 5600,
                     'max_produce_w': 0,
@@ -784,6 +794,7 @@
                   ) or []
               }
             }}
+
   
   - sensor:
       - name: PV Instant Power W

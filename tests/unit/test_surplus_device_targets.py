@@ -33,53 +33,33 @@ def _relay_candidates(
 
 
 @pytest.mark.unit
-def test_ev_adjustable_device_target_uses_ev_power_delta_when_no_explicit_activation():
+@pytest.mark.parametrize(
+    ('device_id', 'max_solar_charge_w'),
+    (
+        ('EV_CHARGER', 3700),
+        ('HOME_BATTERY', 3700),
+    ),
+)
+def test_invalid_activation_value_is_not_replaced_by_device_derived_threshold(device_id, max_solar_charge_w):
     cfg = make_cfg(
         adjustable_surplus_activation=0,
-        adjustable_surplus_load_priority=4,
+        max_solar_charge_w=max_solar_charge_w,
+        ev_min_absorb_w=1380,
+        ev_max_absorb_w=6440,
     )
 
     targets = build_surplus_device_targets(
         cfg,
-        adjustable_device_id='EV_CHARGER',
+        adjustable_device_id=device_id,
         adjustable_priority=4,
         adjustable_active=False,
         relay_candidates=_relay_candidates(),
     )
 
     adjustable = targets[0]
-    assert adjustable.device_id == 'EV_CHARGER'
-    assert adjustable.decision_name == 'ADJUSTABLE'
-    assert adjustable.priority == 4
-    assert adjustable.rank == 1
-    assert adjustable.threshold_w == 5060
-    assert adjustable.threshold_source == 'ev_incremental_max_minus_min_absorb_w'
-    assert adjustable.incremental_surplus_threshold_w == 5060
-    assert adjustable.active is False
-
-
-@pytest.mark.unit
-def test_home_battery_adjustable_device_target_uses_max_solar_charge_when_no_explicit_activation():
-    cfg = make_cfg(
-        adjustable_surplus_activation=0,
-        max_solar_charge_w=3700,
-        adjustable_surplus_load_priority=3,
-    )
-
-    targets = build_surplus_device_targets(
-        cfg,
-        adjustable_device_id='HOME_BATTERY',
-        adjustable_priority=3,
-        adjustable_active=True,
-        relay_candidates=_relay_candidates(),
-    )
-
-    adjustable = targets[0]
-    assert adjustable.device_id == 'HOME_BATTERY'
-    assert adjustable.threshold_w == 3700
-    assert adjustable.threshold_source == 'max_solar_charge_w'
+    assert adjustable.threshold_w == 0
+    assert adjustable.threshold_source == 'configured_adjustable_surplus_activation_w'
     assert adjustable.incremental_surplus_threshold_w is None
-    assert adjustable.active is True
 
 
 @pytest.mark.unit
@@ -164,6 +144,7 @@ def test_core_config_view_second_ev_adjustable_target_does_not_materialize_selec
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
             'step_w': 'input_number.ems_ev_garage_power_step_w',
@@ -198,6 +179,7 @@ def test_core_config_view_second_ev_adjustable_target_does_not_materialize_selec
         'input_number.ems_ev_garage_current_step_a': 2,
         'input_number.ems_ev_garage_phases': 1,
         'input_number.ems_ev_garage_voltage_v': 230,
+        'input_number.ems_adjustable_surplus_activation_w': 2300,
     }
     call_counts = {}
 

@@ -62,6 +62,7 @@ def _write_grouped_config_with_second_ev(project_root, tmp_path):
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
             'step_w': 'input_number.ems_ev_garage_power_step_w',

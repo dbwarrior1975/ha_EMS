@@ -43,6 +43,7 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: true
+        uses_hard_off_lifecycle: false
         min_absorb_w: input_number.ems_home_battery_min_absorb_w
         max_absorb_w: input_number.ems_max_battery_charge_w
         max_produce_w: input_number.ems_max_battery_discharge_w
@@ -68,6 +69,7 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        uses_hard_off_lifecycle: true
         min_absorb_w: input_number.ems_ev_min_power_w
         max_absorb_w: input_number.ems_ev_max_power_w
       policy:
@@ -89,6 +91,7 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        uses_hard_off_lifecycle: false
         min_absorb_w: input_number.ems_relay1_nominal_absorb_w
         max_absorb_w: input_number.ems_relay1_power_kw
         step_w: input_number.ems_relay1_power_kw
@@ -104,6 +107,7 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: false
+        uses_hard_off_lifecycle: false
         min_absorb_w: input_number.ems_relay2_nominal_absorb_w
         max_absorb_w: input_number.ems_relay2_power_kw
         step_w: input_number.ems_relay2_power_kw

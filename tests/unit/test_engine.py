@@ -236,6 +236,7 @@ def _garage_ev_device_config():
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
+            'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.garage_ev_min_power_w',
             'max_absorb_w': 'input_number.garage_ev_max_power_w',
             'step_w': 'input_number.garage_ev_power_step_w',
@@ -540,6 +541,7 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
                 'capabilities': {
                     'can_absorb_w': True,
                     'can_produce_w': False,
+                    'uses_hard_off_lifecycle': False,
                     'min_absorb_w': 'input_number.ems_relay3_nominal_absorb_w',
                     'max_absorb_w': 'input_number.ems_relay3_power_w',
                     'step_w': 'input_number.ems_relay3_power_w',
@@ -1437,6 +1439,101 @@ def test_engine_targets_selected_second_ev_and_marks_other_evs_inactive(project_
     assert out.attrs['previous_ev_device_states']['GARAGE_EV']['mode'] == out.attrs['ev_policy_mode']
     assert out.attrs['previous_ev_device_states']['EV_CHARGER']['mode'] == 'hard_off'
 
+@pytest.mark.unit
+def test_engine_hard_off_lifecycle_state_is_device_owned_for_two_capable_evs(project_root):
+    cfg = _core_cfg_with_extra_devices(
+        project_root,
+        extra_devices={'GARAGE_EV': _garage_ev_device_config()},
+        value_overrides={
+            **_garage_ev_value_overrides(),
+            'input_number.garage_ev_low_pv_cycles': 100,
+        },
+    )
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    previous_device_states = {
+        'EV_CHARGER': {
+            'device_id': 'EV_CHARGER',
+            'mode': 'hard_off',
+            'low_pv_cycles': 50,
+            'hard_off_release_ready_cycles': 7,
+            'hard_off_active': True,
+        },
+        'GARAGE_EV': {
+            'device_id': 'GARAGE_EV',
+            'mode': 'restore_min',
+            'low_pv_cycles': 3,
+            'hard_off_release_ready_cycles': 0,
+            'hard_off_active': False,
+        },
+    }
+
+    out = compute_net_zero_engine_outputs(
+        profiles,
+        cfg,
+        make_m(),
+        make_haeo(),
+        make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0),
+        60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        adjustable_surplus_active=False,
+        pv_power_kw=0.0,
+        previous_device_states=previous_device_states,
+    )
+
+    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert set(out.attrs['hard_off_lifecycle_devices']) == {'EV_CHARGER', 'GARAGE_EV'}
+    assert out.attrs['previous_device_states']['EV_CHARGER']['low_pv_cycles'] == 50
+    assert out.attrs['previous_device_states']['EV_CHARGER']['hard_off_active'] is True
+    assert out.attrs['previous_device_states']['GARAGE_EV']['low_pv_cycles'] == 4
+    assert out.attrs['previous_device_states']['GARAGE_EV']['hard_off_active'] is False
+    assert out.attrs['device_lifecycle_states'] == {
+        'EV_CHARGER': out.attrs['previous_device_states']['EV_CHARGER'],
+        'GARAGE_EV': out.attrs['previous_device_states']['GARAGE_EV'],
+    }
+    assert out.attrs['previous_ev_device_states'] == out.attrs['previous_device_states']
+
+
+@pytest.mark.unit
+def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+        ev_hard_off_pv_threshold_kw=1.6,
+        ev_hard_off_low_pv_cycles=1,
+    )
+    cfg.devices['EV_CHARGER'].capabilities.uses_hard_off_lifecycle = False
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+
+    out = compute_net_zero_engine_outputs(
+        profiles,
+        cfg,
+        make_m(ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=0)}),
+        make_haeo(),
+        make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0),
+        60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(),
+        adjustable_surplus_active=False,
+        pv_power_kw=0.0,
+        previous_device_states={
+            'EV_CHARGER': {
+                'device_id': 'EV_CHARGER',
+                'mode': 'hard_off',
+                'low_pv_cycles': 50,
+                'hard_off_release_ready_cycles': 3,
+                'hard_off_active': True,
+            },
+        },
+    )
+
+    assert out.attrs['hard_off_lifecycle_devices'] == ()
+    assert out.attrs['ev_policy_mode'] == 'restore_min'
+    assert out.attrs['ev_low_pv_cycles'] == 0
+    assert out.attrs['ev_hard_off_active'] is False
+
 
 @pytest.mark.unit
 def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materialization(project_root):
@@ -1587,6 +1684,7 @@ def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_batte
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
         adjustable_primary_load='EV_CHARGER',
+        adjustable_surplus_activation=0.1,
     )
     m = make_m(
         current_battery_setpoint_w=-1000,

@@ -182,6 +182,7 @@ class TickFrame:
     surplus_freeze_until_ts: Optional[float]
     active_surplus_device_ids: tuple[str, ...]
     previous_device_state: dict
+    previous_device_states: dict[str, dict]
     previous_ev_device_states: dict[str, dict]
     haeo_battery_state_kw: float
     haeo_ev_state_kw: float
@@ -210,8 +211,8 @@ class TickFrame:
 
     def selected_previous_device_state(self, adjustable_device_id: str) -> dict:
         device_id = str(adjustable_device_id or '')
-        if device_id and device_id in self.previous_ev_device_states:
-            return dict(self.previous_ev_device_states[device_id])
+        if device_id and device_id in self.previous_device_states:
+            return dict(self.previous_device_states[device_id])
         state = dict(self.previous_device_state or {})
         if state.get('device_id') == device_id:
             return state
@@ -286,6 +287,12 @@ def _boolean(value, path: str) -> bool:
         if text in ('false', 'off', 'no', '0'):
             return False
     _fail(path, 'must be boolean')
+
+
+def _strict_boolean(value, path: str) -> bool:
+    if type(value) is not bool:
+        _fail(path, 'must be a boolean')
+    return value
 
 
 def _text(value, path: str, *, allow_empty: bool = False) -> str:
@@ -437,6 +444,8 @@ def _parse_policy_config_v2(
     cfg_values = {}
     for field in number_fields:
         cfg_values[field] = _number(_required(cfg_raw, field, 'policy_config.config'), f'policy_config.config.{field}')
+    if cfg_values['adjustable_surplus_activation_w'] <= 0.0:
+        _fail('policy_config.config.adjustable_surplus_activation_w', 'must be greater than zero')
     cfg_values['adjustable_surplus_load'] = _text(
         _required(cfg_raw, 'adjustable_surplus_load', 'policy_config.config'),
         'policy_config.config.adjustable_surplus_load',
@@ -482,6 +491,10 @@ def _parse_policy_config_v2(
         caps = {
             'can_absorb_w': bool(topology.can_absorb_by_id[device_id]),
             'can_produce_w': bool(topology.can_produce_by_id[device_id]),
+            'uses_hard_off_lifecycle': _strict_boolean(
+                _required(caps_raw, 'uses_hard_off_lifecycle', f'{device_path}.capabilities'),
+                f'{device_path}.capabilities.uses_hard_off_lifecycle',
+            ),
         }
         for field in ('min_absorb_w', 'max_absorb_w', 'max_produce_w', 'step_w'):
             caps[field] = _number(_required(caps_raw, field, f'{device_path}.capabilities'), f'{device_path}.capabilities.{field}')
@@ -658,18 +671,18 @@ def parse_tick_frame_v2(
         _required(surplus, 'previous_device_state', 'policy_state.surplus'),
         'policy_state.surplus.previous_device_state',
     )
-    previous_ev_states = {}
+    previous_device_states = {}
     raw_device_states = surplus.get('previous_device_states', {})
     if raw_device_states is not None:
         raw_device_states = _mapping(raw_device_states, 'policy_state.surplus.previous_device_states')
         for device_id, raw_state in raw_device_states.items():
             text_id = str(device_id)
-            previous_ev_states[text_id] = _normalize_previous_device_state(
+            previous_device_states[text_id] = _normalize_previous_device_state(
                 raw_state,
                 f'policy_state.surplus.previous_device_states.{text_id}',
             )
     if previous_state.get('device_id'):
-        previous_ev_states.setdefault(previous_state['device_id'], dict(previous_state))
+        previous_device_states.setdefault(previous_state['device_id'], dict(previous_state))
 
     haeo = _mapping(_required(state_packet, 'haeo', 'policy_state'), 'policy_state.haeo')
     haeo_battery_state_kw = _number(_required(haeo, 'battery_state_kw', 'policy_state.haeo'), 'policy_state.haeo.battery_state_kw')
@@ -743,7 +756,9 @@ def parse_tick_frame_v2(
         surplus_freeze_until_ts=freeze_until,
         active_surplus_device_ids=active_ids,
         previous_device_state=previous_state,
-        previous_ev_device_states=previous_ev_states,
+        previous_device_states=previous_device_states,
+        # Compatibility alias derived from the generic device-owned state map.
+        previous_ev_device_states=previous_device_states,
         haeo_battery_state_kw=haeo_battery_state_kw,
         haeo_ev_state_kw=haeo_ev_state_kw,
         haeo_battery_age_s=haeo_battery_age_s,

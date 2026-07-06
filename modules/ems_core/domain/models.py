@@ -82,6 +82,7 @@ class CoreDeviceCapabilitiesConfig:
     max_absorb_w: ScalarRef
     step_w: ScalarRef
     max_produce_w: Optional[ScalarRef] = None
+    uses_hard_off_lifecycle: bool = False
 
 
 @dataclass

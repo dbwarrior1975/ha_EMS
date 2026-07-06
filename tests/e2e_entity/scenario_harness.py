@@ -301,6 +301,9 @@ class QuarterScenarioHarness:
             ('ev_hard_off_pv_threshold_kw', 1.6),
             ('ev_hard_off_low_pv_cycles', 2),
             ('ev_hard_off_release_cycles', 2),
+            # P1.0 explicit contract: preserve the previous EV max-min behavior
+            # by seeding its former derived value as authoritative config.
+            ('adjustable_surplus_activation', 5060),
             ('haeo_stale_timeout_s', 300),
             ('soc', 50.0),
             ('min_cell_voltage_v', 3.20),

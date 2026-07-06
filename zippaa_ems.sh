@@ -168,11 +168,13 @@ for p in "${EXISTING[@]}"; do
   stage_path "$PACKAGE_STAGE_DIR" "$p"
 done
 
-if [[ -f "EMS_config.yaml" ]]; then
-  cp "EMS_config.yaml" "$PACKAGE_STAGE_DIR/EMS_config.yaml"
-else
-  cp "example_EMS_config.yaml" "$PACKAGE_STAGE_DIR/EMS_config.yaml"
-fi
+shopt -s nullglob
+
+for yaml_file in *.yaml; do
+    cp "$yaml_file" "$PACKAGE_STAGE_DIR/"
+done
+
+shopt -u nullglob
 
 if [[ $RUN_PREFLIGHT -eq 1 ]]; then
   if ! command -v python3 >/dev/null 2>&1; then
