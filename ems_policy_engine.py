@@ -340,17 +340,36 @@ def _read_previous_device_states(cfg_or_entities, entities=None):
 _read_previous_ev_device_states = _read_previous_device_states
 
 
+def _compat_selected_ev_device_id(cfg):
+    primary_device_id = str(getattr(cfg, 'adjustable_primary_load', '') or '')
+    try:
+        if primary_device_id and str(cfg.device_kind(primary_device_id) or '') == 'EV_CHARGER':
+            return primary_device_id
+    except Exception:
+        pass
+    try:
+        ev_ids = tuple(cfg.device_ids_by_kind('EV_CHARGER') or ())
+        if ev_ids:
+            return str(ev_ids[0])
+    except Exception:
+        pass
+    try:
+        ev_ids = tuple(getattr(cfg, 'ev_device_ids', ()) or ())
+        if ev_ids:
+            return str(ev_ids[0])
+    except Exception:
+        pass
+    return 'EV_CHARGER'
+
+
 def _read_selected_previous_device_state(cfg_or_entities, entities=None):
     cfg = cfg_or_entities if entities is not None else None
     entities = entities if entities is not None else cfg_or_entities
     states = _read_previous_device_states(cfg, entities) if cfg is not None else _read_previous_device_states(entities)
-    adjustable_device_id = getattr(cfg, 'adjustable_surplus_load', None) if cfg is not None else None
-    if not adjustable_device_id:
-        adjustable_device_id = get_str((entities or {}).get('adjustable_surplus_load', ''), 'EV_CHARGER')
-    adjustable_device_id = str(adjustable_device_id or 'EV_CHARGER')
-    if adjustable_device_id in states:
-        return states[adjustable_device_id]
-    return _default_previous_device_state(adjustable_device_id)
+    selected_ev_device_id = _compat_selected_ev_device_id(cfg) if cfg is not None else 'EV_CHARGER'
+    if selected_ev_device_id in states:
+        return states[selected_ev_device_id]
+    return _default_previous_device_state(selected_ev_device_id)
 
 
 def _selected_ev_device_id_from_outputs(outputs):
@@ -381,15 +400,6 @@ def _selected_previous_device_state_for_outputs(outputs):
     device_id = _selected_ev_device_id_from_outputs(outputs)
     return _normalize_previous_device_state_entry(device_id, outputs.attrs.get('previous_device_state', {}))
 
-
-def _read_adjustable_surplus_active(cfg_or_entities, entities=None):
-    cfg = cfg_or_entities if entities is not None else None
-    entities = entities if entities is not None else cfg_or_entities
-    active_device_ids = _read_active_surplus_device_ids(cfg, entities) if cfg is not None else _read_active_surplus_device_ids(entities)
-    adjustable_device_id = getattr(cfg, 'adjustable_surplus_load', None) if cfg is not None else None
-    if not adjustable_device_id:
-        adjustable_device_id = get_str((entities or {}).get('adjustable_surplus_load', ''), 'EV_CHARGER')
-    return str(adjustable_device_id or 'EV_CHARGER') in active_device_ids
 
 
 _MISSING = object()
@@ -474,6 +484,78 @@ def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
         'previous_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
         'previous_ev_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
     }
+
+
+
+def _diagnostic_projection_attrs(attrs):
+    """Return the public diagnostics-only canonical projection.
+
+    Internal result attrs stay unchanged because dispatch, policy-state persistence,
+    writers and change detection have separate contracts.
+    """
+    projected = dict(attrs or {})
+
+    raw_candidates = projected.get('surplus_candidates', ()) or ()
+    candidates = []
+    for raw_candidate in raw_candidates:
+        candidate = dict(raw_candidate or {})
+        candidate.pop('decision_name', None)
+        candidates.append(candidate)
+    projected['surplus_candidates'] = tuple(candidates)
+
+    projected['surplus_dispatch_action'] = projected.get(
+        'surplus_device_dispatch_action', 'NOOP'
+    )
+    projected['surplus_dispatch_device_id'] = projected.get(
+        'surplus_device_dispatch_device_id', ''
+    )
+    projected['surplus_dispatch_contract'] = projected.get(
+        'surplus_device_dispatch_contract', 'device_id_primary'
+    )
+
+    legacy_keys = (
+        'surplus_next_target',
+        'surplus_release_candidate',
+        'active_stack',
+        'surplus_device_active_stack',
+        'surplus_device_active_device_stack',
+        'surplus_device_next_target',
+        'surplus_device_next_device_id',
+        'surplus_device_release_candidate',
+        'surplus_device_release_device_id',
+        'surplus_device_dispatch_decision',
+        'surplus_device_dispatch_action',
+        'surplus_device_dispatch_target',
+        'surplus_device_dispatch_device_id',
+        'surplus_device_dispatch_contract',
+        'surplus_device_targets',
+        'selected_ev_device_id',
+        'ev_policy_mode',
+        'ev_low_pv_cycles',
+        'ev_hard_off_active',
+        'ev_hard_off_release_ready_cycles',
+        'previous_device_state',
+        'previous_ev_device_states',
+        'ev_hard_off_release_cycles_required',
+        'ev_hard_off_release_rpc_kw',
+        'ev_hard_off_pv_threshold_kw',
+        'ev_primary_burn_active',
+        'ev_surplus_burn_active',
+        'ev_current_step_a',
+        'ev_force_on',
+        'ev_min_power_w',
+        'ev_max_power_w',
+        'ev_power_step_w',
+        'ev_target_w',
+        'legacy_device_bridge_count',
+        'legacy_device_bridge_counts_by_kind',
+        'adjustable_primary_load',
+        'haeo_nz_battery_limit_w',
+        'haeo_nz_ev_limit_w',
+    )
+    for key in legacy_keys:
+        projected.pop(key, None)
+    return projected
 
 
 def _policy_engine_interval_seconds(cfg):
@@ -619,7 +701,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
 
     direct_frame = (entities or {}).get('_direct_tick_frame')
     phase_started_ts = time.time()
-    legacy_surplus_device_id = str(getattr(cfg, 'adjustable_surplus_load', '') or '')
+    selected_ev_device_id = _compat_selected_ev_device_id(cfg)
     if direct_frame is not None:
         profiles = cfg.profiles
         m = direct_frame
@@ -643,12 +725,12 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         haeo = direct_frame.haeo_targets(profiles, cfg)
         previous_quarter_key = direct_frame.previous_quarter_key
         previous_primary_device_id = direct_frame.previous_primary_device_id
-        previous_device_state = direct_frame.selected_previous_device_state(legacy_surplus_device_id)
+        previous_device_state = direct_frame.selected_previous_device_state(selected_ev_device_id)
         previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
         previous_device_states = direct_frame.previous_device_states
         freeze_until_ts = direct_frame.surplus_freeze_until_ts
         active_surplus_device_ids = tuple(direct_frame.active_surplus_device_ids)
-        adjustable_surplus_active = legacy_surplus_device_id in set(active_surplus_device_ids)
+        selected_ev_surplus_active = selected_ev_device_id in set(active_surplus_device_ids)
     else:
         haeo = read_haeo(now_ts, profiles, cfg, entities)
         previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
@@ -658,7 +740,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_device_states = _read_previous_device_states(cfg, entities)
         freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
         active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
-        adjustable_surplus_active = legacy_surplus_device_id in set(active_surplus_device_ids)
+        selected_ev_surplus_active = selected_ev_device_id in set(active_surplus_device_ids)
         timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
 
     phase_started_ts = time.time()
@@ -689,8 +771,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=freeze_until_ts,
-        ev_burn_active=adjustable_surplus_active,
-        adjustable_surplus_active=adjustable_surplus_active,
+        ev_burn_active=selected_ev_surplus_active,
+        selected_ev_surplus_active=selected_ev_surplus_active,
         pv_power_kw=pv_power_kw,
         ev_hard_off_active=bool(previous_device_state['hard_off_active']),
         ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
@@ -813,7 +895,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     timing.setdefault('policy_engine_diagnostics_publish_ms', 0)
     if publish_diagnostics:
         phase_started_ts = time.time()
-        diagnostics_attrs = dict(result.attrs)
+        diagnostics_attrs = _diagnostic_projection_attrs(result.attrs)
         diagnostics_attrs.update(
             {
                 'policy_engine_run_duration_ms': int(round((time.time() - run_started_ts) * 1000.0)),

@@ -19,8 +19,8 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'ev_device_ids': (),
-                'surplus_device_dispatch_decision': 'NOOP',
-                'surplus_device_active_device_stack': 'NONE',
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_active_device_ids': (),
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 0},
@@ -40,8 +40,8 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=2.6, at_s=30),
             'expect_policy': {
                 'ev_device_ids': (),
-                'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_device_dispatch_device_id': 'HOME_BATTERY',
+                'surplus_dispatch_decision': 'ACTIVATE_HOME_BATTERY',
+                'surplus_dispatch_device_id': 'HOME_BATTERY',
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 1000},
@@ -58,8 +58,8 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=60),
             'expect_policy': {
                 'ev_device_ids': (),
-                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
-                'surplus_device_active_device_stack': 'HOME_BATTERY',
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_active_device_ids': ('HOME_BATTERY',),
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 2000},

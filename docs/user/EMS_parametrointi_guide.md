@@ -1,7 +1,7 @@
 # EMS parametroinnin opas
 
 Taman oppaan tavoite on antaa kaytannonlaheiset aloitusarvot ja viritysohjeet
-n-device-konfiguraatiolle seka kahdelle yleiselle adjustable-kombolle.
+n-device-konfiguraatiolle seka kahdelle yleiselle primary-asetelmalle.
 
 ## N-device konfiguraatio
 
@@ -10,8 +10,8 @@ EMS:n tuotantoraja tassa releasessa on:
 1. yksi `HOME_BATTERY`
 2. `0-n` `kind: RELAY` -laitetta
 3. `0-n` `kind: EV_CHARGER` -laturia
-4. useampi EV voi olla konfiguroituna, mutta vain yksi EV valitaan aktiiviseksi adjustable-laitteeksi kerrallaan
-5. multi-EV simultaneous power split ja EV-round-robin eivat kuulu tahan releaseen
+4. useampi EV voi olla samassa surplus-kandidaattipoolissa ja saada oman `DevicePolicy`-tuloksen
+5. proportional multi-EV power split ja EV-round-robin eivat kuulu tahan releaseen
 
 ### Device-id ei kanna semantiikkaa
 
@@ -150,30 +150,24 @@ referenssi: `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_confi
 
 Useampi EV voi olla konfiguroituna ja jokainen `can_absorb_w=true` +
 `policy.surplus_allowed=true` -EV voi osallistua samaan NET_ZERO-pooliin.
-Jokaisella EV:lla on oma priority, aktivointikynnys, force-on, lifecycle-tila ja
+Jokaisella EV:lla on oma priority, `max_absorb_w`, force-on, lifecycle-tila ja
 `DevicePolicy`-tulos. `selected_ev_device_id` on vain compatibility-diagnostiikka;
 se ei rajaa muuta EV:ta automaattisesti pois poolista.
 
 ```yaml
 ems:
   global_config:
-    adjustable_surplus_load: input_select.ems_adjustable_surplus_load
     adjustable_primary_load: input_select.ems_adjustable_primary_load
-
-  role_constraints:
-    HOME_BATTERY_PRIMARY:
-      EV_MAIN:
-        activation_threshold_w: input_number.ems_ev_main_activation_threshold_w
-      EV_GARAGE:
-        activation_threshold_w: input_number.ems_ev_garage_activation_threshold_w
 
   devices:
     EV_MAIN:
       kind: EV_CHARGER
+      capabilities:
+        can_absorb_w: true
+        max_absorb_w: input_number.ems_ev_main_max_power_w
       policy:
         priority: input_number.ems_surplus_ev_main_priority
         surplus_allowed: input_boolean.ems_ev_main_surplus_allowed
-        activation_threshold_w: input_number.ems_ev_main_activation_threshold_w
         surplus_dispatch_mode: max_absorb
       adapter:
         enabled: switch.ev_main_enabled
@@ -181,36 +175,32 @@ ems:
 
     EV_GARAGE:
       kind: EV_CHARGER
+      capabilities:
+        can_absorb_w: true
+        max_absorb_w: input_number.ems_ev_garage_max_power_w
       policy:
         priority: input_number.ems_surplus_ev_garage_priority
         surplus_allowed: input_boolean.ems_ev_garage_surplus_allowed
-        activation_threshold_w: input_number.ems_ev_garage_activation_threshold_w
         surplus_dispatch_mode: max_absorb
       adapter:
         enabled: switch.ev_garage_enabled
         current_a: number.ev_garage_current_a
 ```
 
-Tarvittavat HA-helperit uudelle EV-laturille:
+Tarvittavat HA-helperit uudelle EV-laturille ovat tyypillisesti:
 
 1. `input_number.*_min_power_w`
 2. `input_number.*_max_power_w`
 3. `input_number.*_power_step_w`
 4. `input_number.*_priority`
 5. `input_boolean.*_surplus_allowed`
-6. `input_number.*_activation_threshold_w`
-7. `surplus_dispatch_mode` YAML-policyssa (`max_absorb` tai `fixed`)
-8. `input_number.*_low_pv_threshold_w`
-7. `input_number.*_low_pv_cycles`
-8. `input_number.*_release_cycles`
-9. `switch.*_enabled`
-10. `number.*_current_a`
-11. `input_number.*_min_power_w`
-12. `input_number.*_max_power_w`
-13. `input_number.*_power_step_w`
-14. `input_number.*_current_step_a`
-15. `input_number.*_phases`
-16. `input_number.*_voltage_v`
+6. `surplus_dispatch_mode` YAML-policyssa (`max_absorb` tai `fixed`)
+7. lifecycle-/hard-off-parametrit tarvittaessa
+8. `switch.*_enabled`
+9. `number.*_current_a`
+10. EV-adapterin virta-, vaihe- ja janniteparametrit
+
+Erillista `*_activation_threshold_w`-helperia ei tarvita.
 
 Testatut referenssit:
 
@@ -219,12 +209,34 @@ Testatut referenssit:
 
 ### Priority, max_absorb_w, capabilities ja surplus_allowed
 
-`priority` maarittaa aktivointijarjestyksen: suurempi numero aktivoituu ennen
-pienempaa. Vapautus tapahtuu kaytannossa matalammasta prioriteetista alkaen.
+`priority` maarittaa aktivointijarjestyksen: suurempi numero arvioidaan ennen
+pienempaa. Vapautus tapahtuu aktiivisen stackin nykyisen priority-semanttiikan mukaan.
 
 `max_absorb_w` on laitteen suurin sallittu kulutus-/latauspyynto watteina.
-Releella sama arvo on usein nimellisteho; EV:lla se on laturin tai sulakkeen
-asettama ylaraja; akulla se on latausraja.
+Releella sama arvo on usein nimellisteho; EV:lla se on laturin tai sovitun
+latausrajan ylaraja; akulla se on latausraja.
+
+**Surplus activation threshold on aina sama arvo:**
+
+```text
+surplus activation threshold = device.capabilities.max_absorb_w
+```
+
+Esimerkiksi:
+
+```text
+EV_GARAGE.max_absorb_w = 3680 W
+→ activation threshold = 3680 W
+
+EV_CHARGER.max_absorb_w = 6440 W
+→ activation threshold = 6440 W
+
+RELAY1.max_absorb_w = 2600 W
+→ activation threshold = 2600 W
+```
+
+Erillista `policy.activation_threshold_w`-kenttaa ei ole. Vanha kentta hylataan
+strict direct-v2 -parserissa, jotta rinnakkaista totuuslahdetta ei synny.
 
 `capabilities.can_absorb_w=false` estaa positiivisen `target_w`-pyynnon.
 `capabilities.can_produce_w=false` estaa negatiivisen `target_w`-pyynnon.
@@ -234,198 +246,191 @@ Nama ovat kovia runtime-rajoja, eivat vain dokumentaatiota.
 paalta, laite voi olla konfiguroituna mutta se ei ole valittavissa
 surplus-kohteeksi.
 
-`activation_threshold_w` on laitteen oma positiivinen authoritative RPC-/surplus-
-aktivointikynnys. Sita ei johdeta automaattisesti `max_absorb_w`:sta, `step_w`:sta
-tai toisen laitteen kynnyksesta.
-
 `surplus_dispatch_mode` on eksplisiittinen target-strategia:
 
 1. `max_absorb` -> aktiivisen laitteen target on `max_absorb_w`
-2. `fixed` -> aktiivinen kiintea kuorma kayttaa konfiguroitua fixed absorb -tehoa
+2. `fixed` -> aktiivinen kiintea kuorma kayttaa fixed absorb -tehoa; releella
+   `min_absorb_w` ja `max_absorb_w` ovat tyypillisesti samat
 
 Strict priority sailyy: korkeampi priority arvioidaan ensin, eika alempi kandidaatti
-ohita blokattua ylempaa kandidaattia first-feasible-logiikalla.
+ohita blokattua ylempaa kandidaattia first-feasible-logiikalla. Taman vuoksi suuri
+`max_absorb_w` korkean prioriteetin laitteella on samalla korkea activation gate.
+`max_absorb_w`:ta ei pidä laskea pelkkana tuning-kikkana, ellei samalla haluta
+rajoittaa laitteen todellista maksimidispatchia.
 
-Lisää kopioitavia minimiesimerkkeja on tiedostossa `docs/user/config_examples.md`.
+Lisaa kopioitavia minimiesimerkkeja on tiedostossa `docs/user/config_examples.md`.
 
 ## 1. Nopea valinta
 
-Valitse primary-laite ja sen jalkeen laitekohtaiset surplus-policyt kayttotavoitteen mukaan. Alla olevat Combo A/B -helperit ovat legacy-yhteensopivuusesimerkkeja; core-pooli rakentuu device-policyista:
+Valitse singular primary-laite ja sen jalkeen laitekohtaiset surplus-policyt.
+Surplus-poolissa ei ole enaa yhta `adjustable_surplus_load`-valintaa.
 
-- Combo A: primary = EV_CHARGER, surplus = HOME_BATTERY
-  - Paras kun EV halutaan ensisijaiseksi saato-/kulutuskohteeksi.
-  - Akusto toimii taustalla smoothaajana ja lisakuormana.
+- Primary = EV_CHARGER
+  - EV hoitaa jatkuvan primary-saannon.
+  - HOME_BATTERY voi olla erillinen surplus-kandidaatti, jos sen oma
+    `surplus_allowed=true` policy sallii sen.
 
-- Combo B: primary = HOME_BATTERY, surplus = EV_CHARGER
-  - Paras kun verkkoon vienti ja akun tehohallinta halutaan pitaa ensisijaisena.
-  - EV tulee mukaan surplus-kohteena kun aktivointiehto tayttyy.
+- Primary = HOME_BATTERY
+  - Akku hoitaa jatkuvan primary/residual-saannon.
+  - EV voi olla samanaikaisesti surplus-kandidaatti omalla prioritylla ja
+    `max_absorb_w`-kynnyksella.
 
 ## 2. Yhteiset perusparametrit
 
-Nama kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
+Nama kannattaa asettaa ensin kuntoon ennen primary-/priority-viritysta.
 
-- ems_ramp_max_w
-  - Mita tekee: rajoittaa setpointin muutoksen nopeutta per sykli.
-  - Aloitus: 800-1200 W.
-  - Nosta jos vaste on liian hidas. Laske jos setpoint heiluu liikaa.
+- `ems_ramp_max_w`
+  - rajoittaa setpointin muutoksen nopeutta per sykli
+  - aloitus tyypillisesti 800-1200 W
 
-- ems_deadband_w
-  - Mita tekee: pienet virheet sivuutetaan, valtaa sahkomelulta.
-  - Aloitus: 50 W.
-  - Nosta jos saato nykii pienilla tehoilla.
+- `ems_deadband_w`
+  - vaimentaa pienta mittausmelua
+  - aloitus tyypillisesti 50 W
 
-- ems_ev_current_step_a
-  - Mita tekee: EV-virran porrastus EV-primary-polussa.
-  - Aloitus: 1 A (hienosaato) tai 2 A (vakaampi).
-  - Jos EV sahaa ylos/alas usein, kokeile suurempaa askelta.
+- `ems_ev_current_step_a`
+  - EV-virran porrastus EV-primary-polussa
+  - aloitus 1 A tai 2 A
 
-- ems_ev_hard_off_pv_threshold_kw
-  - Mita tekee: matalan PV:n raja hard_off-logiikalle.
-  - Aloitus: 1.6 kW.
-  - Nosta jos haluat varmemmin estaa battery -> EV loopin.
+- `ems_ev_hard_off_pv_threshold_kw`
+  - matalan PV:n raja hard_off-logiikalle
 
-- ems_ev_hard_off_low_pv_cycles
-  - Mita tekee: montako perakkaista sykliä ennen hard_off aktivointia.
-  - Aloitus: 2.
-  - Nosta jos haluat hitaamman hard_off-aktivoinnin.
+- `ems_ev_hard_off_low_pv_cycles`
+  - perakkaisten low-PV-syklien maara ennen hard_offia
 
-- ems_ev_hard_off_release_cycles
-  - Mita tekee: montako perakkaista release-ehdon tayttavaa sykliä vaaditaan ennen hard_off-vapautusta.
-  - Aloitus: 2.
-  - Nosta jos haluat vakaamman hard_off-vapautuksen ja vahemman sahaysta kynnyksen tuntumassa.
+- `ems_ev_hard_off_release_cycles`
+  - perakkaisten recovery-syklien maara ennen hard_off-vapautusta
 
 ### Surplus eligibility ja priority contract
 
-- Production `template.yaml`:ssa `HOME_BATTERY` ja `EV_CHARGER` ovat kumpikin eksplisiittisesti `surplus_allowed=true`; `ems_adjustable_surplus_load` ei enaa valitse kumpi niista saa osallistua pooliin.
-- `ems_adjustable_surplus_load` sailyy compatibility/diagnostiikkavalintana vanhoille kuluttajille.
-- Priority kuuluu aina devicelle, ei `adjustable`-roolille.
-- `HOME_BATTERY.policy.priority`, `EV_CHARGER.policy.priority` ja relay-devicejen priorityt ovat authoritative.
-- Allocator jarjestaa kaikki eligible-kandidaatit niiden oman device-priorityn perusteella; legacy alias ei valitse poolin ainoaa laitetta.
-- Diagnostiikan `adjustable_surplus_load_priority` on vain legacy-aliasin device-prioritysta johdettu compatibility-kentta.
-- HA-helper `ems_adjustable_surplus_load_priority` on legacy-niminen; nykyisessa tuotantobindingissa se omistaa HOME_BATTERYn device-priorityn.
+- `HOME_BATTERY` ja `EV_CHARGER` voivat kumpikin olla samanaikaisesti
+  `surplus_allowed=true`.
+- `adjustable_surplus_load` on poistettu aktiivisesta global config/runtime -sopimuksesta.
+- `adjustable_surplus_activation_w` on poistettu aktiivisesta global config/runtime -sopimuksesta.
+- Priority kuuluu aina devicelle, ei adjustable-roolille.
+- Allocator jarjestaa kaikki eligible-kandidaatit niiden oman device-priorityn perusteella.
+- Activation threshold tulee aina saman laitteen `capabilities.max_absorb_w`:sta.
+- HA-helper `ems_adjustable_surplus_load_priority` on yha legacy-niminen, mutta
+  nykyisessa production bindingissa se omistaa vain HOME_BATTERYn device-priorityn.
 
-## 3. Combo A: primary EV_CHARGER, surplus HOME_BATTERY
+## 3. Primary EV_CHARGER, HOME_BATTERY surplus-kandidaattina
 
 ### 3.1 Tyypillinen kayttotapaus
 
-- Omakotitalo, jossa EV latautuu paivisin aina kun mahdollista.
-- Akusto halutaan mukaan vasta kun EV ei yksin riita absorbointiin tai tarvitaan pehmennysta.
-- Tavoite: EV ensin, akku toisena.
+- EV halutaan jatkuvaksi saato-/kulutuskohteeksi.
+- Akku voi osallistua surplus-stackiin oman policynsa mukaan.
 
-### 3.2 Suositellut aloitusarvot
+### 3.2 Suositeltu perusasetelma
 
-- ems_adjustable_primary_load = EV_CHARGER
-- ems_adjustable_surplus_load = HOME_BATTERY
-- ems_adjustable_surplus_activation_w = 2500 W
-- ems_adjustable_surplus_load_priority = 4 (legacy helper name; HOME_BATTERYn oma surplus-priority)
-- ems_surplus_ev_priority = 3
-- ems_surplus_relay1_priority = 2
-- ems_surplus_relay2_priority = 1
-- ems_nz_battery_floor_ev_active_w = 0 W
-- ems_ev_current_step_a = 1 A
+- `ems_adjustable_primary_load = EV_CHARGER`
+- `HOME_BATTERY.policy.surplus_allowed = true|false` kayttotavoitteen mukaan
+- `HOME_BATTERY.policy.priority` eksplisiittisesti
+- `HOME_BATTERY.capabilities.max_absorb_w` fyysisen/sovitun latausrajan mukaan
+- `ems_surplus_ev_priority` EV:n device-priorityksi, jos EV on myos jossain
+  ei-primary-kombossa eligible-kandidaatti
+- releille omat priorityt
+- `ems_nz_battery_floor_ev_active_w` halutun EV-primary-floorin mukaan
 
-Selvennys floor-parametreihin (tarkea):
+Floor-semanttiikka:
 
 - `ems_nz_battery_floor_default_w` on NET_ZERO:n yleinen akun minimi-floor.
-- Kun `ems_adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `ems_nz_battery_floor_ev_active_w`.
-- Eli EV-primary-polussa `ems_nz_battery_floor_ev_active_w` korvaa default-floorin.
-- Jos haluat saman floorin molempiin polkuihin, aseta molemmat arvot samaksi (esim. 100 W).
-
-Selvennys activation-parametriin (tarkea):
-
-- HA-helperin nimi on `ems_adjustable_surplus_activation_w`.
-- EMS-avain on `adjustable_surplus_activation`.
-- Nykyinen saadin kasittelee activation-arvon watteina (W), joten kayta W-tasoa (esim. 2000-3000), ei pienta kW-lukua.
+- Kun `ems_adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta
+  `ems_nz_battery_floor_ev_active_w`.
 
 ### 3.3 Mitä odottaa kaytannossa
 
 - EV reagoi jatkuvasti primary-polussa.
 - Hard_off estaa latauksen matalassa PV:ssa.
-- Hard_off-vapautus vaatii enemman kuin hetkellisen RPNZ > 0 tilanteen.
-- Akun adjustable-polku aktivoituu erikseen activation-rajan perusteella.
+- HOME_BATTERYn surplus activation gate on sen oma `max_absorb_w`.
+- Primary-only-laite ei saa toista erillista surplus-targetia samassa tickissa.
 
 ### 3.4 Ongelma -> toimenpide
 
 - EV kaynnistyy ja pysahtyy liian usein:
-  - Nosta ems_ev_hard_off_low_pv_cycles arvoa 2 -> 3.
-  - Kasvata ems_deadband_w arvoa 50 -> 80.
+  - nosta hard_off low-PV cycle -maaraa
+  - kasvata deadbandia maltillisesti
 
-- EV ei palaudu hard_offista toivotusti:
-  - Tarkista etta PV on pysyvasti thresholdin ylapuolella.
-  - Laske ems_adjustable_surplus_activation_w arvoa, jos release-kynnys on kaytannossa liian korkea.
+- HOME_BATTERY ei aktivoidu surplus-stackiin:
+  - tarkista `surplus_allowed`
+  - tarkista priority order
+  - tarkista `threshold_w` ja varmista, etta se vastaa `max_absorb_w`:ta
+  - tarkista, ylittaako raw RPC saman rajan
 
-- Akusto osallistuu liian aikaisin:
-  - Nosta ems_adjustable_surplus_activation_w arvoa, esim 2500 -> 3000 W.
-
-## 4. Combo B: primary HOME_BATTERY, surplus EV_CHARGER
+## 4. Primary HOME_BATTERY, EV_CHARGER surplus-kandidaattina
 
 ### 4.1 Tyypillinen kayttotapaus
 
-- Kohde, jossa halutaan ensisijaisesti hallita verkko-/akkutehoa ja EV on joustava lisa.
-- Tavoite: akku pitaa net zero -tasapainon, EV liittyy mukaan vain riittavassa surplusissa.
+- Akku hallitsee jatkuvaa verkko-/akkutehoa.
+- EV liittyy mukaan vasta, kun sen oma `max_absorb_w`-gate tayttyy.
 
-### 4.2 Suositellut aloitusarvot
+### 4.2 Suositeltu perusasetelma
 
-- ems_adjustable_primary_load = HOME_BATTERY
-- ems_adjustable_surplus_load = EV_CHARGER
-- ems_adjustable_surplus_activation_w = 2000-2600 W
-- ems_surplus_ev_priority = 2 tai 3
-- ems_adjustable_surplus_load_priority = HOME_BATTERYn oma priority (ei EV:n adjustable-roolin priority)
-- ems_surplus_relay1_priority = 2
-- ems_surplus_relay2_priority = 1
-- ems_ev_min_power_w = 1380 W
-- ems_ev_max_power_w = 6440 W
+- `ems_adjustable_primary_load = HOME_BATTERY`
+- `EV_CHARGER.policy.surplus_allowed = true`
+- `EV_CHARGER.policy.priority` haluttuun strict-priority-jarjestykseen
+- `EV_CHARGER.capabilities.max_absorb_w` todellisen/sovitun maksimilataustehon mukaan
+- releille omat priorityt ja `max_absorb_w`-arvot
+
+Esimerkki:
+
+```text
+EV_CHARGER.max_absorb_w = 6440 W
+→ EV activation threshold = 6440 W
+
+RELAY1.max_absorb_w = 2600 W
+→ RELAY1 activation threshold = 2600 W
+```
 
 ### 4.3 Mitä odottaa kaytannossa
 
 - Akun target seuraa jatkuvaa RPNZ-saatoa ensisijaisesti.
-- EV aktivoituu dispatchin kautta vasta activation-ehdolla.
-- Release tapahtuu deterministisesti aktiivisten kohteiden prioriteettijarjestyksessa.
-- Pieni positiivinen `rpnz_w`, valilla `+1 ... +10 W`, ei enaa lukitse aktiivista surplus-kuormaa paalle vartin vaihteessa.
+- EV aktivoituu dispatchin kautta vasta, kun raw RPC ylittaa EV:n
+  `max_absorb_w`-rajan ja strict-priority-ehdot sallivat aktivoinnin.
+- Release tapahtuu deterministisesti aktiivisen stackin semantiikan mukaan.
 
 ### 4.4 Ongelma -> toimenpide
 
 - EV ei aktivoidu vaikka tuotantoa on:
-  - Laske ems_adjustable_surplus_activation_w arvoa, esim 2500 -> 2000 W.
-  - Tarkista että required power consumption ylittaa activation-rajan riittavan pitkaan.
+  - tarkista `surplus_allowed`
+  - tarkista candidate stack ja priority
+  - tarkista `threshold_w`; sen pitaa vastata EV:n `max_absorb_w`:ta
+  - tarkista ylittaako raw RPC kynnyksen
 
-- EV aktivoituu liian herkästi:
-  - Nosta ems_adjustable_surplus_activation_w arvoa.
-  - Laske ems_surplus_ev_priority-arvoa, jos releiden halutaan aktivoituvan ensin.
+- Alempi kandidaatti ei aktivoidu vaikka sen oma teho mahtuisi:
+  - tarkista blokkaako korkeampi priority strict-priority-semanticsilla
+  - muuta prioritya vain, jos haluttu liiketoimintajarjestys on toinen
 
-- Akku jaa alle maksimin vaikka HOME_BATTERY on primary:
-  - Tarkista `quarter_energy_balance_kwh` ja `rpnz_w` traceista.
-  - Jos `rpnz_w` on `+1 ... +10 W`, release-deadbandin pitaisi vapauttaa aktiivinen surplus-kohde.
-  - Jos `rpnz_w` on yli `10 W`, release ei tapahdu taman saannon perusteella.
+- EV:n 6.44 kW gate on kaytannossa liian korkea:
+  - arvioi halutaanko EV:n todellinen max dispatch myos pienemmaksi
+  - jos kylla, pienempi `max_absorb_w` alentaa seka maksimidispatchia etta activation gatea
+  - jos ei, tama on erillinen tuote-/allocator-semanttiikan paatos; erillista
+    threshold-overridea ei tassa release-sopimuksessa ole
 
-## 5. Kaytannon viritysjärjestys
+## 5. Kaytannon viritysjarjestys
 
-Suositeltu jarjestys kenttakayttoon:
-
-1. Valitse combo tavoitteen mukaan.
-2. Aseta prioriteetit ja activation.
-3. Aseta ramp ja deadband vakaaksi.
-4. Aja 1-3 paivaa tuotantoa ja katso trace-kentat.
-5. Tee yksi muutos kerrallaan ja seuraa vaikutus.
+1. Valitse primary tavoitteen mukaan.
+2. Maarita jokaiselle surplus-laitteelle truthful `max_absorb_w`.
+3. Maarita `surplus_allowed`, priority ja dispatch mode per device.
+4. Aseta ramp ja deadband vakaaksi.
+5. Aja tuotantoa ja seuraa generic candidate diagnostics -kenttia.
+6. Tee yksi muutos kerrallaan.
 
 ## 6. Minimiseuranta traceista
 
-Vahintaan seuraa näitä kenttia ongelmanrajausta varten:
+Vahintaan seuraa naita kenttia ongelmanrajausta varten:
 
-- surplus_device_dispatch_action
-- surplus_explanation
-- ev_policy_mode
-- ev_hard_off_active
-- ev_low_pv_cycles
-- battery_min_floor_reason
-- primary_power_envelope_w
-- surplus_candidate_device_ids
-- surplus_candidate_stack
-- surplus_active_device_ids
-- surplus_targets_by_device_id
-- adjustable_surplus_load (legacy compatibility)
-- adjustable_primary_load
-- selected_ev_device_id (legacy compatibility)
+- `surplus_device_dispatch_action`
+- `surplus_explanation`
+- `surplus_candidate_device_ids`
+- `surplus_candidate_stack`
+- `surplus_active_device_ids`
+- `surplus_next_device_id`
+- `surplus_release_device_id`
+- `surplus_targets_by_device_id`
+- kandidaattien `threshold_w`
+- kandidaattien `threshold_source` (odotus: `device_capabilities.max_absorb_w`)
+- `device_lifecycle_states`
+- `selected_ev_device_id` vain compatibility-nakymana
+- `adjustable_primary_load`
 
 ## 6.1 Quarter balance ja RPNZ
 

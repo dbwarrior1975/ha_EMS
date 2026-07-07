@@ -19,8 +19,6 @@ def build_harness(project_root):
         # HAEO NET_ZERO path should choose the combo from the forecast, not from
         # these config helpers.
         E['adjustable_primary_load']: 'EV_CHARGER',
-        E['adjustable_surplus_load']: 'HOME_BATTERY',
-        E['adjustable_surplus_activation']: 2500,
         E['devices']['HOME_BATTERY']['priority']: 3,
         E['ev_min_absorb_w']: 920,
         E['ev_current_step_a']: 4,

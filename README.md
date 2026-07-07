@@ -163,10 +163,9 @@ Diagnostiikka- ja selityspinnat:
 2. `sensor.ems_dispatch_state_applier_trace`
 3. `sensor.ems_actuator_writer_trace` ja sen `devices`-map
 
-Decision-tracessa voi nakya nimiarvoja kuten `RELAY1`, `RELAY2`,
-`EV_CHARGER` ja `ADJUSTABLE`, mutta uudet dashboardit ja automaatiot kannattaa
-sitouttaa `device_policies`-, `dispatch_command`- ja
-`active_surplus_devices`-payload-kenttiin.
+Decision-tracen dispatch-kohteet ovat device-id-pohjaisia, esimerkiksi `RELAY1`,
+`RELAY2` ja `EV_CHARGER`. Dashboardit ja automaatiot kannattaa sitouttaa
+`device_policies`-, `dispatch_command`- ja `active_surplus_devices`-payload-kenttiin.
 
 Surplus-policy voi aktivoitua vain, kun kaikki seuraavat ehdot tayttyvat:
 
@@ -205,7 +204,7 @@ HAEO:n rooli on nykykoodissa rajattu:
 
 1. HAEO voi vaikuttaa akkutargettiin `MAX_EXPORT`- ja `CHEAP_GRID_CHARGE`-tiloissa
 2. HAEO voi vaikuttaa EV-targettiin `CHEAP_GRID_CHARGE`-tilassa
-3. HAEO voi `HORIZON_BY_HAEO + NET_ZERO` -tilassa valita EMS:n sisaisen adjustable-combon ja tehorajat
+3. HAEO voi `HORIZON_BY_HAEO + NET_ZERO` -tilassa valita EMS:n sisaisen primary-/preferred-surplus -planin ja tehorajat
 4. HAEO on tehokkaasti kaytossa vain, jos forecast on konfiguroitu ja freshness-lahteet ovat tuoreita
 
 ### HAEO + `NET_ZERO`: EMS:n sisainen plan
@@ -223,7 +222,7 @@ EMS:n sisainen HAEO NET_ZERO -plan aktivoituu, kun:
 Tassa tilassa EMS laskee joka policy-kierroksella nykyisen vartin HAEO-planin:
 
 1. suuremman HAEO-tehon saanut kohde asetetaan `primary`-rooliin
-2. toinen kohde asetetaan `adjustable_surplus`-rooliin
+2. toiselle kohteelle asetetaan plan-local `preferred_surplus_device_id`
 3. HAEO battery-teho muutetaan akun positiivisen lataustargetin ylarajaksi
 4. HAEO EV-teho muutetaan EV-current-ylarajaksi
 5. normaali `NET_ZERO` surplus-policy saa toimia, vaikka `effective_forecast = HAEO`
@@ -232,15 +231,15 @@ Varttikohtainen semantiikka:
 
 1. HAEO:n ennuste on toiveellinen jakauma surplusille, ei takuuteho
 2. suurempi HAEO-teho voidaan tulkita korkeamman prioriteetin merkiksi, jos HAEO:lla oletetaan olevan riittava taustadata
-3. EMS:n sisainen plan ohittaa runtime-laskennassa `adjustable_primary_load`- ja `adjustable_surplus_load`-helperien combon
-4. EMS ei kirjoita combo-helperien arvoja takaisin Home Assistantiin
+3. EMS:n sisainen plan voi ohittaa runtime-laskennassa `adjustable_primary_load`-valinnan plan-local primary-/preferred-device -paatoslogiikalla
+4. EMS ei kirjoita primary-helperin arvoa takaisin Home Assistantiin
 5. EMS toteuttaa valintaa vain silta osin kuin hetkellinen surplus, guardit, rampit ja laiterajat sallivat
 
 Esimerkki:
 
 1. HAEO ennustaa EV:lle `5 kW` ja akulle `2 kW`
 2. EMS:n sisainen HAEO-plan asettaa `primary = EV_CHARGER`
-3. EMS:n sisainen HAEO-plan asettaa `adjustable_surplus = HOME_BATTERY`
+3. EMS:n sisainen HAEO-plan asettaa `preferred_surplus_device_id = HOME_BATTERY`
 4. EMS yrittaa kayttaa surplusia taman prioriteetin mukaan, mutta pitaa edelleen `NET_ZERO`-tavoitteen ja turvarajat ensisijaisina
 
 Jos halutaan pitaa HAEO-combo-valinta kokonaan Home Assistant -automaation puolella, vaihtoehtoinen malli on ajaa EMS tilassa `AUTOMATIC + NET_ZERO + forecast_profile = NONE` ja kirjoittaa combo-helperit HA-automaatiosta. Talloin EMS:n nakokulmasta `effective_forecast` jaa arvoon `NONE`.
@@ -303,30 +302,26 @@ Keskeiset config-avaimet (EMS):
 17. `ev_current_step_a`
 18. `ev_voltage_v`
 19. `nz_battery_floor_default_w`
-19. `nz_battery_floor_ev_active_w`
-20. `adjustable_surplus_load`
+20. `nz_battery_floor_ev_active_w`
 21. `adjustable_primary_load`
-22. `adjustable_surplus_activation`
-23. device-kohtaiset surplus-priority-avaimet device-id:n mukaan
-24. relekohtaiset power-avaimet device-id:n mukaan
-25. EV-kohtaiset power-avaimet device-id:n mukaan
-26. adapteri-/debug-polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
-27. `surplus_freeze_s`
-28. `haeo_stale_timeout_s`
+22. device-kohtaiset surplus-priority-avaimet device-id:n mukaan
+23. relekohtaiset power-avaimet device-id:n mukaan
+24. EV-kohtaiset power-avaimet device-id:n mukaan
+25. adapteri-/debug-polussa voi yha nakya `relay1_*`, `relay2_*` ja `ev_*` -avaimia
+26. `surplus_freeze_s`
+27. `haeo_stale_timeout_s`
 
 Priority-contract: `DevicePolicy.priority` on ainoa surplus-prioriteetin authoritative lahde.
-`adjustable_surplus_load_priority` voi nakya diagnostiikassa vain legacy-aliasin
-johdettuna compatibility-arvona; se ei ole erillinen konfiguroitava rooliprioriteetti.
 HOME_BATTERY voi edelleen sitoutua vanhan nimiseen HA-helperiin
-`input_number.ems_adjustable_surplus_load_priority`, mutta helper omistaa silloin vain
-HOME_BATTERYn device-prioriteetin.
+`input_number.ems_adjustable_surplus_load_priority`, mutta helper omistaa vain
+HOME_BATTERYn device-prioriteetin; kyse ei ole adjustable-rooliprioriteetista.
 
 Surplus-policy-contract per laite:
 
 1. `surplus_allowed`: strict boolean tai grouped-configissa boolean-entity
 2. `priority`: device-owned strict priority
-3. `activation_threshold_w`: positiivinen authoritative aktivointikynnys
-4. `surplus_dispatch_mode`: `max_absorb` tai `fixed`
+3. `surplus_dispatch_mode`: `max_absorb` tai `fixed`
+4. surplus-aktivointikynnys johdetaan aina `capabilities.max_absorb_w`:sta
 
 Diagnostiikan authoritative generic pinnat ovat `surplus_candidate_device_ids`,
 `surplus_candidate_stack`, `surplus_active_device_ids` ja
@@ -396,14 +391,15 @@ Primary-rooli ja surplus-kandidaattipooli
 Uudessa kayttoonotossa:
 
 1. `primary_device_id` on ainoa singular control role ja valitun laitteen on tuettava `supports_primary_regulation=true`.
-2. Surplus-osallistuminen maaritetaan laitekohtaisella policylla: `surplus_allowed`, `priority`, `activation_threshold_w` ja `surplus_dispatch_mode`.
-3. `surplus_dispatch_mode=max_absorb` kohdistaa aktiiviselle laitteelle `max_absorb_w`; `fixed` kayttaa kiinteaa absorb-targetia.
-4. Primary-only-regulaattoria ei dispatchata toistamiseen surplus-kandidaattina. Nykyinen primary+residual-akku voi osallistua pooliin, jos sen oma `surplus_allowed=true` policy sallii sen; lopullinen `DevicePolicy`-omistus on silti yksi.
-5. `adjustable_surplus_load` ja `adjustable_surplus_activation_w` ovat legacy-yhteensopivuuspintoja. Core ei rakenna kandidaattipoolia niiden valinnan perusteella.
-6. Production `template.yaml` antaa `HOME_BATTERY`lle ja `EV_CHARGER`ille omat eksplisiittiset `surplus_allowed=true` policyt; legacy `adjustable_surplus_load` ei enaa portita kummankaan eligibilitya.
-7. Tyhja `adjustable_primary_load` fallbackaa ensimmaiseen konfiguroituun `supports_primary_regulation=true` -laitteeseen, ei legacy surplus -aliasiin.
+2. Surplus-osallistuminen maaritetaan laitekohtaisella policylla: `surplus_allowed`, `priority` ja `surplus_dispatch_mode`.
+3. Aktivointikynnys on aina `device.capabilities.max_absorb_w`; erillista `activation_threshold_w`-policykenttaa ei ole.
+4. `surplus_dispatch_mode=max_absorb` kohdistaa aktiiviselle laitteelle `max_absorb_w`; `fixed` kayttaa kiinteaa absorb-targetia.
+5. Primary-only-regulaattoria ei dispatchata toistamiseen surplus-kandidaattina. Nykyinen primary+residual-akku voi osallistua pooliin, jos sen oma `surplus_allowed=true` policy sallii sen; lopullinen `DevicePolicy`-omistus on silti yksi.
+6. `adjustable_surplus_load` ja `adjustable_surplus_activation_w` on poistettu aktiivisesta config/runtime-sopimuksesta.
+7. Production `template.yaml` antaa `HOME_BATTERY`lle ja `EV_CHARGER`ille omat eksplisiittiset `surplus_allowed=true` policyt.
+8. Tyhja `adjustable_primary_load` fallbackaa ensimmaiseen konfiguroituun `supports_primary_regulation=true` -laitteeseen.
 
-`selected_ev_device_id` on compatibility-diagnostiikka. Deterministinen saanto on: primary-EV ensin, muuten legacy EV-alias, muuten ensimmainen konfiguroitu EV. Kentta ei ole generic surplus execution -totuuslahde.
+Julkinen policy-diagnostics ei julkaise selected-single-EV compatibility -peileja. Multi-EV-tilaa seurataan `device_policies`, `surplus_candidates`, `previous_device_states` ja `device_lifecycle_states` -kentista.
 
 ### NET_ZERO floor-semanttiikka
 
@@ -499,8 +495,10 @@ Erityisen hyodyllisia attribuutteja:
 3. `dominant_limitation`
 4. `effective_forecast`
 5. `battery_write_enabled`
-6. `surplus_device_dispatch_action`
-7. `ev_policy_mode`
+6. `surplus_dispatch_action`
+7. `surplus_dispatch_device_id`
+8. `surplus_candidates`
+9. `device_lifecycle_states`
 
 ## Tunnetut rajoitteet
 

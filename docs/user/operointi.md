@@ -95,16 +95,16 @@ Seuraa ensisijaisesti `sensor.ems_policy_diagnostics_pyscript` -attribuutteja:
 6. `surplus_targets_by_device_id`: per-device target/mode/active-yhteenveto
 7. `device_lifecycle_states`: device-owned hard-off/lifecycle-state
 
-Kandidaattirivista tarkista ainakin `priority`, `activation_threshold_w`,
-`surplus_dispatch_mode`, `enabled`, `force_on`, `active` ja
-`activation_allowed`. Kahden EV:n tapauksessa molempien device-id:iden pitaa
+Kandidaattirivista tarkista ainakin `priority`, `threshold_w`,
+`threshold_source`, `surplus_dispatch_mode`, `enabled`, `force_on`, `active` ja
+`activation_allowed`. `threshold_w` vastaa laitteen `capabilities.max_absorb_w`-arvoa. Kahden EV:n tapauksessa molempien device-id:iden pitaa
 nakya poolissa, jos molemmilla on `can_absorb_w=true` ja
 `surplus_allowed=true`.
 
-Legacy `selected_ev_device_id` ja `adjustable_surplus_load` ovat
-compatibility-diagnostiikkaa. Production `template.yaml`:ssa legacy selector ei
-portita `HOME_BATTERY`n tai `EV_CHARGER`in `surplus_allowed`-arvoa. Vianetsinnassa
-poolin generic kentat ja `device_policies` ovat authoritative.
+`selected_ev_device_id` on compatibility-diagnostiikkaa. Poistetut
+`adjustable_surplus_load`- ja `adjustable_surplus_activation_w`-kentat eivat kuulu
+enaa aktiiviseen runtime-sopimukseen. Vianetsinnassa poolin generic kentat ja
+`device_policies` ovat authoritative.
 
 ## Troubleshooting
 

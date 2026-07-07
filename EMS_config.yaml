@@ -28,7 +28,6 @@ ems:
   role_constraints:
     default:
       primary: HOME_BATTERY
-      adjustable: EV_CHARGER
 
   devices:
     HOME_BATTERY:

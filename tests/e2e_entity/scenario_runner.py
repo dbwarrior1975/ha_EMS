@@ -187,6 +187,16 @@ def _assert_expected_derived(idx, step, h):
             )
 
 
+
+
+def _nested_value(mapping, path):
+    value = mapping
+    for part in str(path).split('.'):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
 def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
     config_source = policy_trace.get('config_source')
     assert config_source == 'grouped_config', (
@@ -212,9 +222,9 @@ def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
         f"actual={dispatch_contract} expected=device_id_primary"
     )
 
-    expected_action = policy_trace.get('surplus_device_dispatch_action')
-    expected_target = policy_trace.get('surplus_device_dispatch_target')
-    expected_device_id = policy_trace.get('surplus_device_dispatch_device_id')
+    expected_action = policy_trace.get('surplus_dispatch_action')
+    expected_device_id = policy_trace.get('surplus_dispatch_device_id')
+    expected_target = expected_device_id
 
     actual_action = dispatch_state_trace.get('device_dispatch_action')
     actual_target = dispatch_state_trace.get('device_dispatch_target')
@@ -337,7 +347,7 @@ def run_scenario_steps(h, steps, *, validate=True):
         _assert_canonical_contracts(idx, step['note'], policy_trace, dispatch_state_trace)
 
         for attr, expected in step.get('expect_policy', {}).items():
-            actual = policy_trace.get(attr)
+            actual = _nested_value(policy_trace, attr)
             assert actual == expected, (
                 f"step={idx} note={step['note']} policy.{attr} actual={actual} expected={expected}"
             )

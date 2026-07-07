@@ -12,7 +12,6 @@ def build_harness(project_root):
         E['forecast_profile']: 'NONE',
         E['soc']: 50.0,
         E['battery_heartbeat']: 0.0,
-        E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',
     })
     h.set_stale(E['battery_heartbeat'], 1000.0)

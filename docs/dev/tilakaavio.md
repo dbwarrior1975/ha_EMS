@@ -143,7 +143,7 @@ stateDiagram-v2
 Tulkinta:
 
 1. Tila on aina device-id-kohtainen; kaksi EV:ta voivat olla eri tiloissa samalla tickilla.
-2. `activation_threshold_w` luetaan kandidaatin omasta policysta.
+2. Aktivointikynnys on kandidaatin `capabilities.max_absorb_w`.
 3. Strict priority sailyy: korkeampi blokattu kandidaatti ei muutu first-feasible-ohitukseksi.
 4. `previous_device_states[device_id]` omistaa hard-off-laskurit; toisen EV:n condition break ei nollaa ensimmaisen laskuria.
 5. Aktiivinen kandidaatti saa oman per-device `DevicePolicy`-targetin `surplus_dispatch_mode`-strategian mukaan.

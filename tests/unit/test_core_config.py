@@ -196,9 +196,9 @@ def test_build_core_config_from_grouped_config_maps_optional_sections(project_ro
 
     assert core.haeo is not None
     assert core.haeo.battery_power_active == 'sensor.haeo_battery_power_active'
-    assert core.role_constraints.default['activation_threshold_w'] == 0
+    assert 'activation_threshold_w' not in core.role_constraints.default
     assert core.role_constraints.by_role['EV_PRIMARY']['HOME_BATTERY']['min_absorb_w'] == 0
-    assert core.role_constraints.by_role['HOME_BATTERY_PRIMARY']['EV_CHARGER']['activation_threshold_w'] == 0
+    assert 'HOME_BATTERY_PRIMARY' not in core.role_constraints.by_role
 
 
 @pytest.mark.unit

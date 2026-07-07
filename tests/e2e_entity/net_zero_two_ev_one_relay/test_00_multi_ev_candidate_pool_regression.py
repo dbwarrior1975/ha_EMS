@@ -35,7 +35,7 @@ def test_two_evs_and_relay_share_generic_surplus_candidate_pool(project_root):
     policy_trace = h.getattrs(E['policy_diagnostics'])
     candidate_ids = {
         item['device_id']
-        for item in policy_trace['surplus_device_targets']
+        for item in policy_trace['surplus_candidates']
     }
 
     assert candidate_ids == {'EV_CHARGER', 'EV_GARAGE', 'RELAY1'}

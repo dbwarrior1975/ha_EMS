@@ -110,6 +110,20 @@ ALLOWED_ROLE_KEYS = {
 }
 ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
 ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds', 'diagnostics_interval_seconds'))
+ALLOWED_GLOBAL_CONFIG_KEYS = frozenset(
+    (
+        'deadband_w',
+        'ramp_w',
+        'strict_limit_w',
+        'default_sp_w',
+        'surplus_freeze_s',
+        'battery_heartbeat_timeout_s',
+        'haeo_stale_timeout_s',
+        'nz_battery_floor_default_w',
+        'nz_battery_floor_ev_active_w',
+        'adjustable_primary_load',
+    )
+)
 ALLOWED_RUNTIME_KEYS = frozenset(
     (
         'grid_power_w',
@@ -147,9 +161,7 @@ PACKET_DEFAULT_GLOBAL_CONFIG = {
     'haeo_stale_timeout_s': 300.0,
     'nz_battery_floor_default_w': 100.0,
     'nz_battery_floor_ev_active_w': 0.0,
-    'adjustable_surplus_load': 'HOME_BATTERY',
     'adjustable_primary_load': '',
-    'adjustable_surplus_activation_w': 0.0,
 }
 PACKET_DEFAULT_RUNTIME = {
     'grid_power_w': 0.0,
@@ -202,14 +214,12 @@ PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     'BATTERY': {
         'priority': 0,
         'surplus_allowed': False,
-        'activation_threshold_w': 1.0,
         'surplus_dispatch_mode': 'max_absorb',
         'default_min_absorb_w': 0.0,
     },
     'EV_CHARGER': {
         'priority': 0,
         'surplus_allowed': False,
-        'activation_threshold_w': 1.0,
         'surplus_dispatch_mode': 'max_absorb',
         'force_on': False,
         'low_pv_threshold_w': 1600.0,
@@ -219,7 +229,6 @@ PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     'RELAY': {
         'priority': 0,
         'surplus_allowed': False,
-        'activation_threshold_w': 1.0,
         'surplus_dispatch_mode': 'fixed',
         'force_on': False,
     },
@@ -265,7 +274,7 @@ ALLOWED_CAPABILITIES_KEYS = frozenset(
         'supports_residual_regulation',
     )
 )
-ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode', 'default_min_absorb_w'))
+ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'surplus_dispatch_mode', 'default_min_absorb_w'))
 ALLOWED_BATTERY_GUARD_KEYS = frozenset(
     (
         'soc',
@@ -282,7 +291,6 @@ ALLOWED_EV_POLICY_KEYS = frozenset(
     (
         'priority',
         'surplus_allowed',
-        'activation_threshold_w',
         'surplus_dispatch_mode',
         'force_on',
         'low_pv_threshold_w',
@@ -291,7 +299,7 @@ ALLOWED_EV_POLICY_KEYS = frozenset(
     )
 )
 ALLOWED_EV_ADAPTER_KEYS = frozenset(('enabled', 'current_a', 'current_step_a', 'phases', 'voltage_v'))
-ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode', 'force_on'))
+ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'surplus_dispatch_mode', 'force_on'))
 ALLOWED_RELAY_ADAPTER_KEYS = frozenset(('enabled',))
 
 
@@ -472,15 +480,8 @@ class CoreConfigView:
         self.battery_protect_charge_floor_w = self.home_battery_guard_value('protect_min_absorb_w')
         self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
         self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        self.adjustable_surplus_load = self.global_config.adjustable_surplus_load
         self.adjustable_primary_load = self.global_config.adjustable_primary_load
-        self.adjustable_surplus_activation = self.global_config.adjustable_surplus_activation_w
         self.surplus_freeze_s = self.global_config.surplus_freeze_s
-        self.adjustable_surplus_load_priority = self.device_policy_value(
-            str(self.adjustable_surplus_load),
-            'priority',
-            0,
-        )
 
     def __getattr__(self, name: str):
         if name == 'home_battery':
@@ -837,10 +838,16 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
             )
         )
     elif isinstance(ems.get('global_config'), dict):
+        _validate_unknown_fields(
+            ems['global_config'],
+            'ems.global_config',
+            ALLOWED_GLOBAL_CONFIG_KEYS,
+            issues,
+        )
         _validate_required_entities(
             ems['global_config'],
             'ems.global_config',
-            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s'),
+            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s', 'adjustable_primary_load'),
             issues,
         )
 
@@ -975,9 +982,7 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
                 _alias('haeo_stale_timeout_s', 'ems.global_config.haeo_stale_timeout_s', global_config.get('haeo_stale_timeout_s')),
                 _alias('nz_battery_floor_default_w', 'ems.global_config.nz_battery_floor_default_w', global_config.get('nz_battery_floor_default_w')),
                 _alias('nz_battery_floor_ev_active_w', 'ems.global_config.nz_battery_floor_ev_active_w', global_config.get('nz_battery_floor_ev_active_w')),
-                _alias('adjustable_surplus_load', 'ems.global_config.adjustable_surplus_load', global_config.get('adjustable_surplus_load')),
                 _alias('adjustable_primary_load', 'ems.global_config.adjustable_primary_load', global_config.get('adjustable_primary_load')),
-                _alias('adjustable_surplus_activation', 'ems.global_config.adjustable_surplus_activation_w', global_config.get('adjustable_surplus_activation_w')),
             ]
         )
 
@@ -1248,7 +1253,6 @@ def _compile_core_battery_device_plan(
                 default_priority,
             ),
             'surplus_allowed': _compile_dynamic_value(policy.get('surplus_allowed', False), f'{device_path}.policy.surplus_allowed', False),
-            'activation_threshold_w': _compile_dynamic_value(policy.get('activation_threshold_w', 1.0), f'{device_path}.policy.activation_threshold_w', 1.0),
             'surplus_dispatch_mode': _compile_dynamic_value(policy.get('surplus_dispatch_mode', 'max_absorb'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'default_min_absorb_w': _compile_dynamic_value(
                 _require_mapping_value(policy, 'default_min_absorb_w'),
@@ -1290,7 +1294,6 @@ def _compile_core_ev_device_plan(device_id: str, device: object) -> dict[str, ob
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', 3),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
-            'activation_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'activation_threshold_w'), f'{device_path}.policy.activation_threshold_w', 1.0),
             'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
             'low_pv_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'low_pv_threshold_w'), f'{device_path}.policy.low_pv_threshold_w', 1.6),
@@ -1327,7 +1330,6 @@ def _compile_core_relay_device_plan(device_id: str, device: object) -> dict[str,
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', relay_default),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
-            'activation_threshold_w': _compile_dynamic_value(_require_mapping_value(policy, 'activation_threshold_w'), f'{device_path}.policy.activation_threshold_w', 1.0),
             'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'fixed'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
         },
@@ -1473,9 +1475,7 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
                 'haeo_stale_timeout_s': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), 'ems.global_config.haeo_stale_timeout_s', 300),
                 'nz_battery_floor_default_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), 'ems.global_config.nz_battery_floor_default_w', 100.0),
                 'nz_battery_floor_ev_active_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), 'ems.global_config.nz_battery_floor_ev_active_w', 0.0),
-                'adjustable_surplus_load': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_load'), 'ems.global_config.adjustable_surplus_load', 'HOME_BATTERY'),
                 'adjustable_primary_load': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), 'ems.global_config.adjustable_primary_load', ''),
-                'adjustable_surplus_activation_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_activation_w'), 'ems.global_config.adjustable_surplus_activation_w', 0.0),
             },
             'runtime': {
                 'grid_power_w': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), 'ems.runtime.grid_power_w', 0),
@@ -2051,8 +2051,7 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
         policy_fields = (
             'priority',
             'surplus_allowed',
-            'activation_threshold_w',
-            'surplus_dispatch_mode',
+                'surplus_dispatch_mode',
             'default_min_absorb_w',
         ) if kind == 'BATTERY' else ('priority',)
         adapter_fields = ()
@@ -2060,8 +2059,7 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             policy_fields = (
                 'priority',
                 'surplus_allowed',
-                'activation_threshold_w',
-                'surplus_dispatch_mode',
+                        'surplus_dispatch_mode',
                 'force_on',
                 'low_pv_threshold_w',
                 'hard_off_low_pv_cycles',
@@ -2078,8 +2076,7 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
             policy_fields = (
                 'priority',
                 'surplus_allowed',
-                'activation_threshold_w',
-                'surplus_dispatch_mode',
+                        'surplus_dispatch_mode',
                 'force_on',
             )
             adapter_fields = (
@@ -2883,9 +2880,7 @@ def _build_view_global_config(values: dict) -> CoreGlobalConfig:
         haeo_stale_timeout_s=values['haeo_stale_timeout_s'],
         nz_battery_floor_default_w=values['nz_battery_floor_default_w'],
         nz_battery_floor_ev_active_w=values['nz_battery_floor_ev_active_w'],
-        adjustable_surplus_load=values['adjustable_surplus_load'],
         adjustable_primary_load=values['adjustable_primary_load'],
-        adjustable_surplus_activation_w=values['adjustable_surplus_activation_w'],
     )
 
 
@@ -2967,7 +2962,6 @@ def _build_view_battery_device(plan: StaticDevicePlan, values: dict) -> CoreBatt
         policy=CoreBatteryPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
             surplus_allowed=bool(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', False)),
-            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
             surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
             default_min_absorb_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'default_min_absorb_w'),
         ),
@@ -3008,7 +3002,6 @@ def _build_view_ev_device(plan: StaticDevicePlan, values: dict) -> CoreEvCharger
         policy=CoreEvPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
             surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
-            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
             surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
             force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
             low_pv_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'low_pv_threshold_w', 1.6),
@@ -3046,7 +3039,6 @@ def _build_view_relay_device(plan: StaticDevicePlan, values: dict) -> CoreRelayD
         policy=CoreRelayPolicyConfig(
             priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 0),
             surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
-            activation_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'activation_threshold_w', 1.0),
             surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'fixed')),
             force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
         ),
@@ -3098,9 +3090,7 @@ def _materialize_core_global_from_plan(
         haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(global_config, 'haeo_stale_timeout_s'), read_entity, 300),
         nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_default_w'), read_entity, 100.0),
         nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-        adjustable_surplus_load=_resolve_core_config_value(_require_mapping_value(global_config, 'adjustable_surplus_load'), read_entity, 'HOME_BATTERY'),
         adjustable_primary_load=_resolve_core_config_value(_require_mapping_value(global_config, 'adjustable_primary_load'), read_entity, ''),
-        adjustable_surplus_activation_w=_resolve_core_config_value(_require_mapping_value(global_config, 'adjustable_surplus_activation_w'), read_entity, 0.0),
     )
 
 
@@ -3199,11 +3189,6 @@ def _materialize_home_battery_from_plan(
             surplus_allowed=bool(
                 _resolve_core_config_value(policy.get('surplus_allowed', False), read_entity, False)
             ),
-            activation_threshold_w=(
-                _resolve_core_config_value(policy.get('activation_threshold_w'), read_entity, None)
-                if 'activation_threshold_w' in policy
-                else None
-            ),
             surplus_dispatch_mode=str(
                 _resolve_core_config_value(policy.get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')
             ),
@@ -3297,9 +3282,7 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
             haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), read_entity, 300),
             nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), read_entity, 100.0),
             nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-            adjustable_surplus_load=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_load'), read_entity, 'HOME_BATTERY'),
             adjustable_primary_load=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), read_entity, ''),
-            adjustable_surplus_activation_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_surplus_activation_w'), read_entity, 0.0),
         ),
         home_battery=home_battery,
         runtime=CoreRuntimeConfig(
@@ -3360,23 +3343,10 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.nz_battery_floor_default_w = core_config.global_config.nz_battery_floor_default_w
     if core_config.nz_battery_floor_ev_active_w is None:
         core_config.nz_battery_floor_ev_active_w = core_config.global_config.nz_battery_floor_ev_active_w
-    if core_config.adjustable_surplus_load is None:
-        core_config.adjustable_surplus_load = core_config.global_config.adjustable_surplus_load
     if core_config.adjustable_primary_load is None:
         core_config.adjustable_primary_load = core_config.global_config.adjustable_primary_load
-    if core_config.adjustable_surplus_activation is None:
-        core_config.adjustable_surplus_activation = core_config.global_config.adjustable_surplus_activation_w
     if core_config.surplus_freeze_s is None:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
-    selected_adjustable = core_config.device_by_id(str(core_config.adjustable_surplus_load))
-    if selected_adjustable is not None:
-        core_config.adjustable_surplus_load_priority = getattr(
-            getattr(selected_adjustable, 'policy', None),
-            'priority',
-            0,
-        )
-    elif core_config.adjustable_surplus_load_priority is None:
-        core_config.adjustable_surplus_load_priority = 0
     return core_config
 
 
@@ -3498,7 +3468,6 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         if 'surplus_allowed' in device['policy']:
             _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
         if bool(device['policy'].get('surplus_allowed', False)):
-            _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
             if device['policy'].get('surplus_dispatch_mode') not in ('max_absorb', 'fixed'):
                 issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
 
@@ -3530,7 +3499,6 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             issues,
         )
         _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
-        _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
         dispatch_mode = device['policy'].get('surplus_dispatch_mode')
         if dispatch_mode not in ('max_absorb', 'fixed'):
             issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
@@ -3568,7 +3536,6 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                 issues,
             )
             _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
-            _validate_entity_or_number(device['policy'], f'{device_path}.policy.activation_threshold_w', 'activation_threshold_w', issues, min_value=0.000001)
             dispatch_mode = device['policy'].get('surplus_dispatch_mode')
             if dispatch_mode not in ('max_absorb', 'fixed'):
                 issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
@@ -3904,7 +3871,6 @@ def _build_core_battery_device(
                 default_priority,
             ),
             surplus_allowed=bool(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_allowed', False), read_entity, False)),
-            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(device, 'policy').get('activation_threshold_w', 1.0), read_entity, 1.0),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')),
             default_min_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'default_min_absorb_w'), read_entity, 0.0)
             if 'default_min_absorb_w' in _require_mapping_value(device, 'policy')
@@ -3943,7 +3909,6 @@ def _build_core_ev_device(device_id: str, device: object, read_entity: Optional[
         policy=CoreEvPolicyConfig(
             priority=_resolve_core_config_value(_require_mapping_value(policy_section, 'priority'), read_entity, 3),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_allowed'), read_entity, ''),
-            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(policy_section, 'activation_threshold_w'), read_entity, 1.0),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_dispatch_mode'), read_entity, 'max_absorb')),
             force_on=_resolve_core_config_value(_require_mapping_value(policy_section, 'force_on'), read_entity, ''),
             low_pv_threshold_w=_resolve_core_config_value(_require_mapping_value(policy_section, 'low_pv_threshold_w'), read_entity, 1.6),
@@ -3979,7 +3944,6 @@ def _build_core_relay_device(device_id: str, device: object, read_entity: Option
                 2 if device_id == 'RELAY1' else 1,
             ),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_allowed'), read_entity, ''),
-            activation_threshold_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'activation_threshold_w'), read_entity, 1.0),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_dispatch_mode'), read_entity, 'fixed')),
             force_on=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'force_on'), read_entity, ''),
         ),

@@ -35,7 +35,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -69,7 +69,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 315.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -98,7 +98,7 @@ def test_04_relay1_reactivation_after_relay2_freeze(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=15.0, required_power_consumption_kw=0.0, at_s=330),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {

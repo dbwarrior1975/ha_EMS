@@ -74,7 +74,7 @@ def test_03_release_relay1_then_restart(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 165.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
             },
             'expect_device_policies': {
                 'RELAY1': {'enabled': False, 'mode': 'relay'},

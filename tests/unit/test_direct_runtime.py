@@ -50,9 +50,7 @@ def _policy_packet(*, revision=17):
             'haeo_stale_timeout_s': 900,
             'nz_battery_floor_default_w': 100,
             'nz_battery_floor_ev_active_w': 100,
-            'adjustable_surplus_load': 'EV_CHARGER',
             'adjustable_primary_load': 'HOME_BATTERY',
-            'adjustable_surplus_activation_w': 2300,
         },
         'devices': {
             'HOME_BATTERY': {
@@ -68,7 +66,6 @@ def _policy_packet(*, revision=17):
                 'policy': {
                     'priority': 3,
                     'surplus_allowed': True,
-                    'activation_threshold_w': 2300,
                     'surplus_dispatch_mode': 'max_absorb',
                     'default_min_absorb_w': 0,
                 },
@@ -92,7 +89,6 @@ def _policy_packet(*, revision=17):
                 'policy': {
                     'priority': 4,
                     'surplus_allowed': False,
-                    'activation_threshold_w': 2300,
                     'surplus_dispatch_mode': 'max_absorb',
                     'force_on': False,
                     'low_pv_threshold_w': 1600,
@@ -118,7 +114,6 @@ def _policy_packet(*, revision=17):
                 'policy': {
                     'priority': 1,
                     'surplus_allowed': True,
-                    'activation_threshold_w': 2600,
                     'surplus_dispatch_mode': 'fixed',
                     'force_on': False,
                 },
@@ -136,7 +131,6 @@ def _policy_packet(*, revision=17):
                 'policy': {
                     'priority': 2,
                     'surplus_allowed': False,
-                    'activation_threshold_w': 5600,
                     'surplus_dispatch_mode': 'fixed',
                     'force_on': False,
                 },
@@ -244,8 +238,9 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         previous_primary_load='',
         previous_primary_device_id=frame.previous_primary_device_id,
     )
-    previous_ev = frame.selected_previous_device_state(cfg.adjustable_surplus_load)
-    adjustable_active = str(cfg.adjustable_surplus_load) in set(frame.active_surplus_device_ids)
+    selected_ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
+    previous_ev = frame.selected_previous_device_state(selected_ev_device_id)
+    adjustable_active = selected_ev_device_id in set(frame.active_surplus_device_ids)
     outputs = compute_net_zero_engine_outputs(
         profiles,
         cfg,
@@ -255,7 +250,7 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         now_ts,
         freeze_until_ts=frame.surplus_freeze_until_ts,
         ev_burn_active=adjustable_active,
-        adjustable_surplus_active=adjustable_active,
+        selected_ev_surplus_active=adjustable_active,
         pv_power_kw=frame.pv_power_w / 1000.0,
         ev_hard_off_active=bool(previous_ev['hard_off_active']),
         ev_low_pv_cycles=previous_ev['low_pv_cycles'],
@@ -306,64 +301,25 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('value', (2300, 0.1))
-def test_direct_parser_accepts_positive_adjustable_surplus_activation(project_root, value):
+@pytest.mark.parametrize(
+    ('field', 'value'),
+    (
+        ('adjustable_surplus_load', 'EV_CHARGER'),
+        ('adjustable_surplus_activation_w', 2300),
+    ),
+)
+def test_direct_parser_rejects_removed_legacy_surplus_config_fields(project_root, field, value):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=180)
-    packet['config']['adjustable_surplus_activation_w'] = value
-
-    cfg, cache_hit = parse_policy_config_cached(topology, packet)
-
-    assert cache_hit is False
-    assert cfg.adjustable_surplus_activation == float(value)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize('value', (0, -1))
-def test_direct_parser_rejects_non_positive_adjustable_surplus_activation(project_root, value):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=181)
-    packet['config']['adjustable_surplus_activation_w'] = value
-
-    with pytest.raises(
-        RuntimePacketSchemaError,
-        match=(
-            r'RUNTIME_PACKET_INVALID: policy_config\.config\.adjustable_surplus_activation_w '
-            r'must be greater than zero'
-        ),
-    ) as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
-
-
-@pytest.mark.unit
-def test_direct_parser_rejects_missing_adjustable_surplus_activation(project_root):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=182)
-    del packet['config']['adjustable_surplus_activation_w']
-
-    with pytest.raises(RuntimePacketSchemaError, match=r'adjustable_surplus_activation_w missing') as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize('value', ('unknown', None, True))
-def test_direct_parser_rejects_non_numeric_adjustable_surplus_activation(project_root, value):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=183)
-    packet['config']['adjustable_surplus_activation_w'] = value
+    packet['config'][field] = value
 
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.adjustable_surplus_activation_w'
+    assert exc.value.path == f'policy_config.config.{field}'
+    assert 'legacy field removed' in str(exc.value)
+
 
 @pytest.mark.unit
 @pytest.mark.parametrize('value', (True, False))
@@ -451,19 +407,16 @@ def test_direct_parser_rejects_non_boolean_regulation_capability(project_root, f
 
 
 @pytest.mark.unit
-def test_policy_config_allows_legacy_adjustable_surplus_alias_to_reference_relay(project_root):
+def test_policy_config_rejects_removed_legacy_adjustable_surplus_alias(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=18)
     packet['config']['adjustable_surplus_load'] = 'RELAY1'
-    packet['devices']['EV_CHARGER']['policy']['surplus_allowed'] = True
 
-    cfg, cache_hit = parse_policy_config_cached(topology, packet)
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
 
-    assert cache_hit is False
-    assert cfg.adjustable_surplus_load == 'RELAY1'
-    assert cfg.device_policy_by_id['EV_CHARGER']['surplus_allowed'] is True
-    assert cfg.device_policy_by_id['RELAY1']['surplus_allowed'] is True
+    assert exc.value.path == 'policy_config.config.adjustable_surplus_load'
 
 
 @pytest.mark.unit
@@ -496,18 +449,17 @@ def test_direct_parser_rejects_combination_without_residual_regulator(project_ro
 
 
 @pytest.mark.unit
-def test_direct_parser_allows_primary_to_match_legacy_surplus_alias(project_root):
+def test_direct_parser_primary_role_is_independent_of_removed_surplus_alias(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=192)
-    packet['config']['adjustable_surplus_load'] = 'HOME_BATTERY'
     packet['config']['adjustable_primary_load'] = 'HOME_BATTERY'
 
     cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cache_hit is False
     assert cfg.adjustable_primary_load == 'HOME_BATTERY'
-    assert cfg.adjustable_surplus_load == 'HOME_BATTERY'
+    assert not hasattr(cfg, 'adjustable_surplus_load')
     assert cfg.device_capabilities_by_id['HOME_BATTERY']['supports_primary_regulation'] is True
 
 
@@ -518,7 +470,7 @@ def test_direct_parser_preserves_float_measurement_signed_discharge_and_runtime_
     assert frame.quarter_energy_balance_kwh == 0.014
     assert cfg.max_battery_discharge_w == -4000.0
     assert cfg.direct_policy_maps['device_adapter_by_id']['EV_CHARGER']['current_step_a'] == 2
-    assert cfg.adjustable_surplus_load_priority == 4
+    assert cfg.device_policy_by_id['EV_CHARGER']['priority'] == 4
     assert frame.ev_states['EV_CHARGER']['current_a'] == 6
 
 
@@ -633,7 +585,7 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
             'export_surplus_activation',
             lambda p, m, s: (
                 p['devices']['EV_CHARGER']['policy'].update(surplus_allowed=True),
-                m.update(grid_power_w=-3000, quarter_energy_balance_kwh=0, pv_power_w=5000),
+                m.update(grid_power_w=-7000, quarter_energy_balance_kwh=0, pv_power_w=8000),
             ),
             {'battery_target_w': 100, 'dispatch_action': 'ACTIVATE', 'dispatch_device_id': 'EV_CHARGER'},
         ),
@@ -857,7 +809,8 @@ def test_runtime_packet_policy_config_uses_runtime_helpers_instead_of_hardcoded_
     devices_template = policy_sensor['attributes']['devices']
 
     assert "states('input_number.ems_deadband_w')" in config_template
-    assert "states('input_select.ems_adjustable_surplus_load')" in config_template
+    assert "states('input_select.ems_adjustable_surplus_load')" not in config_template
+    assert "states('input_number.ems_adjustable_surplus_activation_w')" not in config_template
     assert "states('input_number.ems_max_battery_charge_w')" in devices_template
     assert "states('input_number.ems_max_battery_discharge_w')" in devices_template
     assert "states('input_number.ems_ev_current_step_a')" in devices_template
@@ -936,31 +889,31 @@ def test_direct_parser_accepts_device_owned_surplus_policy_values(project_root):
     topology = _topology(project_root)
     packet = _policy_packet(revision=193)
     packet['devices']['EV_CHARGER']['policy']['surplus_allowed'] = True
-    packet['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = 4400
     packet['devices']['EV_CHARGER']['policy']['surplus_dispatch_mode'] = 'max_absorb'
     packet['devices']['RELAY1']['policy']['surplus_allowed'] = False
 
     cfg, _cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cfg.device_policy_by_id['EV_CHARGER']['surplus_allowed'] is True
-    assert cfg.device_policy_by_id['EV_CHARGER']['activation_threshold_w'] == 4400.0
+    assert 'activation_threshold_w' not in cfg.device_policy_by_id['EV_CHARGER']
+    assert cfg.device_capabilities_by_id['EV_CHARGER']['max_absorb_w'] == 6400.0
     assert cfg.device_policy_by_id['EV_CHARGER']['surplus_dispatch_mode'] == 'max_absorb'
     assert cfg.device_policy_by_id['RELAY1']['surplus_allowed'] is False
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('value', (0, -1, -4400.5))
-def test_direct_parser_rejects_non_positive_threshold_for_enabled_surplus_candidate(project_root, value):
+@pytest.mark.parametrize('value', (0, -1, 4400))
+def test_direct_parser_rejects_removed_device_activation_threshold_field(project_root, value):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=194)
-    packet['devices']['EV_CHARGER']['policy']['surplus_allowed'] = True
     packet['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = value
 
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
     assert exc.value.path == 'policy_config.devices.EV_CHARGER.policy.activation_threshold_w'
+    assert 'field removed' in str(exc.value)
 
 
 @pytest.mark.unit
@@ -991,7 +944,7 @@ def test_direct_parser_rejects_unknown_surplus_dispatch_mode(project_root):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('field', ('surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode'))
+@pytest.mark.parametrize('field', ('surplus_allowed', 'surplus_dispatch_mode'))
 def test_direct_parser_rejects_missing_device_owned_surplus_policy_field(project_root, field):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
@@ -1010,7 +963,6 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
     topology = _topology(project_root)
     packet = _policy_packet(revision=198)
     packet['config']['adjustable_primary_load'] = ''
-    packet['config']['adjustable_surplus_load'] = 'EV_CHARGER'
 
     cfg, _cache_hit = parse_policy_config_cached(topology, packet)
     out = compute_net_zero_engine_outputs(
@@ -1031,4 +983,5 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
     )
 
     assert out.attrs['primary_device_id'] == 'HOME_BATTERY'
-    assert out.attrs['surplus_adjustable_device_id'] == 'EV_CHARGER'
+    assert 'surplus_adjustable_device_id' not in out.attrs
+    assert out.attrs['surplus_candidate_device_ids'] == ('HOME_BATTERY', 'RELAY1')

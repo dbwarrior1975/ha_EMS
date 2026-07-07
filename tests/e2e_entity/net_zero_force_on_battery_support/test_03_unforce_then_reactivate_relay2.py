@@ -36,7 +36,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-0.015, required_power_consumption_kw=-3.0, at_s=240),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -66,7 +66,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
                 'surplus_explanation': 'Raw RPC 8.000 kW >= RELAY2 threshold 5.000 kW',
-                'surplus_next_target': 'RELAY2',
+                'surplus_next_device_id': 'RELAY2',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -100,7 +100,7 @@ def test_03_unforce_then_reactivate_relay2(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 285.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {

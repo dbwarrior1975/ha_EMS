@@ -19,7 +19,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
-                'surplus_next_target': 'RELAY2',
+                'surplus_next_device_id': 'RELAY2',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -38,7 +38,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=30),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
-                'surplus_next_target': 'RELAY2',
+                'surplus_next_device_id': 'RELAY2',
                 'prev_force_on_device_ids': (),
             },
             'expect_device_policies': {
@@ -61,7 +61,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
@@ -95,7 +95,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
@@ -125,7 +125,7 @@ def test_01_force_rising_edge_freeze_hygiene(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 105.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {

@@ -20,8 +20,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             'expect_policy': {
                 'ev_device_ids': ('EV_MAIN', 'EV_GARAGE'),
                 'relay_device_ids': ('RELAY_SAUNA', 'RELAY_BOILER'),
-                'selected_ev_device_id': 'EV_GARAGE',
-                'surplus_device_dispatch_decision': 'NOOP',
+                'surplus_dispatch_decision': 'NOOP',
             },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
@@ -33,12 +32,11 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 30,
             'note': 't30 custom selected EV_GARAGE is chosen immediately while EV_MAIN stays inactive.',
-            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
-            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=30),
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=30),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=30),
             'expect_policy': {
-                'selected_ev_device_id': 'EV_GARAGE',
-                'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_device_dispatch_device_id': 'EV_GARAGE',
+                'surplus_dispatch_decision': 'ACTIVATE_EV_GARAGE',
+                'surplus_dispatch_device_id': 'EV_GARAGE',
             },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 1000},
@@ -49,12 +47,11 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 60,
             'note': 't60 custom selected EV gets the target and the next dispatch edge advances to RELAY_SAUNA.',
-            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
-            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=60),
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60),
             'expect_policy': {
-                'selected_ev_device_id': 'EV_GARAGE',
-                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY_SAUNA',
-                'surplus_device_dispatch_device_id': 'RELAY_SAUNA',
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY_SAUNA',
+                'surplus_dispatch_device_id': 'RELAY_SAUNA',
             },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
@@ -72,12 +69,11 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
         {
             'at_s': 90,
             'note': 't90 writer uses custom EV ids directly and the next dispatch edge advances to RELAY_BOILER without any RELAY1 or EV_CHARGER dependency.',
-            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
-            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=3200.0, required_power_consumption_kw=3.2, at_s=90),
+            'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=90),
+            'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=90),
             'expect_policy': {
-                'selected_ev_device_id': 'EV_GARAGE',
-                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY_BOILER',
-                'surplus_device_dispatch_device_id': 'RELAY_BOILER',
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY_BOILER',
+                'surplus_dispatch_device_id': 'RELAY_BOILER',
             },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
@@ -108,7 +104,6 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
 
     assert policy_trace['ev_device_ids'] == ('EV_MAIN', 'EV_GARAGE')
     assert policy_trace['relay_device_ids'] == ('RELAY_SAUNA', 'RELAY_BOILER')
-    assert policy_trace['selected_ev_device_id'] == 'EV_GARAGE'
     assert 'EV_CHARGER' not in policy_ids
     assert 'RELAY1' not in policy_ids
     assert 'EV_CHARGER' not in writer_ids

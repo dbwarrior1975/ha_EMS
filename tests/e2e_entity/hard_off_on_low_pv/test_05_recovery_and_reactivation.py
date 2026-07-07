@@ -48,9 +48,9 @@ def test_05_recovery_and_reactivation(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 239.0,
                 'surplus_explanation': 'Raw RPC 3.000 kW >= RELAY1 threshold 2.500 kW',
-                'surplus_next_target': 'RELAY1',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': True,
+                'surplus_next_device_id': 'RELAY1',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
@@ -80,9 +80,9 @@ def test_05_recovery_and_reactivation(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 239.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': True,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
@@ -102,7 +102,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 240,
-            'note': 't240 recovered PV and RPC remain below the ADJUSTABLE activation threshold',
+            'note': 't240 recovered PV and RPC remain below the EV_CHARGER activation threshold',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=15.0,
@@ -117,9 +117,9 @@ def test_05_recovery_and_reactivation(project_root):
             ),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': True,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
@@ -136,21 +136,21 @@ def test_05_recovery_and_reactivation(project_root):
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=19.0,
-                required_power_consumption_kw=5.8,
+                required_power_consumption_kw=7.0,
                 at_s=270,
                 pv_power_kw=5.9,
             ),
             'expect_derived': expect_derived_for_net_zero_intent(
                 rpnz_w=19.0,
-                required_power_consumption_kw=5.8,
+                required_power_consumption_kw=7.0,
                 at_s=270,
             ),
             'expect_policy': {
-                'surplus_explanation': 'Raw RPC 5.800 kW >= EV_CHARGER threshold 5.060 kW',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': True,
-                'ev_hard_off_release_ready_cycles': 1,
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
@@ -167,21 +167,21 @@ def test_05_recovery_and_reactivation(project_root):
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=19.0,
-                required_power_consumption_kw=5.8,
+                required_power_consumption_kw=7.0,
                 at_s=300,
                 pv_power_kw=5.9,
             ),
             'expect_derived': expect_derived_for_net_zero_intent(
                 rpnz_w=19.0,
-                required_power_consumption_kw=5.8,
+                required_power_consumption_kw=7.0,
                 at_s=300,
             ),
             'expect_policy': {
-                'surplus_explanation': 'Raw RPC 5.800 kW >= RELAY2 threshold 5.000 kW',
-                'surplus_next_target': 'RELAY2',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': False,
-                'ev_hard_off_release_ready_cycles': 2,
+                'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY2 threshold 5.000 kW',
+                'surplus_next_device_id': 'RELAY2',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {

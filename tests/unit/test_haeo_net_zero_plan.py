@@ -53,7 +53,6 @@ def _core_cfg_with_selected_custom_ev(
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
@@ -77,9 +76,7 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_surplus_load': selected_ev_device_id,
         'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
-        'input_number.ems_adjustable_surplus_activation_w': 2000,
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
@@ -106,7 +103,6 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_ev_garage_power_step_w': 2300,
         'input_number.ems_surplus_ev_garage_priority': 4,
         'input_boolean.ems_ev_garage_surplus_allowed': True,
-        'input_number.ems_ev_garage_activation_threshold_w': 2400,
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,
         'input_number.ems_ev_garage_release_cycles': 2,
@@ -129,9 +125,8 @@ def test_ev_larger_forecast_selects_ev_primary():
 
     assert plan.active is True
     assert plan.primary_load == 'EV_CHARGER'
-    assert plan.adjustable_surplus_load == 'HOME_BATTERY'
     assert plan.primary_device_id == 'EV_CHARGER'
-    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_CHARGER': 5000}
     assert plan.reason == 'ev_forecast_larger'
 
@@ -147,9 +142,8 @@ def test_battery_larger_forecast_selects_home_battery_primary():
 
     assert plan.active is True
     assert plan.primary_load == 'HOME_BATTERY'
-    assert plan.adjustable_surplus_load == 'EV_CHARGER'
     assert plan.primary_device_id == 'HOME_BATTERY'
-    assert plan.adjustable_device_id == 'EV_CHARGER'
+    assert plan.preferred_surplus_device_id == 'EV_CHARGER'
     assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
     assert plan.battery_limit_w == 3000
     assert plan.ev_limit_w == 1500
@@ -167,9 +161,8 @@ def test_tie_keeps_previous_primary_when_available():
     )
 
     assert plan.primary_load == 'EV_CHARGER'
-    assert plan.adjustable_surplus_load == 'HOME_BATTERY'
     assert plan.primary_device_id == 'EV_CHARGER'
-    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
     assert plan.changed is False
 
@@ -265,7 +258,7 @@ def test_custom_selected_ev_device_id_is_used_in_haeo_plan(project_root):
     assert plan.active is True
     assert plan.primary_device_id == 'EV_GARAGE'
     assert plan.primary_load == 'EV_GARAGE'
-    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_GARAGE': 5000}
 
 
@@ -300,7 +293,7 @@ def test_tie_keeps_previous_custom_ev_primary_device_id(project_root):
 
     assert plan.primary_device_id == 'EV_GARAGE'
     assert plan.primary_load == 'EV_GARAGE'
-    assert plan.adjustable_device_id == 'HOME_BATTERY'
+    assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
 
 
@@ -322,7 +315,6 @@ def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_sele
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
@@ -339,14 +331,12 @@ def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_sele
     }
     plan = compile_core_config_plan_from_grouped_config(grouped)
     values = {
-        'input_select.ems_adjustable_surplus_load': 'EV_GARAGE',
         'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
         'input_number.ems_ev_garage_min_power_w': 2300,
         'input_number.ems_ev_garage_max_power_w': 6900,
         'input_number.ems_ev_garage_power_step_w': 2300,
         'input_number.ems_surplus_ev_garage_priority': 4,
         'input_boolean.ems_ev_garage_surplus_allowed': True,
-        'input_number.ems_ev_garage_activation_threshold_w': 2400,
         'input_boolean.ems_ev_garage_force_on': False,
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,

@@ -47,9 +47,9 @@ def test_03_low_pv_to_hard_off(project_root):
             ),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_low_pv_cycles': 2,
-                'ev_hard_off_active': True,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 1.3,
             },
             'expect_device_policies': {

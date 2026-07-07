@@ -9,7 +9,7 @@ from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_02_release_and_low_pv_hard_off_path(project_root):
-    """Phase 2: release ADJUSTABLE and drive low-PV hard-off/discharge sequence."""
+    """Phase 2: release EV_CHARGER and drive low-PV hard-off/discharge sequence."""
     h = build_harness(project_root)
     E = h.ent
 
@@ -37,7 +37,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
@@ -48,7 +48,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
         },
         {
             'at_s': 135,
-            'note': 't135 deficit crosses critical balance and triggers RELEASE_ADJUSTABLE, forcing EV support off and flipping battery control into discharge.',
+            'note': 't135 deficit crosses critical balance and triggers RELEASE_EV_CHARGER, forcing EV support off and flipping battery control into discharge.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-10.0, required_power_consumption_kw=-6.4, at_s=135, pv_power_kw=1.4),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=-6.4, at_s=135),
             'expect_device_policies': {
@@ -56,7 +56,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': -900},
             },
             'expect_policy': {
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
@@ -73,7 +73,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
@@ -90,7 +90,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': -900},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
@@ -107,7 +107,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': -1100},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
@@ -128,7 +128,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': -1300},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
@@ -149,7 +149,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
                 'HOME_BATTERY': {'target_w': -1300},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',

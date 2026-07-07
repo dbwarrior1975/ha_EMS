@@ -89,7 +89,6 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
         'hard_off_release_ready_cycles': 0,
     }
     mod['_read_previous_force_on_device_ids'] = lambda *_args, **_kwargs: ()
-    mod['_read_adjustable_surplus_active'] = lambda *_args, **_kwargs: False
     mod['derive_net_zero_inputs'] = lambda **_kwargs: SimpleNamespace(
         rpnz_w=0.0,
         required_power_consumption_kw=0.0,
@@ -365,32 +364,6 @@ def test_canonical_changed_forces_diagnostics_publish_before_interval(project_ro
     assert diagnostics[0][2]['policy_engine_diagnostics_publish_reason'] == 'canonical_changed'
 
 
-@pytest.mark.unit
-def test_timing_fields_are_diagnostics_only(project_root):
-    mod = _load_policy_module(project_root)
-    _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
-    entities = _minimal_entities()
-    published = []
-
-    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
-
-    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
-
-    canonical_attrs = [
-        attrs
-        for entity, _value, attrs in published
-        if entity in (entities['device_policies'], entities['dispatch_command'], entities['policy_state'])
-    ]
-    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
-
-    for attrs in canonical_attrs:
-        assert 'policy_engine_run_duration_ms' not in attrs
-        assert 'policy_engine_publish_ms' not in attrs
-        assert 'policy_engine_published_policy_diagnostics' not in attrs
-    assert 'policy_engine_run_duration_ms' in diagnostics_attrs
-    assert 'policy_engine_publish_ms' in diagnostics_attrs
-    assert diagnostics_attrs['policy_engine_published_policy_diagnostics'] is True
 
 
 @pytest.mark.unit
@@ -414,6 +387,11 @@ def test_policy_diagnostics_contains_phase_timing_fields(project_root):
         },
     )
 
+    canonical_attrs = [
+        attrs
+        for entity, _value, attrs in published
+        if entity in (entities['device_policies'], entities['dispatch_command'], entities['policy_state'])
+    ]
     diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
     timing_fields = (
         'policy_engine_total_tick_duration_ms',
@@ -436,45 +414,16 @@ def test_policy_diagnostics_contains_phase_timing_fields(project_root):
         assert diagnostics_attrs[field] >= 0
     assert diagnostics_attrs['policy_engine_read_runtime_context_ms'] == 7
 
-
-@pytest.mark.unit
-def test_policy_diagnostics_contains_policy_compute_subtiming_fields(project_root):
-    mod = _load_policy_module(project_root)
-    _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
-    entities = _minimal_entities()
-    published = []
-
-    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
-
-    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
-
-    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
-
-    assert diagnostics_attrs['policy_engine_guard_compute_ms'] >= 0
-    assert diagnostics_attrs['policy_engine_haeo_plan_compute_ms'] >= 0
-    assert diagnostics_attrs['policy_engine_net_zero_compute_ms'] >= 0
+    for attrs in canonical_attrs:
+        assert 'policy_engine_run_duration_ms' not in attrs
+        assert 'policy_engine_publish_ms' not in attrs
+        assert 'policy_engine_guard_compute_ms' not in attrs
+    assert diagnostics_attrs['policy_engine_published_policy_diagnostics'] is True
     assert diagnostics_attrs['policy_engine_policy_compute_ms'] >= (
         diagnostics_attrs['policy_engine_guard_compute_ms']
         + diagnostics_attrs['policy_engine_haeo_plan_compute_ms']
         + diagnostics_attrs['policy_engine_net_zero_compute_ms']
     )
-
-
-@pytest.mark.unit
-def test_policy_diagnostics_contains_change_detection_subtiming_fields(project_root):
-    mod = _load_policy_module(project_root)
-    _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
-    entities = _minimal_entities()
-    published = []
-
-    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
-
-    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
-
-    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
-
     sub_ms = (
         diagnostics_attrs['policy_engine_device_policies_key_ms']
         + diagnostics_attrs['policy_engine_dispatch_command_key_ms']
@@ -482,6 +431,10 @@ def test_policy_diagnostics_contains_change_detection_subtiming_fields(project_r
         + diagnostics_attrs['policy_engine_warning_key_ms']
     )
     assert diagnostics_attrs['policy_engine_change_detection_ms'] == sub_ms
+
+
+
+
 
 
 @pytest.mark.unit
@@ -553,7 +506,16 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
 
     mod['run_policy_loop'](100.0, cfg, entities, 'timer')
 
+    canonical_attrs = [
+        attrs
+        for entity, _value, attrs in published
+        if entity in (entities['device_policies'], entities['dispatch_command'], entities['policy_state'])
+    ]
     diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
+    for attrs in canonical_attrs:
+        assert 'policy_engine_static_context_cache_hit' not in attrs
+        assert 'policy_engine_core_config_build_ms' not in attrs
+        assert 'policy_engine_core_config_materialize_total_ms' not in attrs
     assert diagnostics_attrs['policy_engine_config_signature_ms'] == 4
     assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
     assert diagnostics_attrs['policy_engine_static_context_cache_hits'] == 8
@@ -565,51 +527,6 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
     assert diagnostics_attrs['policy_engine_net_zero_cfg_device_policy_value_calls'] == 5
 
 
-@pytest.mark.unit
-def test_context_cache_timing_fields_are_diagnostics_only(project_root):
-    mod = _load_policy_module(project_root)
-    _install_minimal_policy_loop_stubs(mod)
-    mod['runtime_context_metrics_attrs'] = lambda: {
-        'policy_engine_config_signature_ms': 4,
-        'policy_engine_static_context_cache_hit': True,
-        'policy_engine_static_context_cache_hits': 8,
-        'policy_engine_static_context_cache_misses': 1,
-        'policy_engine_static_context_build_ms': 0,
-        'policy_engine_dynamic_config_reads_ms': 0,
-        'policy_engine_runtime_entity_registry_ms': 0,
-        'policy_engine_core_config_build_ms': 12,
-        'policy_engine_core_config_materialize_total_ms': 12,
-        'policy_engine_core_config_profiles_global_runtime_state_ms': 2,
-        'policy_engine_core_config_devices_ms': 3,
-        'policy_engine_core_config_home_battery_ms': 1,
-        'policy_engine_core_config_haeo_ms': 1,
-        'policy_engine_core_config_role_constraints_ms': 1,
-        'policy_engine_core_config_derived_fields_ms': 4,
-        'policy_engine_dynamic_runtime_snapshot_ms': 9,
-        'policy_engine_policy_context_view_ms': 3,
-    }
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
-    entities = _minimal_entities()
-    published = []
-
-    mod['publish_sensor'] = lambda entity, value, attrs=None: published.append((entity, value, attrs))
-
-    mod['run_policy_loop'](100.0, cfg, entities, 'timer')
-
-    canonical_attrs = [
-        attrs
-        for entity, _value, attrs in published
-        if entity in (entities['device_policies'], entities['dispatch_command'], entities['policy_state'])
-    ]
-    diagnostics_attrs = [attrs for entity, _value, attrs in published if entity == entities['policy_diagnostics']][0]
-
-    for attrs in canonical_attrs:
-        assert 'policy_engine_static_context_cache_hit' not in attrs
-        assert 'policy_engine_core_config_build_ms' not in attrs
-        assert 'policy_engine_core_config_materialize_total_ms' not in attrs
-    assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
-    assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
-    assert diagnostics_attrs['policy_engine_core_config_materialize_total_ms'] == 12
 
 
 @pytest.mark.unit
@@ -770,3 +687,46 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     assert dispatches == []
     assert diagnostics == []
     assert state['last_diagnostics_publish_ts'] == 100.0
+
+@pytest.mark.unit
+def test_public_policy_diagnostics_projection_removes_legacy_mirrors(project_root):
+    mod = _load_policy_module(project_root)
+    projected = mod['_diagnostic_projection_attrs'](
+        {
+            'surplus_candidates': (
+                {
+                    'device_id': 'EV_CHARGER',
+                    'decision_name': 'EV_CHARGER',
+                    'priority': 3,
+                    'threshold_w': 4400,
+                },
+            ),
+            'surplus_device_dispatch_action': 'ACTIVATE',
+            'surplus_device_dispatch_device_id': 'EV_CHARGER',
+            'surplus_device_dispatch_contract': 'device_id_primary',
+            'surplus_device_targets': ({'device_id': 'EV_CHARGER'},),
+            'selected_ev_device_id': 'EV_CHARGER',
+            'ev_target_w': 4400,
+            'previous_ev_device_states': {'EV_CHARGER': {'mode': 'burn'}},
+            'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
+            'legacy_device_bridge_count': 0,
+        }
+    )
+
+    assert projected['surplus_dispatch_action'] == 'ACTIVATE'
+    assert projected['surplus_dispatch_device_id'] == 'EV_CHARGER'
+    assert projected['surplus_dispatch_contract'] == 'device_id_primary'
+    assert projected['surplus_candidates'] == (
+        {'device_id': 'EV_CHARGER', 'priority': 3, 'threshold_w': 4400},
+    )
+    assert projected['previous_device_states'] == {'EV_CHARGER': {'mode': 'burn'}}
+
+    for removed in (
+        'surplus_device_targets',
+        'surplus_device_dispatch_action',
+        'selected_ev_device_id',
+        'ev_target_w',
+        'previous_ev_device_states',
+        'legacy_device_bridge_count',
+    ):
+        assert removed not in projected

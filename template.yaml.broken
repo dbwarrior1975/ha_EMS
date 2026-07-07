@@ -1,4 +1,3 @@
-
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -29,7 +28,9 @@
               states.input_number.ems_nz_battery_floor_default_w,
               states.input_number.ems_nz_battery_floor_ev_active_w,
   
+              states.input_select.ems_adjustable_surplus_load,
               states.input_select.ems_adjustable_primary_load,
+              states.input_number.ems_adjustable_surplus_activation_w,
   
               states.input_number.ems_max_battery_charge_w,
               states.input_number.ems_max_battery_discharge_w,
@@ -42,6 +43,7 @@
               states.input_number.ems_ev_min_power_w,
               states.input_number.ems_ev_max_power_w,
               states.input_number.ems_surplus_ev_priority,
+              states.input_boolean.ems_surplus_adjustable_active,
               states.input_boolean.ems_ev_force_on,
               states.input_number.ems_ev_hard_off_pv_threshold_kw,
               states.input_number.ems_ev_hard_off_low_pv_cycles,
@@ -112,9 +114,14 @@
                 'nz_battery_floor_ev_active_w':
                   states('input_number.ems_nz_battery_floor_ev_active_w'),
   
+                'adjustable_surplus_load':
+                  states('input_select.ems_adjustable_surplus_load'),
+  
                 'adjustable_primary_load':
                   states('input_select.ems_adjustable_primary_load'),
   
+                'adjustable_surplus_activation_w':
+                  states('input_number.ems_adjustable_surplus_activation_w')
               }
             }}
   
@@ -175,14 +182,11 @@
                   },
   
                   'policy': {
+
                     'priority':
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
                       ),
-
-                    'surplus_allowed': true,
-
-                    'surplus_dispatch_mode': 'max_absorb',
   
                     'default_min_absorb_w':
                       0
@@ -233,9 +237,20 @@
                     'priority':
                       states('input_number.ems_surplus_ev_priority'),
                 
-                    'surplus_allowed': true,
-
-                    'surplus_dispatch_mode': 'max_absorb',
+                    'surplus_allowed':
+                      true
+                      if is_state(
+                        'input_boolean.ems_surplus_adjustable_active',
+                        'on'
+                      )
+                      else false
+                      if is_state(
+                        'input_boolean.ems_surplus_adjustable_active',
+                        'off'
+                      )
+                      else states(
+                        'input_boolean.ems_surplus_adjustable_active'
+                      ),
                 
                     'force_on':
                       true
@@ -322,8 +337,6 @@
                         'input_boolean.ems_relay1_enabled_import_zero'
                       ),
   
-                    'surplus_dispatch_mode': 'fixed',
-
                     'force_on':
                       true
                       if is_state(
@@ -373,8 +386,6 @@
                         'input_boolean.ems_relay2_enabled_import_zero'
                       ),
   
-                    'surplus_dispatch_mode': 'fixed',
-
                     'force_on':
                       true
                       if is_state(
@@ -809,8 +820,6 @@
   - sensor:
       - name: "I-PACE Charged Energy Delta"
         unit_of_measurement: "kWh"
-        #device_class: energy
-        #state_class: measurement 
         state: |-
           {% set delta = states('sensor.ev_delta_kwh') | float(0) %}
           {% if is_state('input_boolean.i_pace_charging', 'on') %}

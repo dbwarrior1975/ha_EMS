@@ -7,7 +7,7 @@ from tests.e2e_entity.net_zero_ev_adjustable_load.scenario_steps import run_step
 
 @pytest.mark.scenario
 def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
-    """Phase 1: EV-primary ramp, ADJUSTABLE activation, and RELAY1 activation edge."""
+    """Phase 1: EV-primary ramp, HOME_BATTERY activation, and RELAY1 activation edge."""
     h = build_harness(project_root)
     E = h.ent
 
@@ -21,9 +21,8 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': -700},
             },
             'expect_policy': {
-                'ev_hard_off_active': False,
-                'surplus_next_target': 'ADJUSTABLE',
-                'surplus_primary_target': 'ADJUSTABLE',
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -42,8 +41,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
-                'surplus_primary_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -64,7 +62,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': 3300,
@@ -86,7 +84,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -107,7 +105,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': None,
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -146,7 +144,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -166,7 +164,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
             },
@@ -178,7 +176,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
         },
         {
             'at_s': 70,
-            'note': 't70 PV 8.0 kW: EV reaches high current; dispatch still waits for ADJUSTABLE activation.',
+            'note': 't70 PV 8.0 kW: EV reaches high current; dispatch still waits for HOME_BATTERY activation.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=250.0, required_power_consumption_kw=1.0, at_s=70, pv_power_kw=8.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=250.0, required_power_consumption_kw=1.0, at_s=70),
             'expect_device_policies': {
@@ -186,7 +184,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'surplus_explanation': 'Waiting for HOME_BATTERY; raw RPC below threshold',
@@ -198,7 +196,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
         },
         {
             'at_s': 73,
-            'note': 't73 PV 8.0 kW: RPC crosses ADJUSTABLE threshold and adjustable path activates.',
+            'note': 't73 PV 8.0 kW: RPC crosses HOME_BATTERY threshold and adjustable path activates.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500.0, required_power_consumption_kw=2.6, at_s=73, pv_power_kw=8.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=2.6, at_s=73),
             'expect_device_policies': {
@@ -207,7 +205,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 88.0,
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'HOME_BATTERY',
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'surplus_explanation': 'Raw RPC 2.600 kW >= HOME_BATTERY threshold 2.500 kW',
@@ -227,7 +225,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 2500},
             },
             'expect_policy': {
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'surplus_freeze_until_ts': 88.0,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
@@ -247,7 +245,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 2500},
             },
             'expect_policy': {
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'surplus_freeze_until_ts': 104.0,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
@@ -268,7 +266,7 @@ def test_01_ev_primary_ramp_and_adjustable_activation(project_root):
                 'HOME_BATTERY': {'target_w': 2500},
             },
             'expect_policy': {
-                'surplus_next_target': 'RELAY2',
+                'surplus_next_device_id': 'RELAY2',
                 'surplus_freeze_until_ts': 104.0,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',

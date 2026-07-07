@@ -21,7 +21,7 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
             'expect_derived': expect_derived_for_net_zero_intent(
                 rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0
             ),
-            'expect_policy': {'surplus_device_dispatch_decision': 'NOOP'},
+            'expect_policy': {'surplus_dispatch_decision': 'NOOP'},
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': False, 'target_w': 0},
@@ -29,7 +29,7 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
         },
         {
             'at_s': 30,
-            'note': 'RPC clears the highest-priority EV_GARAGE 4.4 kW threshold first.',
+            'note': 'RPC clears the highest-priority EV_GARAGE 3.68 kW max_absorb threshold first.',
             'set': runtime_inputs_for_net_zero_intent(
                 E, rpnz_w=5000.0, required_power_consumption_kw=5.0, at_s=30
             ),
@@ -37,22 +37,22 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=5000.0, required_power_consumption_kw=5.0, at_s=30
             ),
             'expect_policy': {
-                'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-                'surplus_device_dispatch_device_id': 'EV_GARAGE',
+                'surplus_dispatch_decision': 'ACTIVATE_EV_GARAGE',
+                'surplus_dispatch_device_id': 'EV_GARAGE',
             },
         },
         {
             'at_s': 60,
-            'note': 'With EV_GARAGE active, EV_CHARGER is the next candidate at its own 3.6 kW threshold.',
+            'note': 'With EV_GARAGE active, EV_CHARGER is the next candidate at its own 6.44 kW max_absorb threshold.',
             'set': runtime_inputs_for_net_zero_intent(
-                E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60
+                E, rpnz_w=7000.0, required_power_consumption_kw=7.0, at_s=60
             ),
             'expect_derived': expect_derived_for_net_zero_intent(
-                rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60
+                rpnz_w=7000.0, required_power_consumption_kw=7.0, at_s=60
             ),
             'expect_policy': {
-                'surplus_device_dispatch_decision': 'ACTIVATE_EV_CHARGER',
-                'surplus_device_dispatch_device_id': 'EV_CHARGER',
+                'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+                'surplus_dispatch_device_id': 'EV_CHARGER',
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False, 'target_w': 0},
@@ -69,9 +69,9 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=3000.0, required_power_consumption_kw=3.0, at_s=90
             ),
             'expect_policy': {
-                'surplus_device_dispatch_decision': 'ACTIVATE_RELAY1',
-                'surplus_device_dispatch_device_id': 'RELAY1',
-                'surplus_device_active_device_stack': 'EV_GARAGE > EV_CHARGER',
+                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_dispatch_device_id': 'RELAY1',
+                'surplus_active_device_ids': ('EV_GARAGE', 'EV_CHARGER'),
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True, 'target_w': 6440},
@@ -98,8 +98,8 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=3000.0, required_power_consumption_kw=3.0, at_s=120
             ),
             'expect_policy': {
-                'surplus_device_dispatch_decision': 'NOOP',
-                'surplus_device_active_device_stack': 'EV_GARAGE > EV_CHARGER > RELAY1',
+                'surplus_dispatch_decision': 'NOOP',
+                'surplus_active_device_ids': ('EV_GARAGE', 'EV_CHARGER', 'RELAY1'),
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True, 'target_w': 6440},
@@ -119,9 +119,9 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
     assert candidates['EV_GARAGE']['priority'] == 4
     assert candidates['EV_CHARGER']['priority'] == 3
     assert candidates['RELAY1']['priority'] == 2
-    assert candidates['EV_GARAGE']['activation_threshold_w'] == 4400
-    assert candidates['EV_CHARGER']['activation_threshold_w'] == 3600
-    assert candidates['RELAY1']['activation_threshold_w'] == 2600
+    assert candidates['EV_GARAGE']['threshold_w'] == 3680
+    assert candidates['EV_CHARGER']['threshold_w'] == 6440
+    assert candidates['RELAY1']['threshold_w'] == 2600
     assert candidates['EV_GARAGE']['surplus_dispatch_mode'] == 'max_absorb'
     assert candidates['EV_CHARGER']['surplus_dispatch_mode'] == 'max_absorb'
     assert candidates['RELAY1']['surplus_dispatch_mode'] == 'fixed'

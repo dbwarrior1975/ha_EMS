@@ -1,37 +1,29 @@
 # Release Notes
 
-## 2026-07-06 — Surplus candidate pool refactor
+## 2026-07-06 — Surplus candidate pool + max_absorb threshold cleanup
 
-Tama release poistaa selected-single-EV / singular adjustable-surplus -rajan
-NET_ZERO-coresta. `primary_device_id` sailyy singular control role -kasitteena,
-mutta surplus rakennetaan nyt geneerisesta device/capability/policy-poolista.
+Tama release poistaa selected-single-EV / singular adjustable-surplus -rajan ja
+viimeistelee surplus-aktivointikynnyksen yhden totuuslahteen mallin.
 
 Muutokset:
 
 1. useampi EV voi olla samassa surplus-kandidaattipoolissa
-2. kandidaatin eligibility perustuu `can_absorb_w` + `surplus_allowed` -sopimukseen
-3. `priority`, `activation_threshold_w` ja `surplus_dispatch_mode` ovat device-owned
-4. tuetut dispatch-modet ovat `max_absorb` ja `fixed`
-5. per-device allocation tuottaa jokaiselle EV:lle oman `DevicePolicy`-tuloksen
-6. non-selected EV:ta ei pakoteta `inactive_ev_policy`-tilaan vain toisen EV:n takia
-7. hard-off lifecycle etenee `previous_device_states[device_id]`-tilassa itsenaisesti
-8. strict-priority, EV surplus max-target, relay behavior, EV-primary stepped
-   regulation, battery residual/guard, HAEO ja writer contract on sailyttetty
-9. direct-v2 schema v2 validoi uudet policy-kentat tiukasti
-10. generic diagnostics julkaisee candidate stackin, active device-id:t ja
-    per-device surplus-targetit
+2. kandidaatin eligibility perustuu `can_absorb_w + surplus_allowed` -sopimukseen
+3. device-owned `priority` ja `surplus_dispatch_mode` ohjaavat jarjestysta ja target-strategiaa
+4. surplus activation threshold on aina `device.capabilities.max_absorb_w`
+5. erillinen `policy.activation_threshold_w` on poistettu ja vanhat paketit hylataan fail-closed
+6. `adjustable_surplus_load` ja `adjustable_surplus_activation_w` on poistettu aktiivisesta global config/direct-v2 -sopimuksesta
+7. dispatch diagnostics kayttaa device-ID:ita; `ADJUSTABLE`-paatosalias on poistettu
+8. per-device allocation tuottaa jokaiselle EV:lle oman `DevicePolicy`-tuloksen
+9. hard-off lifecycle etenee `previous_device_states[device_id]`-tilassa itsenaisesti
+10. strict-priority, relay behavior, EV-primary stepped regulation, battery residual/guard, HAEO ja writer contract on sailyttetty
 
 Compatibility:
 
-1. `adjustable_surplus_load` ja `adjustable_surplus_activation_w` voivat sailyä
-   ulkoisina migraatiopintoina
-2. `surplus_adjustable_device_id` ja `selected_ev_device_id` voivat sailyä
-   diagnostiikassa, mutta ne eivat ole generic candidate execution -totuuslahde
-3. `selected_ev_device_id` johdetaan deterministisesti: primary-EV ensin, muuten
-   legacy EV-alias, muuten ensimmainen konfiguroitu EV
-4. production `template.yaml` ei enaa johda `HOME_BATTERY`n tai `EV_CHARGER`in
-   `surplus_allowed`-arvoa legacy selectorista; molemmilla on eksplisiittinen
-   device-owned eligibility ja selector jaa compatibility/diagnostiikkapinnaksi
+1. `adjustable_primary_load` sailyy singular primary-role -valintana
+2. `selected_ev_device_id` sailyy compatibility-diagnostiikkana, ei execution authorityna
+3. kun primary ei ole EV, selected EV johdetaan korkeimmasta device-owned prioritysta eligible-EV-joukossa vakaalla tie-breakilla
+4. vanhat `adjustable_surplus_load`, `adjustable_surplus_activation_w` ja device-policy `activation_threshold_w` -syotteet hylataan direct-v2:ssa eksplisiittisesti
 
 Ei kuulu scopeen: proportional multi-EV power split, EV round-robin,
 strict-priority-vs-first-feasible redesign tai multi-primary control.

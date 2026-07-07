@@ -10,7 +10,6 @@ def build_harness(project_root):
     h.set_entities({
         E['max_battery_discharge_w']: -4000,
         E['ramp_max_w']: 1000,
-        E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['actuator_ev_enabled']: True,
         E['actuator_ev_current_a']: 6,

@@ -96,13 +96,12 @@ sopimuksen:
 3. runtime availability/enable-ehdot sallivat osallistumisen
 4. capability- tai lifecycle-tila ei tee targetista kelvotonta
 
-Kandidaatin authoritative policy-kentat ovat `priority`,
-`activation_threshold_w` ja `surplus_dispatch_mode`. Tuetut dispatch-modet ovat
-`max_absorb` ja `fixed`. Core builder/allocator ei kysy laitteen kindia eika sita,
-onko laite legacy `adjustable_surplus_load`. EV-, relay- ja muut absorb-capable
-kandidaatit ovat samassa strict-priority-jarjestyksessa. Production `template.yaml`
-asettaa `HOME_BATTERY`n ja `EV_CHARGER`in eligibilityn eksplisiittisesti laitekohtaiseksi;
-legacy selector ei portita kumpaakaan.
+Kandidaatin authoritative policy-kentat ovat `priority` ja
+`surplus_dispatch_mode`. Aktivointikynnys johdetaan aina fyysisesta
+`capabilities.max_absorb_w`-arvosta. Tuetut dispatch-modet ovat `max_absorb` ja
+`fixed`. Core builder/allocator ei kysy laitteen kindia eika legacy-selectorin
+arvoa. EV-, relay- ja muut absorb-capable kandidaatit ovat samassa
+strict-priority-jarjestyksessa.
 
 `primary_device_id` sailyy singular control role -kasitteena. Primary-only-
 regulaattoria ei dispatchata toista kertaa poolista. Nykyinen laite, joka tukee
@@ -124,11 +123,11 @@ Generic diagnostics:
 5. `surplus_release_device_id`
 6. `surplus_targets_by_device_id`
 
-`adjustable_surplus_load`, `adjustable_surplus_activation_w`,
-`surplus_adjustable_device_id` ja `selected_ev_device_id` ovat tarvittaessa
-compatibility-pintoja. Ne eivat ole generic candidate poolin execution truth
-source. `selected_ev_device_id` johdetaan deterministisesti: primary-EV ensin,
-muuten legacy EV-alias, muuten ensimmainen konfiguroitu EV.
+`adjustable_surplus_load`, `adjustable_surplus_activation_w` ja
+`surplus_adjustable_device_id` on poistettu aktiivisesta config/runtime/diagnostics-
+sopimuksesta. `selected_ev_device_id` on edelleen compatibility-nakyma, joka
+johdetaan deterministisesti: primary-EV ensin, muuten korkein device-owned priority
+eligible-EV-joukosta ja sen jalkeen vakaa konfiguraatiojarjestys.
 
 ### Dispatch State Applier
 

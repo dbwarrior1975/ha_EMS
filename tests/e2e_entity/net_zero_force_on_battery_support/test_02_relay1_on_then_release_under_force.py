@@ -38,7 +38,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=120),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
@@ -67,7 +67,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=150),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
@@ -86,7 +86,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=-2.0, at_s=180),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
-                'surplus_next_target': 'ADJUSTABLE',
+                'surplus_next_device_id': 'EV_CHARGER',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {
@@ -115,7 +115,7 @@ def test_02_relay1_on_then_release_under_force(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-0.005, required_power_consumption_kw=-2.0, at_s=210),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
-                'surplus_next_target': 'RELAY1',
+                'surplus_next_device_id': 'RELAY1',
                 'prev_force_on_device_ids': ('RELAY2',),
             },
             'expect_device_policies': {

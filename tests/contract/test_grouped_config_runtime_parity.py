@@ -72,7 +72,6 @@ def _write_grouped_config_with_second_ev(project_root, tmp_path):
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
@@ -104,7 +103,6 @@ def _write_grouped_config_without_ev(project_root, tmp_path):
         home_battery_primary = role_constraints.get('HOME_BATTERY_PRIMARY')
         if isinstance(home_battery_primary, dict):
             home_battery_primary.pop('EV_CHARGER', None)
-    config['ems']['global_config']['adjustable_surplus_load'] = 'input_select.ems_adjustable_surplus_load'
     config['ems']['global_config']['adjustable_primary_load'] = 'input_select.ems_adjustable_primary_load'
     path = tmp_path / 'grouped_no_ev.yaml'
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
@@ -174,9 +172,7 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
             ENT['ev_current_step_a']: 2,
             ENT['nz_battery_floor_default_w']: 125,
             ENT['nz_battery_floor_ev_active_w']: 75,
-            ENT['adjustable_surplus_load']: 'EV_CHARGER',
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
-            ENT['adjustable_surplus_activation']: 650,
             ENT['haeo_stale_timeout_s']: 240,
             ENT['devices']['RELAY1']['max_absorb_w']: 2300,
             ENT['devices']['RELAY2']['max_absorb_w']: 4800,
@@ -226,9 +222,7 @@ def test_grouped_config_runtime_reader_matches_dict_core_view(project_root):
             ENT['ev_current_step_a']: 1,
             ENT['nz_battery_floor_default_w']: 175,
             ENT['nz_battery_floor_ev_active_w']: 25,
-            ENT['adjustable_surplus_load']: 'EV_CHARGER',
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
-            ENT['adjustable_surplus_activation']: 550,
             ENT['haeo_stale_timeout_s']: 180,
             ENT['devices']['RELAY1']['max_absorb_w']: 2100,
             ENT['devices']['RELAY2']['max_absorb_w']: 4400,
@@ -282,9 +276,7 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
             ENT['ev_current_step_a']: 2,
             ENT['nz_battery_floor_default_w']: 150,
             ENT['nz_battery_floor_ev_active_w']: 50,
-            ENT['adjustable_surplus_load']: 'EV_CHARGER',
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
-            ENT['adjustable_surplus_activation']: 700,
             ENT['haeo_stale_timeout_s']: 210,
             ENT['devices']['RELAY1']['max_absorb_w']: 2200,
             ENT['devices']['RELAY2']['max_absorb_w']: 4600,
@@ -848,22 +840,22 @@ def test_runtime_context_cache_reset_for_tests(project_root, monkeypatch):
 
 
 @pytest.mark.unit
-def test_dynamic_control_profile_value_updates_with_static_context_cache_hit(project_root, monkeypatch):
+def test_dynamic_primary_device_value_updates_with_static_context_cache_hit(project_root, monkeypatch):
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'example_EMS_config.yaml'))
     runtime_context_mod._reset_runtime_context_config_cache()
     monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
     values = {
-        ENT['adjustable_surplus_load']: 'EV_CHARGER',
+        ENT['adjustable_primary_load']: 'HOME_BATTERY',
     }
     read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
 
     first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
-    values[ENT['adjustable_surplus_load']] = 'HOME_BATTERY'
+    values[ENT['adjustable_primary_load']] = 'EV_CHARGER'
     second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
 
     metrics = runtime_context_mod.runtime_context_metrics_attrs()
-    assert first_cfg.adjustable_surplus_load == 'EV_CHARGER'
-    assert second_cfg.adjustable_surplus_load == 'HOME_BATTERY'
+    assert first_cfg.adjustable_primary_load == 'HOME_BATTERY'
+    assert second_cfg.adjustable_primary_load == 'EV_CHARGER'
     assert metrics['policy_engine_static_context_cache_hit'] is True
 
 
@@ -1029,7 +1021,6 @@ def test_runtime_context_metrics_measure_dynamic_reads_separately_from_core_conf
     monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
     values = {
         ENT['battery_protect_soc']: 7,
-        ENT['adjustable_surplus_load']: 'EV_CHARGER',
         ENT['devices']['EV_CHARGER']['priority']: 4,
         ENT['ev_force_on']: False,
     }
@@ -1246,13 +1237,11 @@ def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(proj
     harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_path)
     harness.set_entities(
         {
-            ENT['adjustable_surplus_load']: 'EV_GARAGE',
             ENT['adjustable_primary_load']: 'HOME_BATTERY',
-            ENT['adjustable_surplus_activation']: 2000,
-            ENT['grid_power_w']: -3200,
-            ENT['quarter_energy_balance']: -0.8,
-            ENT['rpnz_w']: 3200,
-            ENT['required_power_consumption_kw']: 3.2,
+            ENT['grid_power_w']: -4000,
+            ENT['quarter_energy_balance']: -1.0,
+            ENT['rpnz_w']: 4000,
+            ENT['required_power_consumption_kw']: 4.0,
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1262,7 +1251,6 @@ def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(proj
             'input_number.ems_ev_garage_power_step_w': 460,
             'input_number.ems_surplus_ev_garage_priority': 4,
             'input_boolean.ems_ev_garage_surplus_allowed': True,
-            'input_number.ems_ev_garage_activation_threshold_w': 2400,
             'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
             'input_number.ems_ev_garage_low_pv_cycles': 2,
             'input_number.ems_ev_garage_release_cycles': 2,
@@ -1285,13 +1273,11 @@ def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(proj
     assert set(harness.policy_mod['read_config']().devices) >= {'EV_CHARGER', 'EV_GARAGE'}
     assert trace_attrs['ev_device_ids'] == ('EV_CHARGER', 'EV_GARAGE')
     assert {'EV_CHARGER', 'EV_GARAGE'} <= set(trace_attrs['surplus_candidate_device_ids'])
-    # selected_ev_device_id is a deterministic compatibility view, not pool membership.
-    assert trace_attrs['selected_ev_device_id'] == 'EV_GARAGE'
     assert policies['EV_GARAGE']['enabled'] is True
     assert policies['EV_GARAGE']['target_w'] == 3680
     assert policies['EV_CHARGER']['enabled'] is False
     assert policies['EV_CHARGER']['target_w'] == 0
-    assert trace_attrs['previous_ev_device_states']['EV_GARAGE']['mode'] == trace_attrs['ev_policy_mode']
+    assert trace_attrs['previous_device_states']['EV_GARAGE']['mode'] == policies['EV_GARAGE']['mode']
     assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'canonical'
     assert writer_attrs['devices']['EV_GARAGE']['policy_source'] == 'canonical'
     assert writer_attrs['devices']['EV_GARAGE']['target_current_a'] == 16
@@ -1310,9 +1296,7 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
     harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_path)
     harness.set_entities(
         {
-            ENT['adjustable_surplus_load']: 'HOME_BATTERY',
             ENT['adjustable_primary_load']: '',
-            ENT['adjustable_surplus_activation']: 2000,
             ENT['grid_power_w']: -2400,
             ENT['quarter_energy_balance']: -0.5,
             ENT['rpnz_w']: 2400,
@@ -1331,9 +1315,6 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
     policies = {item['device_id']: item for item in trace_attrs['device_policies']}
 
     assert trace_attrs['ev_device_ids'] == ()
-    assert trace_attrs['selected_ev_device_id'] == ''
-    assert trace_attrs['ev_policy_mode'] == 'skip'
-    assert trace_attrs['ev_target_w'] == 0
     assert 'EV_CHARGER' not in policies
     assert set(policies) == {'HOME_BATTERY', 'RELAY1', 'RELAY2'}
     assert 'EV_CHARGER' not in writer_attrs['devices']

@@ -62,9 +62,7 @@ class RuntimePolicyConfig:
         self.haeo_stale_timeout_s = float(global_cfg.haeo_stale_timeout_s)
         self.nz_battery_floor_default_w = float(global_cfg.nz_battery_floor_default_w)
         self.nz_battery_floor_ev_active_w = float(global_cfg.nz_battery_floor_ev_active_w)
-        self.adjustable_surplus_load = str(global_cfg.adjustable_surplus_load)
         self.adjustable_primary_load = str(global_cfg.adjustable_primary_load)
-        self.adjustable_surplus_activation = float(global_cfg.adjustable_surplus_activation_w)
 
         battery_id = self.device_ids_by_kind_map.get('BATTERY', ('HOME_BATTERY',))[0]
         battery_caps = self.device_capabilities_by_id[battery_id]
@@ -77,9 +75,6 @@ class RuntimePolicyConfig:
         self.battery_protect_soc_recovery_margin = float(battery_guard['protect_soc_recovery_margin'])
         self.battery_protect_min_cell_voltage_v = float(battery_guard['protect_min_cell_voltage_v'])
         self.battery_protect_charge_floor_w = float(battery_guard['protect_min_absorb_w'])
-        self.adjustable_surplus_load_priority = int(
-            self.device_policy_by_id.get(self.adjustable_surplus_load, {}).get('priority', 0) or 0
-        )
 
         self.devices = {}
         for device_id in self.device_kind_by_id:
@@ -209,8 +204,8 @@ class TickFrame:
             ev_target_kw=max(float(self.haeo_ev_state_kw), 0.0),
         )
 
-    def selected_previous_device_state(self, adjustable_device_id: str) -> dict:
-        device_id = str(adjustable_device_id or '')
+    def selected_previous_device_state(self, device_id: str) -> dict:
+        device_id = str(device_id or '')
         if device_id and device_id in self.previous_device_states:
             return dict(self.previous_device_states[device_id])
         state = dict(self.previous_device_state or {})
@@ -429,6 +424,12 @@ def _parse_policy_config_v2(
     )
 
     cfg_raw = _mapping(_required(packet, 'config', 'policy_config'), 'policy_config.config')
+    for removed_field in ('adjustable_surplus_load', 'adjustable_surplus_activation_w'):
+        if removed_field in cfg_raw:
+            _fail(
+                f'policy_config.config.{removed_field}',
+                'legacy field removed; surplus eligibility is device-owned and activation threshold derives from capabilities.max_absorb_w',
+            )
     number_fields = (
         'deadband_w',
         'ramp_w',
@@ -439,28 +440,19 @@ def _parse_policy_config_v2(
         'haeo_stale_timeout_s',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'adjustable_surplus_activation_w',
     )
     cfg_values = {}
     for field in number_fields:
         cfg_values[field] = _number(_required(cfg_raw, field, 'policy_config.config'), f'policy_config.config.{field}')
-    if cfg_values['adjustable_surplus_activation_w'] <= 0.0:
-        _fail('policy_config.config.adjustable_surplus_activation_w', 'must be greater than zero')
-    cfg_values['adjustable_surplus_load'] = _text(
-        _required(cfg_raw, 'adjustable_surplus_load', 'policy_config.config'),
-        'policy_config.config.adjustable_surplus_load',
-    )
     cfg_values['adjustable_primary_load'] = _text(
         _required(cfg_raw, 'adjustable_primary_load', 'policy_config.config'),
         'policy_config.config.adjustable_primary_load',
         allow_empty=True,
     )
-    for field in ('adjustable_surplus_load', 'adjustable_primary_load'):
+    for field in ('adjustable_primary_load',):
         device_id = cfg_values[field]
         if device_id and device_id not in topology.device_kind_by_id:
             _fail(f'policy_config.config.{field}', f'unknown device id {device_id}')
-
-    adjustable_device_id = cfg_values['adjustable_surplus_load']
 
     devices_raw = _mapping(_required(packet, 'devices', 'policy_config'), 'policy_config.devices')
     packet_device_ids = set()
@@ -502,14 +494,15 @@ def _parse_policy_config_v2(
         capabilities_by_id[device_id] = caps
 
         policy_raw = _mapping(_required(device, 'policy', device_path), f'{device_path}.policy')
+        if 'activation_threshold_w' in policy_raw:
+            _fail(
+                f'{device_path}.policy.activation_threshold_w',
+                'field removed; surplus activation threshold derives from capabilities.max_absorb_w',
+            )
         policy = {'priority': _integer(_required(policy_raw, 'priority', f'{device_path}.policy'), f'{device_path}.policy.priority')}
         policy['surplus_allowed'] = _strict_boolean(
             _required(policy_raw, 'surplus_allowed', f'{device_path}.policy'),
             f'{device_path}.policy.surplus_allowed',
-        )
-        policy['activation_threshold_w'] = _number(
-            _required(policy_raw, 'activation_threshold_w', f'{device_path}.policy'),
-            f'{device_path}.policy.activation_threshold_w',
         )
         policy['surplus_dispatch_mode'] = _text(
             _required(policy_raw, 'surplus_dispatch_mode', f'{device_path}.policy'),
@@ -517,8 +510,6 @@ def _parse_policy_config_v2(
         )
         if policy['surplus_dispatch_mode'] not in ('max_absorb', 'fixed'):
             _fail(f'{device_path}.policy.surplus_dispatch_mode', 'must be max_absorb or fixed')
-        if policy['surplus_allowed'] and policy['activation_threshold_w'] <= 0.0:
-            _fail(f'{device_path}.policy.activation_threshold_w', 'must be greater than zero when surplus_allowed is true')
         adapter = {}
         if kind == 'BATTERY':
             policy['default_min_absorb_w'] = _number(
@@ -599,7 +590,7 @@ def _parse_policy_config_v2(
     if not residual_regulator_device_id:
         _fail(
             'policy_config.config.adjustable_primary_load',
-            'selected primary/adjustable combination has no residual regulator capability',
+            'selected primary configuration has no residual regulator capability',
         )
 
     parsed = RuntimePolicyConfig(

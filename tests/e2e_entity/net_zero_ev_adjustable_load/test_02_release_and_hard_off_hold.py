@@ -48,7 +48,7 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
-                'ev_low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
                 'battery_to_ev_loop_risk': 0.0,
             },
             'expect_values': {
@@ -58,7 +58,7 @@ def test_02_release_and_hard_off_hold(project_root):
         },
         {
             'at_s': 150,
-            'note': 't150 PV below threshold: RELEASE_ADJUSTABLE occurs and battery target ramps down per limits.',
+            'note': 't150 PV below threshold: RELEASE_HOME_BATTERY occurs and battery target ramps down per limits.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=-100.0,
@@ -105,7 +105,7 @@ def test_02_release_and_hard_off_hold(project_root):
                 'HOME_BATTERY': {'target_w': 200},
             },
             'expect_policy': {
-                'ev_hard_off_active': True,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'battery_to_ev_loop_risk': False,
@@ -145,7 +145,7 @@ def test_02_release_and_hard_off_hold(project_root):
         },
         {
             'at_s': 210,
-            'note': 't210 PV 1.0 kW with negative RPNZ: remain in hold path while waiting below ADJUSTABLE threshold.',
+            'note': 't210 PV 1.0 kW with negative RPNZ: remain in hold path while waiting below HOME_BATTERY threshold.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=-40.0,
@@ -223,7 +223,7 @@ def test_02_release_and_hard_off_hold(project_root):
                 'HOME_BATTERY': {'target_w': 200},
             },
             'expect_policy': {
-                'ev_hard_off_active': True,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'activation_gate_hold',
             },

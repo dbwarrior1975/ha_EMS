@@ -9,7 +9,7 @@ from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 
 @pytest.mark.scenario
 def test_02_release_and_restore_min(project_root):
-    """Phase 2: release ADJUSTABLE and restore EV to minimum before hard-off."""
+    """Phase 2: release EV_CHARGER and restore EV to minimum before hard-off."""
     h = build_harness(project_root)
     E = h.ent
     pv_ent = E['pv_power_w']
@@ -32,7 +32,7 @@ def test_02_release_and_restore_min(project_root):
     steps = [
         {
             'at_s': 90,
-            'note': 't90 PV drops below threshold and RELEASE_ADJUSTABLE is decided; writer restores EV to minimum',
+            'note': 't90 PV drops below threshold and RELEASE_EV_CHARGER is decided; writer restores EV to minimum',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=0.0,
@@ -47,9 +47,9 @@ def test_02_release_and_restore_min(project_root):
             ),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
-                'surplus_next_target': 'RELAY2',
-                'ev_low_pv_cycles': 0,
-                'ev_hard_off_active': False,
+                'surplus_next_device_id': 'RELAY2',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'pv_power_kw': 1.4,
             },
             'expect_writer_trace': {
@@ -81,9 +81,9 @@ def test_02_release_and_restore_min(project_root):
             ),
             'expect_policy': {
                 'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
-                'surplus_next_target': 'ADJUSTABLE',
-                'ev_low_pv_cycles': 1,
-                'ev_hard_off_active': False,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 1,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'pv_power_kw': 1.3,
             },
             'expect_device_policies': {

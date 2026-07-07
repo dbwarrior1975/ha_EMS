@@ -16,13 +16,9 @@ def build_harness(project_root):
     h.set_entities({
         E['surplus_freeze_s']: 15,
         E['ramp_max_w']: 1000,
-        E['adjustable_surplus_load']: 'EV_GARAGE',
         E['adjustable_primary_load']: 'HOME_BATTERY',
-        E['adjustable_surplus_activation']: 2000,
         E['devices']['EV_GARAGE']['priority']: 4,
         E['current_battery_sp']: 0.0,
-        'input_number.ems_ev_main_activation_threshold_w': 2000,
-        'input_number.ems_ev_garage_activation_threshold_w': 2000,
         'input_number.ems_ev_main_min_power_w': 1380,
         'input_number.ems_ev_main_max_power_w': 3680,
         'input_number.ems_ev_main_power_step_w': 460,

@@ -17,7 +17,6 @@ def build_harness(project_root):
 
     h.set_entities({
         E['ramp_max_w']: 1000,
-        E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['goal_profile']: 'NET_ZERO',
         E['forecast_profile']: 'NONE',

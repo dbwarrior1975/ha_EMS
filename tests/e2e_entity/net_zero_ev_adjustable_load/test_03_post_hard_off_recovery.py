@@ -48,7 +48,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'HOME_BATTERY': {'target_w': 500},
             },
             'expect_policy': {
-                'ev_hard_off_release_ready_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'activation_gate_hold',
             },
@@ -78,7 +78,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
-                'ev_hard_off_release_ready_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': None,
             },
@@ -107,7 +107,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
-                'ev_hard_off_release_ready_cycles': 1,                
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,                
                 'surplus_freeze_until_ts': 104,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': None,
@@ -136,7 +136,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
-                'ev_hard_off_release_ready_cycles': 2,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': 2380,
             },
@@ -196,7 +196,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
-                'ev_hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': 2380,
             },
@@ -226,7 +226,7 @@ def test_03_post_hard_off_recovery(project_root):
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
-                'ev_hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'primary_power_envelope_w': 3300,
             },

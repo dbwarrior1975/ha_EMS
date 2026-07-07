@@ -29,9 +29,7 @@ template:
               states.input_number.ems_nz_battery_floor_default_w,
               states.input_number.ems_nz_battery_floor_ev_active_w,
   
-              states.input_select.ems_adjustable_surplus_load,
               states.input_select.ems_adjustable_primary_load,
-              states.input_number.ems_adjustable_surplus_activation_w,
   
               states.input_number.ems_max_battery_charge_w,
               states.input_number.ems_max_battery_discharge_w,
@@ -114,14 +112,9 @@ template:
                 'nz_battery_floor_ev_active_w':
                   states('input_number.ems_nz_battery_floor_ev_active_w'),
   
-                'adjustable_surplus_load':
-                  states('input_select.ems_adjustable_surplus_load'),
-  
                 'adjustable_primary_load':
                   states('input_select.ems_adjustable_primary_load'),
   
-                'adjustable_surplus_activation_w':
-                  states('input_number.ems_adjustable_surplus_activation_w')
               }
             }}
   
@@ -189,12 +182,9 @@ template:
                         'input_number.ems_adjustable_surplus_load_priority'
                       ),
 
-                    # Device-owned eligibility. The legacy adjustable selector
+                    # Device-owned eligibility. No global surplus selector
                     # remains compatibility-only and does not gate this device.
                     'surplus_allowed': true,
-
-                    'activation_threshold_w':
-                      states('input_number.ems_adjustable_surplus_activation_w'),
 
                     'surplus_dispatch_mode': 'max_absorb',
   
@@ -247,12 +237,8 @@ template:
                     'priority':
                       states('input_number.ems_surplus_ev_priority'),
                 
-                    # Device-owned eligibility. Independent of the legacy
-                    # adjustable_surplus_load selector.
+                    # Device-owned surplus eligibility.
                     'surplus_allowed': true,
-
-                    'activation_threshold_w':
-                      states('input_number.ems_adjustable_surplus_activation_w'),
 
                     'surplus_dispatch_mode': 'max_absorb',
                 

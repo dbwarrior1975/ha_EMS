@@ -160,8 +160,8 @@ def test_validate_rejects_non_boolean_surplus_allowed(project_root, value):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('value', (0, -1, -0.5))
-def test_validate_rejects_non_positive_surplus_activation_threshold(project_root, value):
+@pytest.mark.parametrize('value', (0, -1, -0.5, 4400))
+def test_validate_rejects_removed_surplus_activation_threshold_field(project_root, value):
     config = _load_example(project_root)
     config['ems']['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = value
 
@@ -169,16 +169,6 @@ def test_validate_rejects_non_positive_surplus_activation_threshold(project_root
 
     assert result.ok is False
     assert 'ems.devices.EV_CHARGER.policy.activation_threshold_w' in _error_paths(result)
-
-
-@pytest.mark.unit
-def test_validate_accepts_positive_numeric_surplus_activation_threshold(project_root):
-    config = _load_example(project_root)
-    config['ems']['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = 4400
-
-    result = validate_grouped_ems_config(config)
-
-    assert result.ok is True
 
 
 @pytest.mark.unit
@@ -193,7 +183,7 @@ def test_validate_rejects_unknown_surplus_dispatch_mode(project_root):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('field', ('surplus_allowed', 'activation_threshold_w', 'surplus_dispatch_mode'))
+@pytest.mark.parametrize('field', ('surplus_allowed', 'surplus_dispatch_mode'))
 def test_validate_rejects_missing_required_ev_surplus_policy_field(project_root, field):
     config = _load_example(project_root)
     del config['ems']['devices']['EV_CHARGER']['policy'][field]
@@ -742,7 +732,7 @@ def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alia
     assert cfg.max_solar_charge_w == 3700
     assert cfg.max_battery_discharge_w == 4600
     assert cfg.device_by_id('EV_CHARGER').policy.low_pv_threshold_w == 1.8
-    assert cfg.adjustable_surplus_load == 'EV_CHARGER'
+    assert not hasattr(cfg, 'adjustable_surplus_load')
     assert cfg.adjustable_primary_load == 'HOME_BATTERY'
 
 
@@ -985,7 +975,7 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
 
     plan = compile_core_config_plan_from_grouped_config(config)
     deadband_ref = plan.grouped_config_plan['ems']['global_config']['deadband_w']
-    adjustable_ref = plan.grouped_config_plan['ems']['global_config']['adjustable_surplus_load']
+    primary_ref = plan.grouped_config_plan['ems']['global_config']['adjustable_primary_load']
     ev_force_on_ref = plan.grouped_config_plan['ems']['devices']['EV_CHARGER']['policy']['force_on']
 
     assert isinstance(deadband_ref, DynamicConfigRef)
@@ -994,9 +984,9 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
     assert deadband_ref.value_type == 'int'
     assert deadband_ref.default == 50
 
-    assert isinstance(adjustable_ref, DynamicConfigRef)
-    assert adjustable_ref.value_type == 'str'
-    assert adjustable_ref.default == 'HOME_BATTERY'
+    assert isinstance(primary_ref, DynamicConfigRef)
+    assert primary_ref.value_type == 'str'
+    assert primary_ref.default == ''
 
     assert isinstance(ev_force_on_ref, DynamicConfigRef)
     assert ev_force_on_ref.path == 'ems.devices.EV_CHARGER.policy.force_on'
@@ -1065,14 +1055,13 @@ def test_battery_priority_does_not_inherit_ev_priority_when_battery_value_equals
 
 
 @pytest.mark.unit
-def test_compat_adjustable_priority_is_derived_from_selected_device(project_root):
+def test_device_priorities_are_independent_of_removed_surplus_selector(project_root):
     config = _load_example(project_root)
 
     cfg = build_core_config_from_grouped_reader(
         config,
         _plan_reader_from_values(
             {
-                'input_select.ems_adjustable_surplus_load': 'EV_CHARGER',
                 'input_number.ems_adjustable_surplus_load_priority': 2,
                 'input_number.ems_surplus_ev_priority': 3,
             }
@@ -1081,7 +1070,7 @@ def test_compat_adjustable_priority_is_derived_from_selected_device(project_root
 
     assert cfg.home_battery.policy.priority == 2
     assert cfg.ev_charger.policy.priority == 3
-    assert cfg.adjustable_surplus_load_priority == 3
+    assert not hasattr(cfg, 'adjustable_surplus_load')
 
 
 @pytest.mark.unit
@@ -1120,13 +1109,14 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
 
 
 @pytest.mark.unit
-def test_grouped_config_allows_legacy_adjustable_surplus_alias_to_reference_relay(project_root):
+def test_grouped_config_rejects_removed_legacy_adjustable_surplus_alias(project_root):
     config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     config['ems']['global_config']['adjustable_surplus_load'] = 'RELAY1'
 
     result = validate_grouped_ems_config(config)
 
-    assert result.ok is True
+    assert result.ok is False
+    assert 'ems.global_config.adjustable_surplus_load' in _error_paths(result)
 
 
 @pytest.mark.unit

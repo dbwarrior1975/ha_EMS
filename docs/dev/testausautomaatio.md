@@ -274,11 +274,12 @@ Lisaaregressiosuoja voisi edelleen olla hyodyllinen esimerkiksi:
 Refaktoroinnin pakollinen regressiopinta kattaa seuraavat sopimukset:
 
 1. grouped-config ja direct-v2 parseri hyvaksyvat vain strict boolean
-   `surplus_allowed` -arvot ja positiivisen `activation_threshold_w`:n
-2. `surplus_dispatch_mode` hyvaksyy vain `max_absorb` ja `fixed`
+   `surplus_allowed` -arvot ja hylkaavat poistetun `activation_threshold_w`-kentän
+2. activation threshold johdetaan `capabilities.max_absorb_w`:sta ja
+   `surplus_dispatch_mode` hyvaksyy vain `max_absorb` ja `fixed`
 3. `EV_A`, `EV_B` ja `RELAY1` voivat olla samassa kandidaattipoolissa
 4. EV-vs-EV ja EV-vs-relay ordering kayttavat device-owned prioritya
-5. EV-kohtaiset kynnykset ja force-on-tilat eivat vuoda laitteiden valilla
+5. device-kohtaiset `max_absorb_w`-kynnykset ja force-on-tilat eivat vuoda laitteiden valilla
 6. hard-off state ja release-ready-counter etenevat/nollautuvat EV-kohtaisesti
 7. toinen EV voi aktivoitua ilman selected-single-rajaa ja molemmat EV:t saavat
    omat `DevicePolicy`-tulokset

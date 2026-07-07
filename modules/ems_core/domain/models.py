@@ -69,9 +69,7 @@ class CoreGlobalConfig:
     haeo_stale_timeout_s: ScalarRef
     nz_battery_floor_default_w: ScalarRef
     nz_battery_floor_ev_active_w: ScalarRef
-    adjustable_surplus_load: EntityRef
     adjustable_primary_load: EntityRef
-    adjustable_surplus_activation_w: ScalarRef
 
 
 @dataclass
@@ -119,7 +117,6 @@ class HardOffLifecycleTransition:
 class CoreBatteryPolicyConfig:
     priority: ScalarRef
     surplus_allowed: bool = False
-    activation_threshold_w: Optional[ScalarRef] = None
     surplus_dispatch_mode: str = 'max_absorb'
     default_min_absorb_w: Optional[ScalarRef] = None
 
@@ -159,7 +156,6 @@ class CoreEvPolicyConfig:
     low_pv_threshold_w: ScalarRef
     hard_off_low_pv_cycles: ScalarRef
     hard_off_release_cycles: ScalarRef
-    activation_threshold_w: ScalarRef = 0
     surplus_dispatch_mode: str = 'max_absorb'
 
 
@@ -186,7 +182,6 @@ class CoreRelayPolicyConfig:
     priority: ScalarRef
     surplus_allowed: EntityRef
     force_on: EntityRef
-    activation_threshold_w: ScalarRef = 0
     surplus_dispatch_mode: str = 'fixed'
 
 
@@ -293,11 +288,8 @@ class CoreConfig:
     battery_protect_charge_floor_w: Optional[ScalarRef] = None
     nz_battery_floor_default_w: Optional[ScalarRef] = None
     nz_battery_floor_ev_active_w: Optional[ScalarRef] = None
-    adjustable_surplus_load: Optional[EntityRef] = None
     adjustable_primary_load: Optional[EntityRef] = None
-    adjustable_surplus_activation: Optional[ScalarRef] = None
     surplus_freeze_s: Optional[ScalarRef] = None
-    adjustable_surplus_load_priority: Optional[ScalarRef] = None
 
     def __post_init__(self):
         if self.policy_engine is None:
@@ -338,23 +330,10 @@ class CoreConfig:
             self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
         if self.nz_battery_floor_ev_active_w is None:
             self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        if self.adjustable_surplus_load is None:
-            self.adjustable_surplus_load = self.global_config.adjustable_surplus_load
         if self.adjustable_primary_load is None:
             self.adjustable_primary_load = self.global_config.adjustable_primary_load
-        if self.adjustable_surplus_activation is None:
-            self.adjustable_surplus_activation = self.global_config.adjustable_surplus_activation_w
         if self.surplus_freeze_s is None:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
-        selected_adjustable = self.device_by_id(str(self.adjustable_surplus_load))
-        if selected_adjustable is not None:
-            self.adjustable_surplus_load_priority = getattr(
-                getattr(selected_adjustable, 'policy', None),
-                'priority',
-                0,
-            )
-        elif self.adjustable_surplus_load_priority is None:
-            self.adjustable_surplus_load_priority = 0
     def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
         if self.devices is None:
             return None
@@ -439,9 +418,8 @@ class HaeoNetZeroPlan:
     active: bool
     quarter_key: str = ''
     primary_load: str = ''
-    adjustable_surplus_load: str = ''
     primary_device_id: str = ''
-    adjustable_device_id: str = ''
+    preferred_surplus_device_id: str = ''
     device_limits_w: Optional[dict] = None
     battery_limit_w: int = 0
     ev_limit_w: int = 0

@@ -22,7 +22,6 @@ def build_harness(project_root):
         E['actuator_ev_current_a']: 6,
         pv_ent: 3500.0,
         E['surplus_freeze_s']: 15,
-        E['adjustable_surplus_load']: 'EV_CHARGER',
         E['adjustable_primary_load']: 'HOME_BATTERY',
         E['devices']['EV_CHARGER']['priority']: 2,
         E['devices']['RELAY1']['priority']: 3,

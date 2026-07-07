@@ -79,8 +79,8 @@ Kayttajan odotus:
 
 NET_ZERO kasittelee surplusia device-/policy-vetoisena kandidaattipoolina.
 Osallistuva laite tarvitsee `can_absorb_w=true` ja `surplus_allowed=true`. Sen
-jarjestys tulee omasta `priority`-arvosta, aktivointi omasta
-`activation_threshold_w`-arvosta ja aktiivinen target omasta
+jarjestys tulee omasta `priority`-arvosta. Aktivointikynnys on aina laitteen
+`capabilities.max_absorb_w`, ja aktiivinen target tulee omasta
 `surplus_dispatch_mode`-strategiasta (`max_absorb` tai `fixed`).
 
 Useampi EV voi olla samassa poolissa. Korkeampi priority arvioidaan ensin, ja

@@ -13,13 +13,13 @@ def _candidate(device_id, *, priority=1, threshold_w=2000, enabled=True, **overr
     item = {
         'device_id': device_id,
         'priority': priority,
-        'activation_threshold_w': threshold_w,
+        'threshold_w': threshold_w,
         'surplus_dispatch_mode': 'max_absorb',
         'enabled': enabled,
         'force_on': False,
         'active': False,
         'activation_allowed': True,
-        'threshold_source': 'device_policy.activation_threshold_w',
+        'threshold_source': 'device_capabilities.max_absorb_w',
     }
     item.update(overrides)
     return item
@@ -113,7 +113,6 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'activation_threshold_w': 'input_number.ems_ev_garage_activation_threshold_w',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
             'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
@@ -135,7 +134,6 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
         'input_number.ems_ev_garage_power_step_w': 460,
         'input_number.ems_surplus_ev_garage_priority': 4,
         'input_boolean.ems_ev_garage_surplus_allowed': True,
-        'input_number.ems_ev_garage_activation_threshold_w': 3600,
         'input_boolean.ems_ev_garage_force_on': False,
         'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
         'input_number.ems_ev_garage_low_pv_cycles': 2,
@@ -160,13 +158,13 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
         active_device_ids=(),
         lifecycle_transitions_by_id={},
         primary_device_id='HOME_BATTERY',
-        legacy_adjustable_device_id='',
         facts=cfg.policy_runtime_facts(),
     )
     by_id = {item['device_id']: item for item in contexts}
 
     assert 'EV_GARAGE' in by_id
     assert by_id['EV_GARAGE']['priority'] == 4
-    assert by_id['EV_GARAGE']['activation_threshold_w'] == 3600
+    assert by_id['EV_GARAGE']['threshold_w'] == 3680
+    assert by_id['EV_GARAGE']['threshold_source'] == 'device_capabilities.max_absorb_w'
     assert by_id['EV_GARAGE']['surplus_dispatch_mode'] == 'max_absorb'
     assert call_counts == {}

@@ -47,6 +47,18 @@ def _device_capability(cfg, device_id, field, default=None):
     return getattr(capabilities, field, default)
 
 
+
+def _device_policy_value(cfg, device_id, field, default=None):
+    if hasattr(cfg, 'device_policy_value'):
+        return cfg.device_policy_value(device_id, field, default)
+    device = _device_by_id(cfg, device_id)
+    if device is None:
+        return default
+    policy = getattr(device, 'policy', None)
+    if policy is None:
+        return default
+    return getattr(policy, field, default)
+
 def _ev_device_ids(cfg):
     if hasattr(cfg, 'device_ids_by_kind'):
         ids = []
@@ -81,12 +93,24 @@ def _is_ev_device_id(cfg, device_id):
 
 
 def _selected_ev_device_id(cfg):
-    adjustable_surplus_load = str(getattr(cfg, 'adjustable_surplus_load', '') or '')
-    adjustable_primary_load = str(getattr(cfg, 'adjustable_primary_load', '') or '')
-    if _is_ev_device_id(cfg, adjustable_surplus_load):
-        return adjustable_surplus_load
-    if _is_ev_device_id(cfg, adjustable_primary_load):
-        return adjustable_primary_load
+    primary_device_id = str(getattr(cfg, 'adjustable_primary_load', '') or '')
+    if _is_ev_device_id(cfg, primary_device_id):
+        return primary_device_id
+
+    best_device_id = ''
+    best_priority = None
+    for device_id in _ev_device_ids(cfg):
+        if not bool(_device_policy_value(cfg, device_id, 'surplus_allowed', False)):
+            continue
+        try:
+            priority = int(_device_policy_value(cfg, device_id, 'priority', 0) or 0)
+        except (TypeError, ValueError):
+            priority = 0
+        if best_priority is None or priority > best_priority:
+            best_device_id = str(device_id)
+            best_priority = priority
+    if best_device_id:
+        return best_device_id
     return _default_ev_device_id(cfg)
 
 
@@ -148,7 +172,7 @@ def compute_haeo_net_zero_plan(
         primary_device_id = 'HOME_BATTERY'
         reason = 'tie_default_home_battery'
 
-    adjustable_device_id = selected_ev_device_id if primary_device_id == 'HOME_BATTERY' else 'HOME_BATTERY'
+    preferred_surplus_device_id = selected_ev_device_id if primary_device_id == 'HOME_BATTERY' else 'HOME_BATTERY'
     device_limits_w = {
         'HOME_BATTERY': int(battery_limit_w),
         selected_ev_device_id: int(ev_limit_w),
@@ -162,9 +186,8 @@ def compute_haeo_net_zero_plan(
         active=True,
         quarter_key=quarter_key,
         primary_load=primary_device_id,
-        adjustable_surplus_load=adjustable_device_id,
         primary_device_id=primary_device_id,
-        adjustable_device_id=adjustable_device_id,
+        preferred_surplus_device_id=preferred_surplus_device_id,
         device_limits_w=device_limits_w,
         battery_limit_w=int(battery_limit_w),
         ev_limit_w=int(ev_limit_w),
