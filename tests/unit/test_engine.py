@@ -902,9 +902,10 @@ def test_engine_disables_ev_adjustable_when_ev_cannot_absorb(project_root):
         adjustable_surplus_active=False,
     )
 
-    assert out.surplus_dispatch_decision == 'NOOP'
+    assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
     candidate_ids = {item['device_id'] for item in out.attrs['surplus_device_targets']}
     assert 'EV_CHARGER' not in candidate_ids
+    assert 'HOME_BATTERY' in candidate_ids
 
 
 @pytest.mark.unit

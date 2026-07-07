@@ -841,7 +841,7 @@ def test_runtime_packet_policy_config_revision_is_automatic_not_missing_helper(p
     assert 'source.last_updated' in revision_template
     assert 'namespace(latest=0.0)' in revision_template
     assert 'input_select.ems_control_profile' in revision_template
-    assert 'input_boolean.ems_surplus_adjustable_active' in revision_template
+    assert 'input_boolean.ems_surplus_adjustable_active' not in revision_template
     assert 'input_boolean.ems_ev_surplus_allowed' not in revision_template
     assert 'input_boolean.ems_ev_force_on' in revision_template
 
@@ -864,10 +864,30 @@ def test_runtime_packet_policy_config_uses_runtime_helpers_instead_of_hardcoded_
     assert "states('input_number.ems_ev_charger_phases')" in devices_template
     assert "states('input_number.ems_ev_voltage_v')" in devices_template
     assert "input_number.ems_ev_power_step_w" not in devices_template
-    assert "input_boolean.ems_surplus_adjustable_active" in devices_template
+    assert "input_boolean.ems_surplus_adjustable_active" not in devices_template
+    battery_section = devices_template.split("'HOME_BATTERY': {", 1)[1].split("'EV_CHARGER': {", 1)[0]
+    ev_section = devices_template.split("'EV_CHARGER': {", 1)[1].split("'RELAY1': {", 1)[0]
+    assert "'surplus_allowed': true" in ' '.join(battery_section.split())
+    assert "'surplus_allowed': true" in ' '.join(ev_section.split())
     assert "input_boolean.ems_ev_force_on" in devices_template
     assert "input_boolean.ems_relay1_force_on" in devices_template
     assert "input_boolean.ems_relay2_force_on" in devices_template
+
+
+@pytest.mark.unit
+def test_production_template_surplus_eligibility_is_independent_of_legacy_adjustable_selector(project_root):
+    source = yaml.safe_load((project_root / 'template.yaml').read_text(encoding='utf-8'))
+    sensors = source['template'][0]['sensor']
+    policy_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Policy Config Runtime')
+    devices_template = policy_sensor['attributes']['devices']
+
+    battery_section = devices_template.split("'HOME_BATTERY': {", 1)[1].split("'EV_CHARGER': {", 1)[0]
+    ev_section = devices_template.split("'EV_CHARGER': {", 1)[1].split("'RELAY1': {", 1)[0]
+
+    assert "states('input_select.ems_adjustable_surplus_load')" not in battery_section
+    assert "states('input_select.ems_adjustable_surplus_load')" not in ev_section
+    assert "'surplus_allowed': true" in ' '.join(battery_section.split())
+    assert "'surplus_allowed': true" in ' '.join(ev_section.split())
 
 
 @pytest.mark.unit

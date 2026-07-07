@@ -43,7 +43,7 @@ ems:
       policy:
         priority: input_number.ems_adjustable_surplus_load_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
-        surplus_allowed: false
+        surplus_allowed: true
         activation_threshold_w: input_number.ems_adjustable_surplus_activation_w
         surplus_dispatch_mode: max_absorb
       guard:

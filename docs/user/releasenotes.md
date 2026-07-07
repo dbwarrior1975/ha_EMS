@@ -29,9 +29,9 @@ Compatibility:
    diagnostiikassa, mutta ne eivat ole generic candidate execution -totuuslahde
 3. `selected_ev_device_id` johdetaan deterministisesti: primary-EV ensin, muuten
    legacy EV-alias, muuten ensimmainen konfiguroitu EV
-4. production `template.yaml` mapittaa nykyisen legacy selectorin concrete
-   per-device `surplus_allowed` -booleaneiksi direct-v2-paketissa; core allocator
-   ei rakenna poolia selectorin perusteella
+4. production `template.yaml` ei enaa johda `HOME_BATTERY`n tai `EV_CHARGER`in
+   `surplus_allowed`-arvoa legacy selectorista; molemmilla on eksplisiittinen
+   device-owned eligibility ja selector jaa compatibility/diagnostiikkapinnaksi
 
 Ei kuulu scopeen: proportional multi-EV power split, EV round-robin,
 strict-priority-vs-first-feasible redesign tai multi-primary control.

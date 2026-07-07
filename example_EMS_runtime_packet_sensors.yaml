@@ -44,7 +44,6 @@ template:
               states.input_number.ems_ev_min_power_w,
               states.input_number.ems_ev_max_power_w,
               states.input_number.ems_surplus_ev_priority,
-              states.input_boolean.ems_surplus_adjustable_active,
               states.input_boolean.ems_ev_force_on,
               states.input_number.ems_ev_hard_off_pv_threshold_kw,
               states.input_number.ems_ev_hard_off_low_pv_cycles,
@@ -189,6 +188,15 @@ template:
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
                       ),
+
+                    # Device-owned eligibility. The legacy adjustable selector
+                    # remains compatibility-only and does not gate this device.
+                    'surplus_allowed': true,
+
+                    'activation_threshold_w':
+                      states('input_number.ems_adjustable_surplus_activation_w'),
+
+                    'surplus_dispatch_mode': 'max_absorb',
   
                     'default_min_absorb_w':
                       0
@@ -239,20 +247,14 @@ template:
                     'priority':
                       states('input_number.ems_surplus_ev_priority'),
                 
-                    'surplus_allowed':
-                      true
-                      if is_state(
-                        'input_boolean.ems_surplus_adjustable_active',
-                        'on'
-                      )
-                      else false
-                      if is_state(
-                        'input_boolean.ems_surplus_adjustable_active',
-                        'off'
-                      )
-                      else states(
-                        'input_boolean.ems_surplus_adjustable_active'
-                      ),
+                    # Device-owned eligibility. Independent of the legacy
+                    # adjustable_surplus_load selector.
+                    'surplus_allowed': true,
+
+                    'activation_threshold_w':
+                      states('input_number.ems_adjustable_surplus_activation_w'),
+
+                    'surplus_dispatch_mode': 'max_absorb',
                 
                     'force_on':
                       true

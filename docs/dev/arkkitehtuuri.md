@@ -100,7 +100,9 @@ Kandidaatin authoritative policy-kentat ovat `priority`,
 `activation_threshold_w` ja `surplus_dispatch_mode`. Tuetut dispatch-modet ovat
 `max_absorb` ja `fixed`. Core builder/allocator ei kysy laitteen kindia eika sita,
 onko laite legacy `adjustable_surplus_load`. EV-, relay- ja muut absorb-capable
-kandidaatit ovat samassa strict-priority-jarjestyksessa.
+kandidaatit ovat samassa strict-priority-jarjestyksessa. Production `template.yaml`
+asettaa `HOME_BATTERY`n ja `EV_CHARGER`in eligibilityn eksplisiittisesti laitekohtaiseksi;
+legacy selector ei portita kumpaakaan.
 
 `primary_device_id` sailyy singular control role -kasitteena. Primary-only-
 regulaattoria ei dispatchata toista kertaa poolista. Nykyinen laite, joka tukee

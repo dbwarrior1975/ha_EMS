@@ -294,8 +294,10 @@ Nama kannattaa asettaa ensin kuntoon ennen kombokohtaista viritysta.
   - Aloitus: 2.
   - Nosta jos haluat vakaamman hard_off-vapautuksen ja vahemman sahaysta kynnyksen tuntumassa.
 
-### Surplus-priority contract
+### Surplus eligibility ja priority contract
 
+- Production `template.yaml`:ssa `HOME_BATTERY` ja `EV_CHARGER` ovat kumpikin eksplisiittisesti `surplus_allowed=true`; `ems_adjustable_surplus_load` ei enaa valitse kumpi niista saa osallistua pooliin.
+- `ems_adjustable_surplus_load` sailyy compatibility/diagnostiikkavalintana vanhoille kuluttajille.
 - Priority kuuluu aina devicelle, ei `adjustable`-roolille.
 - `HOME_BATTERY.policy.priority`, `EV_CHARGER.policy.priority` ja relay-devicejen priorityt ovat authoritative.
 - Allocator jarjestaa kaikki eligible-kandidaatit niiden oman device-priorityn perusteella; legacy alias ei valitse poolin ainoaa laitetta.

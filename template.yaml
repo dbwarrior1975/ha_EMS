@@ -251,7 +251,7 @@
                       == 'EV_CHARGER',
 
                     'activation_threshold_w':
-                      states('input_number.ems_adjustable_surplus_activation_w'),
+                      states('input_number.ems_ev_max_power_w'),
 
                     'surplus_dispatch_mode': 'max_absorb',
                 

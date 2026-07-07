@@ -102,8 +102,9 @@ nakya poolissa, jos molemmilla on `can_absorb_w=true` ja
 `surplus_allowed=true`.
 
 Legacy `selected_ev_device_id` ja `adjustable_surplus_load` ovat
-compatibility-diagnostiikkaa. Vianetsinnassa poolin generic kentat ja
-`device_policies` ovat authoritative.
+compatibility-diagnostiikkaa. Production `template.yaml`:ssa legacy selector ei
+portita `HOME_BATTERY`n tai `EV_CHARGER`in `surplus_allowed`-arvoa. Vianetsinnassa
+poolin generic kentat ja `device_policies` ovat authoritative.
 
 ## Troubleshooting
 
