@@ -139,4 +139,3 @@ ems:
   state:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices
-    previous_device_state: sensor.ems_previous_device_state

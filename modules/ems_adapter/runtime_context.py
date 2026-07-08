@@ -881,11 +881,6 @@ def build_runtime_entities_from_grouped_config(config):
     if isinstance(state, dict):
         ent['surplus_freeze_until'] = state.get('surplus_freeze_until')
         ent['active_surplus_devices'] = state.get('active_surplus_devices')
-        ent['previous_device_state'] = state.get('previous_device_state')
-    if runtime_packet_mode:
-        # Direct v2 policy state is canonical. Active surplus state is maintained
-        # by the dispatch-state applier's own sensor and must not alias the command sensor.
-        ent['previous_device_state'] = ent.get('previous_device_state') or CANONICAL_POLICY_OUTPUTS['policy_state']
     ent['device_policies'] = CANONICAL_POLICY_OUTPUTS['device_policies']
     ent['dispatch_command'] = CANONICAL_POLICY_OUTPUTS['dispatch_command']
     ent['policy_state'] = CANONICAL_POLICY_OUTPUTS['policy_state']

@@ -645,22 +645,10 @@ template:
                     'device_ids'
                   ) or [],
   
-                'previous_device_state':
-                  state_attr(
-                    'sensor.ems_policy_state_pyscript',
-                    'previous_device_state'
-                  ) or {
-                    'device_id': 'EV_CHARGER',
-                    'mode': '',
-                    'low_pv_cycles': 0,
-                    'hard_off_release_ready_cycles': 0,
-                    'hard_off_active': false
-                  },
-  
                 'previous_device_states':
                   state_attr(
                     'sensor.ems_policy_state_pyscript',
-                    'previous_ev_device_states'
+                    'previous_device_states'
                   ) or {}
               }
             }}

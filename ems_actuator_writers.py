@@ -74,13 +74,6 @@ def _device_policy_target_w(policy, default=0):
     return float(policy.get('target_w') or 0)
 
 
-def _previous_device_state_mode(entities=None):
-    mode = get_attr(_ent('previous_device_state', 'sensor.ems_previous_device_state', entities), 'mode', '')
-    if mode:
-        return str(mode)
-    return ''
-
-
 def _capability_device_config_for_id(device_id):
     cfg = _load_core_config()
     device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
@@ -202,7 +195,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
     step_a = get_float(device_runtime.get('current_step_a') or _ent('ev_current_step_a', 'input_number.ems_ev_current_step_a', entities), 4)
     phases = get_float(device_runtime.get('phases') or _ent('ev_charger_phases', 'input_number.ems_ev_charger_phases', entities), 1)
     voltage_v = get_float(device_runtime.get('voltage_v') or _ent('ev_voltage_v', 'input_number.ems_ev_voltage_v', entities), 230)
-    ev_policy_mode = str(device_policy.get('mode') or _previous_device_state_mode(entities) or '')
+    ev_policy_mode = str(device_policy.get('mode') or '')
     capability_reason = ''
     target_w = _device_policy_target_w(device_policy, default=0)
     capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER')

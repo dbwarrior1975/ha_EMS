@@ -18,6 +18,37 @@ from ems_adapter.config_loader import (
 from tests.helpers import cfg_ev_min_a, ev_state, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
 
 
+def _device_policy(out, device_id='EV_CHARGER'):
+    return next(policy for policy in out.device_policies if policy.device_id == device_id)
+
+
+def _surplus_candidate(out, device_id='EV_CHARGER'):
+    return next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == device_id)
+
+
+def _device_lifecycle_state(out, device_id='EV_CHARGER'):
+    return out.attrs['device_lifecycle_states'][device_id]
+
+
+def _previous_device_states(
+    device_id='EV_CHARGER',
+    *,
+    mode='',
+    low_pv_cycles=0,
+    hard_off_release_ready_cycles=0,
+    hard_off_active=False,
+):
+    return {
+        device_id: {
+            'device_id': device_id,
+            'mode': mode,
+            'low_pv_cycles': low_pv_cycles,
+            'hard_off_release_ready_cycles': hard_off_release_ready_cycles,
+            'hard_off_active': hard_off_active,
+        }
+    }
+
+
 def _relay_runtime_args(
     *,
     surplus_allowed=True,
@@ -427,10 +458,11 @@ def test_engine_selected_ev_context_uses_normalized_power_step_without_partial_c
         selected_ev_surplus_active=True,
     )
 
-    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
-    assert out.attrs['ev_power_step_w'] == 230
-    assert out.attrs['ev_min_power_w'] == 1380
-    assert out.attrs['ev_max_power_w'] == 3680
+    policy = _device_policy(out, 'GARAGE_EV')
+    assert out.attrs['primary_device_id'] == 'GARAGE_EV'
+    adapter = cfg.devices['GARAGE_EV'].adapter
+    assert adapter.current_step_a * adapter.phases * adapter.voltage_v == 230
+    assert policy.target_w == 2380
 
 @pytest.mark.unit
 def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_max():
@@ -452,7 +484,7 @@ def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_
         selected_ev_surplus_active=True,
     )
 
-    assert out.attrs['ev_target_w'] == 11040
+    assert _device_policy(out).target_w == 11040
 
 
 @pytest.mark.unit
@@ -483,7 +515,7 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
     assert policies_from_output['RELAY2'].enabled is False
     assert policies['HOME_BATTERY']['target_w'] == out.battery_target_w
     assert policies['HOME_BATTERY']['enabled'] is out.battery_write_enabled
-    assert policies['EV_CHARGER']['target_w'] == out.attrs['ev_target_w']
+    assert policies['EV_CHARGER']['target_w'] == policies_from_output['EV_CHARGER'].target_w
     assert policies['EV_CHARGER']['enabled'] is True
     assert policies['RELAY1']['target_w'] == 2500
     assert policies['RELAY1']['enabled'] is True
@@ -542,7 +574,7 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
-    targets = {target['device_id']: target for target in out.attrs['surplus_device_targets']}
+    targets = {target['device_id']: target for target in out.attrs['surplus_candidates']}
 
     assert out.attrs['relay_device_ids'] == ('RELAY1', 'RELAY2', 'RELAY3')
     assert targets['RELAY3']['enabled'] is True
@@ -572,7 +604,7 @@ def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
         selected_ev_surplus_active=False,
     )
 
-    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'EV_CHARGER')
+    target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'EV_CHARGER')
     assert target['priority'] == 3
     assert 'adjustable_surplus_load_priority' not in out.attrs
 
@@ -602,7 +634,7 @@ def test_engine_haeo_role_switch_uses_device_owned_candidate_priority():
         haeo_nz_plan=plan,
     )
 
-    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'HOME_BATTERY')
+    target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'HOME_BATTERY')
     assert target['priority'] == 2
     assert target['threshold_w'] == 3700
     assert target['threshold_source'] == 'device_capabilities.max_absorb_w'
@@ -625,10 +657,10 @@ def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
         selected_ev_surplus_active=False,
     )
 
-    candidate_ids = {item['device_id'] for item in out.attrs['surplus_device_targets']}
+    candidate_ids = {item['device_id'] for item in out.attrs['surplus_candidates']}
     assert 'EV_CHARGER' not in candidate_ids
     assert 'HOME_BATTERY' in candidate_ids
-    assert out.attrs['surplus_device_next_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['surplus_next_device_id'] == 'HOME_BATTERY'
     assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
 
 
@@ -650,7 +682,7 @@ def test_engine_ev_force_on_bypasses_surplus_allowed_optimizer_gate():
         selected_ev_surplus_active=False,
     )
 
-    candidates = {item['device_id']: item for item in out.attrs['surplus_device_targets']}
+    candidates = {item['device_id']: item for item in out.attrs['surplus_candidates']}
     policies = {policy.device_id: policy for policy in out.device_policies}
     assert candidates['EV_CHARGER']['force_on'] is True
     assert candidates['EV_CHARGER']['enabled'] is True
@@ -712,8 +744,8 @@ def test_engine_forced_active_ev_ignores_allocator_release_for_effective_policy(
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
-    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
-    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert policies['EV_CHARGER'].target_w == 6440
     assert policies['EV_CHARGER'].enabled is True
     assert policies['EV_CHARGER'].reason == 'ev_force_on'
@@ -738,11 +770,11 @@ def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
         selected_ev_surplus_active=True,
     )
 
-    target = next(item for item in out.attrs['surplus_device_targets'] if item['device_id'] == 'EV_CHARGER')
+    target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'EV_CHARGER')
     assert target['enabled'] is False
     assert target['active'] is True
-    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
-    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
 
 
 @pytest.mark.unit
@@ -768,16 +800,14 @@ def test_engine_surplus_device_trace_uses_max_absorb_as_activation_threshold():
     )
 
     assert out.surplus_dispatch_decision == 'ACTIVATE_EV_CHARGER'
-    assert out.attrs['surplus_device_dispatch_decision'] == 'ACTIVATE_EV_CHARGER'
-    assert out.attrs['surplus_device_dispatch_action'] == 'ACTIVATE'
-    assert out.attrs['surplus_device_dispatch_target'] == 'EV_CHARGER'
-    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
-    assert out.attrs['surplus_device_dispatch_contract'] == 'device_id_primary'
-    assert out.attrs['surplus_device_next_target'] == 'EV_CHARGER'
-    assert out.attrs['surplus_device_next_device_id'] == 'EV_CHARGER'
-    assert out.attrs['surplus_device_active_stack'] == 'NONE'
-    assert out.attrs['surplus_device_targets'][0]['threshold_w'] == ev_max_w
-    assert out.attrs['surplus_device_targets'][0]['threshold_source'] == 'device_capabilities.max_absorb_w'
+    assert out.attrs['surplus_dispatch_decision'] == 'ACTIVATE_EV_CHARGER'
+    assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_dispatch_contract'] == 'device_id_primary'
+    assert out.attrs['surplus_next_device_id'] == 'EV_CHARGER'
+    assert out.attrs['surplus_candidate_stack'] == 'EV_CHARGER'
+    assert out.attrs['surplus_candidates'][0]['threshold_w'] == ev_max_w
+    assert out.attrs['surplus_candidates'][0]['threshold_source'] == 'device_capabilities.max_absorb_w'
 
 @pytest.mark.unit
 def test_engine_cheap_grid_charge_local_battery_target_and_explanation():
@@ -850,9 +880,9 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
-    assert out.attrs['ev_force_on'] is True
-    assert out.attrs['ev_policy_mode'] == 'burn'
-    assert out.attrs['ev_target_w'] == 3680
+    assert _surplus_candidate(out)['force_on'] is True
+    assert policies['EV_CHARGER'].mode == 'burn'
+    assert policies['EV_CHARGER'].target_w == 3680
     assert policies['EV_CHARGER'].enabled is True
     assert policies['EV_CHARGER'].target_w == 3680
 
@@ -876,7 +906,7 @@ def test_engine_force_on_uses_ev_capability_max_w_not_top_level_current_alias(pr
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
-    assert out.attrs['ev_target_w'] == 5000
+    assert policies['EV_CHARGER'].target_w == 5000
     assert policies['EV_CHARGER'].target_w == 5000
 
 
@@ -935,7 +965,7 @@ def test_engine_excludes_ev_when_ev_cannot_absorb_and_keeps_battery_candidate(pr
     )
 
     assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
-    candidate_ids = {item['device_id'] for item in out.attrs['surplus_device_targets']}
+    candidate_ids = {item['device_id'] for item in out.attrs['surplus_candidates']}
     assert 'EV_CHARGER' not in candidate_ids
     assert 'HOME_BATTERY' in candidate_ids
 
@@ -997,10 +1027,10 @@ def test_policy_inactive_clear_all_freeze_until_is_stable_across_now_ts():
         **_relay_runtime_args(),
     )
 
-    assert first.attrs['surplus_device_dispatch_action'] == 'CLEAR_ALL'
-    assert first.attrs['surplus_device_dispatch_decision'] == 'CLEAR_ALL'
-    assert second.attrs['surplus_device_dispatch_action'] == 'CLEAR_ALL'
-    assert second.attrs['surplus_device_dispatch_decision'] == 'CLEAR_ALL'
+    assert first.attrs['surplus_dispatch_action'] == 'CLEAR_ALL'
+    assert first.attrs['surplus_dispatch_decision'] == 'CLEAR_ALL'
+    assert second.attrs['surplus_dispatch_action'] == 'CLEAR_ALL'
+    assert second.attrs['surplus_dispatch_decision'] == 'CLEAR_ALL'
     assert first.attrs['surplus_freeze_until_ts'] is None
     assert second.attrs['surplus_freeze_until_ts'] is None
 
@@ -1064,9 +1094,8 @@ def test_engine_home_battery_candidate_release_stops_max_hold():
     )
 
     assert out.surplus_dispatch_decision == 'RELEASE_HOME_BATTERY'
-    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
-    assert out.attrs['surplus_device_dispatch_target'] == 'HOME_BATTERY'
-    assert out.attrs['surplus_device_dispatch_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['surplus_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'HOME_BATTERY'
     assert out.battery_target_w < 2000
 
 @pytest.mark.unit
@@ -1100,7 +1129,7 @@ def test_engine_surplus_activation_threshold_is_device_max_absorb_capability():
         selected_ev_surplus_active=False,
     )
 
-    target = below.attrs['surplus_device_targets'][0]
+    target = below.attrs['surplus_candidates'][0]
     assert target['device_id'] == 'EV_CHARGER'
     assert target['threshold_w'] == ev_max_w
     assert target['threshold_source'] == 'device_capabilities.max_absorb_w'
@@ -1149,9 +1178,9 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
         selected_ev_surplus_active=False,
     )
 
-    assert out_step_2.attrs['ev_target_w'] == 1380
-    assert out_step_2.attrs['ev_policy_mode'] == 'burn'
-    assert out_step_4.attrs['ev_target_w'] == 920
+    assert _device_policy(out_step_2).target_w == 1380
+    assert _device_policy(out_step_2).mode == 'burn'
+    assert _device_policy(out_step_4).target_w == 920
 
 
 @pytest.mark.unit
@@ -1174,17 +1203,18 @@ def test_engine_primary_ev_feedback_protection_triggers_hard_off():
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         pv_power_kw=0.0,
-        ev_low_pv_cycles=2,
+        previous_device_states=_previous_device_states(low_pv_cycles=2),
     )
 
     assert out.attrs['feedback_protection_active'] is True
     assert out.attrs['feedback_protection_primary_device_id'] == 'EV_CHARGER'
     assert out.attrs['feedback_protection_residual_device_id'] == 'HOME_BATTERY'
     assert out.attrs['activation_block_reason'] == 'primary_residual_feedback_protection'
-    assert out.attrs['ev_primary_burn_active'] is False
-    assert out.attrs['ev_policy_mode'] == 'hard_off'
-    assert out.attrs['ev_hard_off_active'] is True
-    assert out.attrs['ev_target_w'] == 0
+    policy = _device_policy(out)
+    lifecycle = _device_lifecycle_state(out)
+    assert policy.mode == 'hard_off'
+    assert lifecycle['hard_off_active'] is True
+    assert policy.target_w == 0
 
 
 @pytest.mark.unit
@@ -1208,15 +1238,16 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         pv_power_kw=1.5,
-        ev_low_pv_cycles=0,
-        ev_hard_off_active=False,
+        previous_device_states=_previous_device_states(low_pv_cycles=0, hard_off_active=False),
     )
 
     assert out.attrs['feedback_protection_active'] is True
     assert out.attrs['feedback_protection_residual_producing'] is True
-    assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_hard_off_active'] is False
-    assert out.attrs['ev_target_w'] == 920
+    policy = _device_policy(out)
+    lifecycle = _device_lifecycle_state(out)
+    assert policy.mode == 'restore_min'
+    assert lifecycle['hard_off_active'] is False
+    assert policy.target_w == 920
 
 
 @pytest.mark.unit
@@ -1239,15 +1270,16 @@ def test_engine_primary_ev_force_on_bypasses_feedback_protection_before_hard_off
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         pv_power_kw=0.0,
-        ev_low_pv_cycles=2,
+        previous_device_states=_previous_device_states(low_pv_cycles=2),
     )
 
-    assert out.attrs['ev_force_on'] is True
+    policy = _device_policy(out)
+    lifecycle = _device_lifecycle_state(out)
     assert out.attrs['feedback_protection_active'] is False
     assert out.attrs['activation_block_reason'] == ''
-    assert out.attrs['ev_policy_mode'] == 'burn'
-    assert out.attrs['ev_hard_off_active'] is False
-    assert out.attrs['ev_target_w'] == 6440
+    assert policy.mode == 'burn'
+    assert lifecycle['hard_off_active'] is False
+    assert policy.target_w == 6440
     policies = {policy.device_id: policy for policy in out.device_policies}
     assert policies['EV_CHARGER'].enabled is True
     assert policies['EV_CHARGER'].target_w == 6440
@@ -1273,16 +1305,18 @@ def test_engine_primary_ev_force_on_bypasses_active_hard_off_without_clearing_st
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         pv_power_kw=0.0,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=0,
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=0,
+        ),
     )
 
-    assert out.attrs['ev_force_on'] is True
+    policy = _device_policy(out)
+    lifecycle = _device_lifecycle_state(out)
     assert out.attrs['feedback_protection_active'] is False
-    assert out.attrs['ev_hard_off_active'] is True
-    assert out.attrs['ev_policy_mode'] == 'burn'
-    assert out.attrs['ev_target_w'] == 6440
+    assert lifecycle['hard_off_active'] is True
+    assert policy.mode == 'burn'
+    assert policy.target_w == 6440
     assert out.attrs['force_on_active_device_ids'] == ('EV_CHARGER',)
     assert out.attrs['force_on_hard_off_bypass_device_ids'] == ('EV_CHARGER',)
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -1311,13 +1345,13 @@ def test_engine_primary_ev_feedback_protection_requires_actual_residual_producti
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         pv_power_kw=0.0,
-        ev_low_pv_cycles=1,
+        previous_device_states=_previous_device_states(low_pv_cycles=1),
     )
 
     assert out.attrs['feedback_protection_active'] is False
     assert out.attrs['feedback_protection_residual_producing'] is False
-    assert out.attrs['ev_hard_off_active'] is False
-    assert out.attrs['ev_policy_mode'] == 'burn'
+    assert _device_lifecycle_state(out)['hard_off_active'] is False
+    assert _device_policy(out).mode == 'burn'
 
 
 @pytest.mark.unit
@@ -1421,14 +1455,16 @@ def test_engine_ev_primary_home_battery_small_positive_rpnz_does_not_release_har
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=0.0,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=0,
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=0,
+        ),
     )
 
-    assert out.attrs['ev_hard_off_active'] is True
-    assert out.attrs['ev_target_w'] == 0
-    assert out.attrs['ev_hard_off_release_ready_cycles'] == 0
+    lifecycle = _device_lifecycle_state(out)
+    assert lifecycle['hard_off_active'] is True
+    assert _device_policy(out).target_w == 0
+    assert lifecycle['hard_off_release_ready_cycles'] == 0
 
 
 @pytest.mark.unit
@@ -1452,14 +1488,16 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.6,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=0,
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=0,
+        ),
     )
 
-    assert first.attrs['ev_hard_off_active'] is True
-    assert first.attrs['ev_target_w'] == 0
-    assert first.attrs['ev_hard_off_release_ready_cycles'] == 1
+    first_lifecycle = _device_lifecycle_state(first)
+    assert first_lifecycle['hard_off_active'] is True
+    assert _device_policy(first).target_w == 0
+    assert first_lifecycle['hard_off_release_ready_cycles'] == 1
 
     second = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 305.0,
@@ -1468,14 +1506,16 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.6,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=first.attrs['ev_hard_off_release_ready_cycles'],
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=first_lifecycle['hard_off_release_ready_cycles'],
+        ),
     )
 
-    assert second.attrs['ev_hard_off_active'] is False
-    assert second.attrs['ev_target_w'] > 0
-    assert second.attrs['ev_hard_off_release_ready_cycles'] >= 2
+    second_lifecycle = _device_lifecycle_state(second)
+    assert second_lifecycle['hard_off_active'] is False
+    assert _device_policy(second).target_w > 0
+    assert second_lifecycle['hard_off_release_ready_cycles'] >= 2
 
 
 @pytest.mark.unit
@@ -1499,13 +1539,15 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.6,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=0,
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=0,
+        ),
     )
 
-    assert first.attrs['ev_hard_off_release_ready_cycles'] == 1
-    assert first.attrs['ev_hard_off_active'] is True
+    first_lifecycle = _device_lifecycle_state(first)
+    assert first_lifecycle['hard_off_release_ready_cycles'] == 1
+    assert first_lifecycle['hard_off_active'] is True
 
     broken = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 365.0,
@@ -1514,13 +1556,15 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.5,
-        ev_hard_off_active=True,
-        ev_low_pv_cycles=2,
-        ev_hard_off_release_ready_cycles=first.attrs['ev_hard_off_release_ready_cycles'],
+        previous_device_states=_previous_device_states(
+            mode='hard_off', low_pv_cycles=2, hard_off_active=True,
+            hard_off_release_ready_cycles=first_lifecycle['hard_off_release_ready_cycles'],
+        ),
     )
 
-    assert broken.attrs['ev_hard_off_release_ready_cycles'] == 0
-    assert broken.attrs['ev_hard_off_active'] is True
+    broken_lifecycle = _device_lifecycle_state(broken)
+    assert broken_lifecycle['hard_off_release_ready_cycles'] == 0
+    assert broken_lifecycle['hard_off_active'] is True
 
 
 
@@ -1539,7 +1583,7 @@ def test_engine_two_ev_policies_are_derived_independently_from_candidate_and_lif
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=False,
         active_surplus_device_ids=('GARAGE_EV',),
-        previous_ev_device_states={
+        previous_device_states={
             'EV_CHARGER': {
                 'device_id': 'EV_CHARGER',
                 'mode': 'hard_off',
@@ -1554,15 +1598,15 @@ def test_engine_two_ev_policies_are_derived_independently_from_candidate_and_lif
     payloads = {item['device_id']: item for item in out.attrs['device_policies']}
 
     assert out.attrs['ev_device_ids'] == ('EV_CHARGER', 'GARAGE_EV')
-    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert 'GARAGE_EV' in out.attrs['surplus_active_device_ids']
     assert policies['GARAGE_EV'].enabled is True
     assert policies['GARAGE_EV'].target_w == 3680
     assert policies['EV_CHARGER'].enabled is False
     assert policies['EV_CHARGER'].target_w == 0
     assert payloads['GARAGE_EV']['enabled'] is True
     assert payloads['EV_CHARGER']['reason'] == 'ev_lifecycle_hard_off'
-    assert out.attrs['previous_ev_device_states']['EV_CHARGER']['mode'] == 'hard_off'
-    assert 'GARAGE_EV' in out.attrs['previous_ev_device_states']
+    assert out.attrs['previous_device_states']['EV_CHARGER']['mode'] == 'hard_off'
+    assert 'GARAGE_EV' in out.attrs['previous_device_states']
 
 @pytest.mark.unit
 def test_engine_primary_ev_owns_primary_target_while_other_ev_remains_surplus_candidate(project_root):
@@ -1591,7 +1635,7 @@ def test_engine_primary_ev_owns_primary_target_while_other_ev_remains_surplus_ca
 
     policies = {policy.device_id: policy for policy in out.device_policies}
     assert out.attrs['primary_device_id'] == 'EV_CHARGER'
-    assert out.attrs['selected_ev_device_id'] == 'EV_CHARGER'
+    assert out.attrs['primary_device_id'] == 'EV_CHARGER'
     assert 'surplus_preferred_surplus_device_id' not in out.attrs
     assert 'EV_CHARGER' not in out.attrs['surplus_candidate_device_ids']
     assert 'GARAGE_EV' in out.attrs['surplus_candidate_device_ids']
@@ -1691,7 +1735,7 @@ def test_engine_hard_off_lifecycle_state_is_device_owned_for_two_capable_evs(pro
         previous_device_states=previous_device_states,
     )
 
-    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert 'GARAGE_EV' in out.attrs['surplus_candidate_device_ids']
     assert set(out.attrs['hard_off_lifecycle_devices']) == {'EV_CHARGER', 'GARAGE_EV'}
     assert out.attrs['previous_device_states']['EV_CHARGER']['low_pv_cycles'] == 51
     assert out.attrs['previous_device_states']['EV_CHARGER']['hard_off_active'] is True
@@ -1701,7 +1745,6 @@ def test_engine_hard_off_lifecycle_state_is_device_owned_for_two_capable_evs(pro
         'EV_CHARGER': out.attrs['previous_device_states']['EV_CHARGER'],
         'GARAGE_EV': out.attrs['previous_device_states']['GARAGE_EV'],
     }
-    assert out.attrs['previous_ev_device_states'] == out.attrs['previous_device_states']
 
 @pytest.mark.unit
 def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
@@ -1738,9 +1781,8 @@ def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
     )
 
     assert out.attrs['hard_off_lifecycle_devices'] == ()
-    assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_low_pv_cycles'] == 0
-    assert out.attrs['ev_hard_off_active'] is False
+    assert _device_policy(out).mode == 'restore_min'
+    assert 'EV_CHARGER' not in out.attrs['device_lifecycle_states']
 
 
 @pytest.mark.unit
@@ -1758,7 +1800,7 @@ def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materializa
         ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
         selected_ev_surplus_active=True,
-        previous_ev_device_states={
+        previous_device_states={
             'EV_CHARGER': {
                 'device_id': 'EV_CHARGER',
                 'mode': 'hard_off',
@@ -1769,7 +1811,7 @@ def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materializa
         },
     )
 
-    assert out.attrs['selected_ev_device_id'] == 'GARAGE_EV'
+    assert 'GARAGE_EV' in out.attrs['surplus_active_device_ids']
     assert cfg.legacy_device_bridge_count() == 0
     assert cfg.legacy_device_bridge_counts_by_kind() == {}
     assert out.attrs['legacy_device_bridge_count'] == 0
@@ -1788,7 +1830,7 @@ def test_engine_without_ev_devices_skips_ev_policy_and_keeps_battery_relay_outpu
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=4.5,
-        previous_ev_device_states={
+        previous_device_states={
             'EV_CHARGER': {
                 'device_id': 'EV_CHARGER',
                 'mode': 'hard_off',
@@ -1802,12 +1844,8 @@ def test_engine_without_ev_devices_skips_ev_policy_and_keeps_battery_relay_outpu
     policies = {policy.device_id: policy for policy in out.device_policies}
 
     assert out.attrs['ev_device_ids'] == ()
-    assert out.attrs['selected_ev_device_id'] == ''
-    assert out.attrs['ev_policy_mode'] == 'skip'
-    assert out.attrs['ev_target_w'] == 0
-    assert out.attrs['ev_primary_burn_active'] is False
-    assert out.attrs['ev_surplus_burn_active'] is False
-    assert out.attrs['previous_ev_device_states']['EV_CHARGER']['mode'] == 'hard_off'
+    assert out.attrs['previous_device_states']['EV_CHARGER']['mode'] == 'hard_off'
+    assert 'EV_CHARGER' not in out.attrs['device_lifecycle_states']
     assert 'EV_CHARGER' not in policies
     assert set(policies) == {'HOME_BATTERY', 'RELAY1', 'RELAY2'}
     assert 'adjustable_surplus_load' not in out.attrs
@@ -1834,13 +1872,12 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.7,
-        ev_hard_off_active=False,
-        ev_low_pv_cycles=0,
+        previous_device_states=_previous_device_states(),
     )
 
-    assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_target_w'] == ev_min_power_w(cfg)
-    assert out.attrs['ev_hard_off_active'] is False
+    assert _device_policy(out).mode == 'restore_min'
+    assert _device_policy(out).target_w == ev_min_power_w(cfg)
+    assert _device_lifecycle_state(out)['hard_off_active'] is False
     assert out.battery_target_w == -2000
 
 
@@ -1865,13 +1902,12 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
         **_relay_runtime_args(),
         selected_ev_surplus_active=False,
         pv_power_kw=1.7,
-        ev_hard_off_active=False,
-        ev_low_pv_cycles=0,
+        previous_device_states=_previous_device_states(),
     )
 
-    assert out.attrs['ev_policy_mode'] == 'restore_min'
-    assert out.attrs['ev_target_w'] == ev_min_power_w(cfg)
-    assert out.attrs['ev_hard_off_active'] is False
+    assert _device_policy(out).mode == 'restore_min'
+    assert _device_policy(out).target_w == ev_min_power_w(cfg)
+    assert _device_lifecycle_state(out)['hard_off_active'] is False
     assert out.battery_target_w == 0
 
 
@@ -1905,8 +1941,7 @@ def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_batte
         **_relay_runtime_args(),
         selected_ev_surplus_active=True,
         pv_power_kw=1.7,
-        ev_hard_off_active=False,
-        ev_low_pv_cycles=0,
+        previous_device_states=_previous_device_states(),
     )
 
     assert out.battery_target_w == 0
@@ -1971,3 +2006,67 @@ def test_primary_target_eligibility_is_capability_driven_not_kind_driven():
 
     assert compute_primary_device_target_w(unsupported_ev, 750.0) == 0.0
     assert compute_primary_device_target_w(neutral_primary, 750.0) == 700.0
+
+
+@pytest.mark.unit
+def test_engine_outputs_do_not_produce_p0_legacy_mirrors():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(adjustable_primary_load='HOME_BATTERY')
+    out = compute_net_zero_engine_outputs(
+        profiles,
+        cfg,
+        make_m(),
+        make_haeo(),
+        make_nz(rpnz_w=2500.0, required_power_consumption_kw=2.5),
+        60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(),
+    )
+
+    removed_keys = {
+        'selected_ev_device_id',
+        'ev_policy_mode',
+        'ev_low_pv_cycles',
+        'ev_hard_off_active',
+        'ev_hard_off_release_ready_cycles',
+        'ev_hard_off_release_cycles_required',
+        'ev_hard_off_release_rpc_kw',
+        'ev_hard_off_pv_threshold_kw',
+        'ev_primary_burn_active',
+        'ev_surplus_burn_active',
+        'ev_current_step_a',
+        'ev_force_on',
+        'ev_min_power_w',
+        'ev_max_power_w',
+        'ev_power_step_w',
+        'ev_target_w',
+        'previous_device_state',
+        'previous_ev_device_states',
+        'surplus_next_target',
+        'surplus_release_candidate',
+        'active_stack',
+        'surplus_device_active_stack',
+        'surplus_device_active_device_stack',
+        'surplus_device_next_target',
+        'surplus_device_next_device_id',
+        'surplus_device_release_candidate',
+        'surplus_device_release_device_id',
+        'surplus_device_dispatch_decision',
+        'surplus_device_dispatch_action',
+        'surplus_device_dispatch_target',
+        'surplus_device_dispatch_device_id',
+        'surplus_device_dispatch_contract',
+        'surplus_device_targets',
+        'surplus_targets_by_device_id',
+        'canonical_policy_output_contract',
+        'diagnostics_contract',
+        'runtime_contract',
+    }
+
+    assert removed_keys.isdisjoint(out.attrs)
+    assert 'device_policies' in out.attrs
+    assert 'surplus_candidates' in out.attrs
+    assert 'previous_device_states' in out.attrs
+    assert 'device_lifecycle_states' in out.attrs
+    assert all('decision_name' not in candidate for candidate in out.attrs['surplus_candidates'])

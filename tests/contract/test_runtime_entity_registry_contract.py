@@ -23,7 +23,6 @@ def test_required_entities_exist():
         'policy_state',
         'policy_diagnostics',
         'active_surplus_devices',
-        'previous_device_state',
         'actuator_writer_trace',
         'dispatch_state_applier_trace',
         'actuator_battery_setpoint_w',
@@ -89,7 +88,6 @@ def test_unit_conversion_contract():
 def test_unknown_state_defaults():
     assert ENT['surplus_freeze_until'].startswith('input_datetime.')
     assert ENT['active_surplus_devices'].startswith('sensor.')
-    assert ENT['previous_device_state'].startswith('sensor.')
     assert ENT['dispatch_command'].startswith('sensor.')
     assert ENT['policy_state'].startswith('sensor.')
     assert ENT['policy_diagnostics'].startswith('sensor.')

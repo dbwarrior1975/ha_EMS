@@ -455,13 +455,13 @@ def test_read_runtime_context_validation_error_lists_failing_paths(project_root,
     grouped_path = _write_grouped_config_with_override(
         project_root,
         tmp_path,
-        'ems.state.previous_device_state',
+        'ems.state.active_surplus_devices',
         None,
     )
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
     read_bool, read_float, read_int, read_str = _stub_entity_readers()
 
-    with pytest.raises(ValueError, match='ems.state.previous_device_state: must be a non-empty entity id string'):
+    with pytest.raises(ValueError, match='ems.state.active_surplus_devices: must be a non-empty entity id string'):
         read_runtime_context(read_bool, read_float, read_int, read_str)
 
 
@@ -1444,8 +1444,10 @@ def test_dispatch_command_sensor_uses_monotonic_version_and_carries_dispatch_att
     # The changed measurements do not alter the dispatch command in this scenario.
     assert third_state == second_state
     assert third_attrs == second_attrs
-    assert 'surplus_device_dispatch_action' in third_attrs
-    assert 'surplus_device_targets' in third_attrs
+    assert 'surplus_dispatch_action' in third_attrs
+    assert 'surplus_dispatch_device_id' in third_attrs
+    assert 'surplus_dispatch_contract' in third_attrs
+    assert 'surplus_candidates' not in third_attrs
     assert 'surplus_freeze_until_ts' in third_attrs
 
 

@@ -425,7 +425,7 @@ Vahintaan seuraa naita kenttia ongelmanrajausta varten:
 - `surplus_active_device_ids`
 - `surplus_next_device_id`
 - `surplus_release_device_id`
-- `surplus_targets_by_device_id`
+- `device_policies` (lopulliset per-device wattitargetit)
 - kandidaattien `threshold_w`
 - kandidaattien `threshold_source` (odotus: `device_capabilities.max_absorb_w`)
 - `device_lifecycle_states`

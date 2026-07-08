@@ -74,42 +74,6 @@ def _canonical_active_device_ids(active_ids):
     return tuple(ordered)
 
 
-def _read_surplus_device_targets(entities=None):
-    dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
-    return _read_surplus_device_targets_from_entity(dispatch_entity)
-
-
-def _read_surplus_device_targets_from_entity(entity_id):
-    targets = get_attr(entity_id, 'surplus_device_targets', []) or []
-    if isinstance(targets, (list, tuple)):
-        parsed = []
-        for target in targets:
-            if isinstance(target, dict):
-                parsed.append(target)
-        return tuple(parsed)
-    return ()
-
-
-def _target_device_id_for_decision_name(decision_name, targets):
-    target_name = str(decision_name or '')
-    if not target_name:
-        return ''
-    for target in targets or ():
-        if str(target.get('decision_name') or '') == target_name:
-            return str(target.get('device_id') or '')
-    return ''
-
-
-def _target_decision_name_for_device_id(device_id, targets):
-    resolved_device_id = str(device_id or '')
-    if not resolved_device_id:
-        return ''
-    for target in targets or ():
-        if str(target.get('device_id') or '') == resolved_device_id:
-            return str(target.get('decision_name') or '')
-    return ''
-
-
 def _read_active_surplus_device_ids(entities=None):
     active_entity = _entity_id('active_surplus_devices', 'sensor.ems_active_surplus_devices', entities)
     device_ids = get_attr(active_entity, 'device_ids', None)
@@ -134,15 +98,13 @@ def _valid_dispatch_action(action):
     return action in ('ACTIVATE', 'RELEASE', 'CLEAR_ALL', 'NOOP')
 
 
-def _decision_text_from_device_command(action, device_id, target=''):
+def _decision_text_from_device_command(action, device_id):
     if action == 'CLEAR_ALL':
         return 'CLEAR_ALL'
     if action == 'NOOP':
         return 'NOOP'
     if action in ('ACTIVATE', 'RELEASE') and device_id:
         return action + '_' + str(device_id)
-    if action in ('ACTIVATE', 'RELEASE') and target:
-        return action + '_' + str(target)
     return 'NOOP'
 
 
@@ -150,12 +112,8 @@ def _read_dispatch_command(entities=None):
     if entities is None:
         entities = _load_runtime_entities()
     dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
-    targets = _read_surplus_device_targets_from_entity(dispatch_entity)
-    action = get_attr(dispatch_entity, 'surplus_device_dispatch_action', '')
-    target = get_attr(dispatch_entity, 'surplus_device_dispatch_target', '')
-    device_id = get_attr(dispatch_entity, 'surplus_device_dispatch_device_id', '')
-    resolved_device_id = str(device_id or _target_device_id_for_decision_name(target, targets) or '')
-    decision_name = _target_decision_name_for_device_id(resolved_device_id, targets) or str(target or '')
+    action = get_attr(dispatch_entity, 'surplus_dispatch_action', '')
+    device_id = str(get_attr(dispatch_entity, 'surplus_dispatch_device_id', '') or '')
     version = get_attr(dispatch_entity, 'dispatch_command_version', '')
 
     if _valid_dispatch_action(action):
@@ -165,10 +123,8 @@ def _read_dispatch_command(entities=None):
             'version': str(version or ''),
             'source': 'dispatch_command',
             'action': action,
-            'target': target,
-            'device_id': resolved_device_id,
-            'decision_name': decision_name,
-            'decision': _decision_text_from_device_command(action, resolved_device_id, target),
+            'device_id': device_id,
+            'decision': _decision_text_from_device_command(action, device_id),
         }
 
     return {
@@ -177,18 +133,15 @@ def _read_dispatch_command(entities=None):
         'version': str(version or ''),
         'source': 'dispatch_command',
         'action': 'NOOP',
-        'target': '',
         'device_id': '',
-        'decision_name': '',
         'decision': 'NOOP',
     }
 
 
-def _apply_device_dispatch(action, target, device_id, entities=None):
+def _apply_device_dispatch(action, device_id, entities=None):
     written = []
     active_ids = list(_read_active_surplus_device_ids(entities))
-    targets = _read_surplus_device_targets(entities)
-    resolved_device_id = str(device_id or _target_device_id_for_decision_name(target, targets) or '')
+    resolved_device_id = str(device_id or '')
 
     if action == 'ACTIVATE':
         if resolved_device_id and resolved_device_id not in active_ids:
@@ -198,20 +151,19 @@ def _apply_device_dispatch(action, target, device_id, entities=None):
     elif action == 'RELEASE':
         if resolved_device_id in active_ids:
             written.append(_write_label('off', resolved_device_id))
-            filtered_active_ids = []
+            remaining_active_ids = []
             for active_id in active_ids:
                 if active_id != resolved_device_id:
-                    filtered_active_ids.append(active_id)
-            active_ids = filtered_active_ids
+                    remaining_active_ids.append(active_id)
+            active_ids = remaining_active_ids
 
     elif action == 'CLEAR_ALL':
         for active_device_id in active_ids:
             written.append(_write_label('off', active_device_id))
         active_ids = []
 
-    normalized_active_ids = _publish_active_surplus_device_ids(active_ids, entities)
+    _publish_active_surplus_device_ids(active_ids, entities)
     return written
-
 
 def _write_label(prefix, device_id):
     return prefix + ':' + str(device_id)
@@ -248,7 +200,7 @@ def ems_dispatch_state_applier_loop():
     decision = command['decision']
     freeze_until_ts = get_attr(command['source_entity'], 'surplus_freeze_until_ts', None)
 
-    writes = _apply_device_dispatch(command['action'], command['target'], command['device_id'], entities)
+    writes = _apply_device_dispatch(command['action'], command['device_id'], entities)
     freeze_written = _set_freeze_until_ts(_entity_id('surplus_freeze_until', 'input_datetime.ems_surplus_freeze_until', entities), freeze_until_ts)
     active_device_ids = _active_surplus_device_ids(command, entities)
 
@@ -259,9 +211,7 @@ def ems_dispatch_state_applier_loop():
         'dispatch_source_reason': command['source_reason'],
         'dispatch_command_version': command['version'],
         'device_dispatch_action': command['action'],
-        'device_dispatch_target': command['target'],
         'device_dispatch_device_id': command['device_id'],
-        'device_dispatch_decision_name': command['decision_name'],
         'dispatch_state_contract': 'device_id_primary',
         'active_surplus_device_ids': active_device_ids,
         'writes': writes,

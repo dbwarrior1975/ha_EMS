@@ -218,7 +218,6 @@ class CoreHaeoConfig:
 class CoreStateConfig:
     surplus_freeze_until: EntityRef
     active_surplus_devices: EntityRef
-    previous_device_state: EntityRef
 
 
 @dataclass
@@ -480,7 +479,6 @@ class DevicePolicy:
 @dataclass
 class SurplusDeviceTarget:
     device_id: str
-    decision_name: str
     priority: int
     rank: int
     threshold_w: int
@@ -516,9 +514,7 @@ class NetZeroOutputs:
     battery_write_enabled: bool
     battery_target_w: int
     surplus_policy_active: bool
-    surplus_next_target: str
     surplus_next_threshold_kw: float
-    surplus_release_candidate: str
     surplus_dispatch_decision: str
     surplus_explanation: str
     effective_forecast: str

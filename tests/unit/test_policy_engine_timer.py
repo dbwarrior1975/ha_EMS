@@ -57,11 +57,11 @@ def _load_policy_module(project_root):
 def _install_minimal_policy_loop_stubs(mod, attrs=None):
     attrs = dict(attrs or {})
     attrs.setdefault('device_policies', ({'device_id': 'HOME_BATTERY', 'target_w': 100},))
-    attrs.setdefault('surplus_device_dispatch_action', 'set_target')
-    attrs.setdefault('surplus_device_dispatch_decision', 'apply')
-    attrs.setdefault('surplus_device_dispatch_device_id', 'HOME_BATTERY')
+    attrs.setdefault('surplus_dispatch_action', 'set_target')
+    attrs.setdefault('surplus_dispatch_decision', 'apply')
+    attrs.setdefault('surplus_dispatch_device_id', 'HOME_BATTERY')
     attrs.setdefault('surplus_device_dispatch_target', 100)
-    attrs.setdefault('surplus_device_targets', ({'device_id': 'HOME_BATTERY', 'target_w': 100},))
+    attrs.setdefault('surplus_candidates', ({'device_id': 'HOME_BATTERY', 'target_w': 100},))
     attrs.setdefault('surplus_freeze_until_ts', None)
     attrs.setdefault('surplus_state_clear_reason', '')
     attrs.setdefault('haeo_nz_quarter_key', '2026-07-02T10:00')
@@ -83,11 +83,7 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
     mod['read_haeo'] = lambda *_args, **_kwargs: None
     mod['compute_haeo_net_zero_plan'] = lambda *_args, **_kwargs: None
     mod['_read_active_surplus_device_ids'] = lambda *_args, **_kwargs: ()
-    mod['_read_previous_device_state'] = lambda *_args, **_kwargs: {
-        'hard_off_active': False,
-        'low_pv_cycles': 0,
-        'hard_off_release_ready_cycles': 0,
-    }
+    mod['_read_previous_device_states'] = lambda *_args, **_kwargs: {}
     mod['_read_previous_force_on_device_ids'] = lambda *_args, **_kwargs: ()
     mod['derive_net_zero_inputs'] = lambda **_kwargs: SimpleNamespace(
         rpnz_w=0.0,
@@ -99,12 +95,10 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
         remaining_quarter_min=15,
     )
     mod['compute_net_zero_engine_outputs'] = lambda *_args, **_kwargs: SimpleNamespace(
-        attrs={'previous_device_state': {}, 'previous_ev_device_states': {}}
+        attrs={'previous_device_states': {}}
     )
     mod['net_zero_attrs'] = lambda *_args, **_kwargs: dict(attrs)
     mod['config_trace_attrs'] = lambda: {}
-    mod['_selected_previous_device_state_for_outputs'] = lambda _outputs: {'mode': 'idle'}
-    mod['_previous_device_state_attrs_from_outputs'] = lambda _outputs: {'mode': 'idle'}
     mod['_trace_state'] = lambda *_args, **_kwargs: 'trace'
     return attrs
 
@@ -112,7 +106,6 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
 def _minimal_entities():
     return {
         'surplus_freeze_until': 'input_datetime.freeze',
-        'previous_device_state': 'sensor.previous_device_state',
         'device_policies': 'sensor.device_policies',
         'dispatch_command': 'sensor.dispatch_command',
         'policy_state': 'sensor.policy_state',
@@ -555,11 +548,10 @@ def test_phase_timing_fields_do_not_change_canonical_keys(project_root):
         'device_policies': (
             {'device_id': 'HOME_BATTERY', 'target_w': 100, 'mode': 'net_zero'},
         ),
-        'surplus_device_dispatch_action': 'ACTIVATE',
-        'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-        'surplus_device_dispatch_device_id': 'EV_CHARGER',
-        'surplus_device_dispatch_target': 'ADJUSTABLE',
-        'surplus_device_targets': ({'device_id': 'EV_CHARGER', 'enabled': True},),
+        'surplus_dispatch_action': 'ACTIVATE',
+        'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+        'surplus_dispatch_device_id': 'EV_CHARGER',
+        'surplus_candidates': ({'device_id': 'EV_CHARGER', 'enabled': True},),
         'surplus_freeze_until_ts': 130.0,
         'surplus_state_clear_reason': '',
         'haeo_nz_quarter_key': '2026-07-02T10:00',
@@ -596,11 +588,10 @@ def test_phase_timing_fields_do_not_change_canonical_keys(project_root):
 def test_dispatch_command_key_stable_for_repeated_clear_all_with_only_now_ts_change(project_root):
     mod = _load_policy_module(project_root)
     attrs_100 = {
-        'surplus_device_dispatch_action': 'CLEAR_ALL',
-        'surplus_device_dispatch_decision': 'CLEAR_ALL',
-        'surplus_device_dispatch_device_id': '',
-        'surplus_device_dispatch_target': '',
-        'surplus_device_targets': (),
+        'surplus_dispatch_action': 'CLEAR_ALL',
+        'surplus_dispatch_decision': 'CLEAR_ALL',
+        'surplus_dispatch_device_id': '',
+        'surplus_candidates': (),
         'surplus_freeze_until_ts': 100.0,
         'surplus_state_clear_reason': '',
     }
@@ -620,11 +611,10 @@ def test_dispatch_command_key_stable_for_repeated_clear_all_with_only_now_ts_cha
 def test_dispatch_command_key_keeps_activate_freeze_until_ts(project_root):
     mod = _load_policy_module(project_root)
     attrs_130 = {
-        'surplus_device_dispatch_action': 'ACTIVATE',
-        'surplus_device_dispatch_decision': 'ACTIVATE_ADJUSTABLE',
-        'surplus_device_dispatch_device_id': 'EV_CHARGER',
-        'surplus_device_dispatch_target': 'ADJUSTABLE',
-        'surplus_device_targets': ({'device_id': 'EV_CHARGER', 'enabled': True},),
+        'surplus_dispatch_action': 'ACTIVATE',
+        'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+        'surplus_dispatch_device_id': 'EV_CHARGER',
+        'surplus_candidates': ({'device_id': 'EV_CHARGER', 'enabled': True},),
         'surplus_freeze_until_ts': 130.0,
         'surplus_state_clear_reason': '',
     }
@@ -652,11 +642,10 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     _install_minimal_policy_loop_stubs(
         mod,
         attrs={
-            'surplus_device_dispatch_action': 'CLEAR_ALL',
-            'surplus_device_dispatch_decision': 'CLEAR_ALL',
-            'surplus_device_dispatch_device_id': '',
-            'surplus_device_dispatch_target': '',
-            'surplus_device_targets': (),
+            'surplus_dispatch_action': 'CLEAR_ALL',
+            'surplus_dispatch_decision': 'CLEAR_ALL',
+            'surplus_dispatch_device_id': '',
+                'surplus_candidates': (),
             'surplus_freeze_until_ts': 100.0,
             'surplus_state_clear_reason': '',
         },
@@ -670,11 +659,10 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     _install_minimal_policy_loop_stubs(
         mod,
         attrs={
-            'surplus_device_dispatch_action': 'CLEAR_ALL',
-            'surplus_device_dispatch_decision': 'CLEAR_ALL',
-            'surplus_device_dispatch_device_id': '',
-            'surplus_device_dispatch_target': '',
-            'surplus_device_targets': (),
+            'surplus_dispatch_action': 'CLEAR_ALL',
+            'surplus_dispatch_decision': 'CLEAR_ALL',
+            'surplus_dispatch_device_id': '',
+                'surplus_candidates': (),
             'surplus_freeze_until_ts': 105.0,
             'surplus_state_clear_reason': '',
         },
@@ -689,44 +677,23 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     assert state['last_diagnostics_publish_ts'] == 100.0
 
 @pytest.mark.unit
-def test_public_policy_diagnostics_projection_removes_legacy_mirrors(project_root):
+def test_public_policy_diagnostics_projection_preserves_canonical_fields_and_hides_remaining_phase_keys(project_root):
     mod = _load_policy_module(project_root)
-    projected = mod['_diagnostic_projection_attrs'](
-        {
-            'surplus_candidates': (
-                {
-                    'device_id': 'EV_CHARGER',
-                    'decision_name': 'EV_CHARGER',
-                    'priority': 3,
-                    'threshold_w': 4400,
-                },
-            ),
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_device_id': 'EV_CHARGER',
-            'surplus_device_dispatch_contract': 'device_id_primary',
-            'surplus_device_targets': ({'device_id': 'EV_CHARGER'},),
-            'selected_ev_device_id': 'EV_CHARGER',
-            'ev_target_w': 4400,
-            'previous_ev_device_states': {'EV_CHARGER': {'mode': 'burn'}},
-            'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
-            'legacy_device_bridge_count': 0,
-        }
-    )
+    canonical = {
+        'surplus_candidates': (
+            {'device_id': 'EV_CHARGER', 'priority': 3, 'threshold_w': 4400},
+        ),
+        'surplus_dispatch_action': 'ACTIVATE',
+        'surplus_dispatch_device_id': 'EV_CHARGER',
+        'surplus_dispatch_contract': 'device_id_primary',
+        'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
+        'legacy_device_bridge_count': 0,
+    }
+    projected = mod['_diagnostic_projection_attrs'](canonical)
 
+    assert projected['surplus_candidates'] == canonical['surplus_candidates']
     assert projected['surplus_dispatch_action'] == 'ACTIVATE'
     assert projected['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert projected['surplus_dispatch_contract'] == 'device_id_primary'
-    assert projected['surplus_candidates'] == (
-        {'device_id': 'EV_CHARGER', 'priority': 3, 'threshold_w': 4400},
-    )
-    assert projected['previous_device_states'] == {'EV_CHARGER': {'mode': 'burn'}}
-
-    for removed in (
-        'surplus_device_targets',
-        'surplus_device_dispatch_action',
-        'selected_ev_device_id',
-        'ev_target_w',
-        'previous_ev_device_states',
-        'legacy_device_bridge_count',
-    ):
-        assert removed not in projected
+    assert projected['previous_device_states'] == canonical['previous_device_states']
+    assert 'legacy_device_bridge_count' not in projected

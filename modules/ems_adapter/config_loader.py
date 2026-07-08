@@ -178,7 +178,6 @@ PACKET_DEFAULT_RUNTIME = {
 PACKET_DEFAULT_STATE = {
     'surplus_freeze_until': '',
     'active_surplus_devices': (),
-    'previous_device_state': {},
 }
 PACKET_DEFAULT_HAEO = {
     'battery_power_active': {},
@@ -898,7 +897,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         _validate_required_entities(
             ems['state'],
             'ems.state',
-            ('surplus_freeze_until', 'active_surplus_devices', 'previous_device_state'),
+            ('surplus_freeze_until', 'active_surplus_devices'),
             issues,
         )
 
@@ -1494,7 +1493,6 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
             'state': {
                 'surplus_freeze_until': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'surplus_freeze_until'), 'ems.state.surplus_freeze_until', ''),
                 'active_surplus_devices': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'active_surplus_devices'), 'ems.state.active_surplus_devices', ''),
-                'previous_device_state': _compile_dynamic_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), 'ems.state.previous_device_state', ''),
             },
             'devices': _compile_core_devices_plan(devices),
             'haeo': _compile_core_haeo_plan(ems.get('haeo')),
@@ -2905,7 +2903,6 @@ def _build_view_state(values: dict) -> CoreStateConfig:
     return CoreStateConfig(
         surplus_freeze_until=values['surplus_freeze_until'],
         active_surplus_devices=values['active_surplus_devices'],
-        previous_device_state=values['previous_device_state'],
     )
 
 
@@ -3123,7 +3120,6 @@ def _materialize_core_state_from_plan(
     return CoreStateConfig(
         surplus_freeze_until=_resolve_core_config_value(_require_mapping_value(state, 'surplus_freeze_until'), read_entity, ''),
         active_surplus_devices=_resolve_core_config_value(_require_mapping_value(state, 'active_surplus_devices'), read_entity, ''),
-        previous_device_state=_resolve_core_config_value(_require_mapping_value(state, 'previous_device_state'), read_entity, ''),
     )
 
 
@@ -3302,7 +3298,6 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
         state=CoreStateConfig(
             surplus_freeze_until=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'surplus_freeze_until'), read_entity, ''),
             active_surplus_devices=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'active_surplus_devices'), read_entity, ''),
-            previous_device_state=_resolve_core_config_value(_require_mapping_value(ems.get('state'), 'previous_device_state'), read_entity, ''),
         ),
         policy_outputs=CorePolicyOutputsConfig(
             device_policies=CANONICAL_POLICY_OUTPUTS['device_policies'],

@@ -10,7 +10,6 @@ from ems_core.net_zero.surplus_allocator import (
 def _target(device_id, *, priority, active):
     return SurplusDeviceTarget(
         device_id=device_id,
-        decision_name=device_id,
         priority=priority,
         rank=1,
         threshold_w=1000,

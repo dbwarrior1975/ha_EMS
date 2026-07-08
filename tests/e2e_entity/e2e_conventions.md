@@ -41,10 +41,10 @@ Policy trace:
 
 - `policy_output_contract == 'device_policy_primary'`
 - `device_policies`
-- `surplus_device_dispatch_action`
+- `surplus_dispatch_action`
 - `surplus_device_dispatch_target`
-- `surplus_device_dispatch_device_id`
-- `surplus_device_dispatch_contract == 'device_id_primary'`
+- `surplus_dispatch_device_id`
+- `surplus_dispatch_contract == 'device_id_primary'`
 
 Dispatch state applier trace:
 

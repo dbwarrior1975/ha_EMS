@@ -6,7 +6,7 @@ from ems_adapter.config_loader import (
     load_grouped_ems_config,
 )
 from ems_core.net_zero.engine import _generic_surplus_candidate_contexts
-from ems_core.net_zero.surplus_device_targets import build_surplus_device_targets
+from ems_core.net_zero.surplus_candidates import build_surplus_candidates
 
 
 def _candidate(device_id, *, priority=1, threshold_w=2000, enabled=True, **overrides):
@@ -27,7 +27,7 @@ def _candidate(device_id, *, priority=1, threshold_w=2000, enabled=True, **overr
 
 @pytest.mark.unit
 def test_generic_builder_does_not_derive_missing_activation_threshold_from_device_shape():
-    targets = build_surplus_device_targets(
+    targets = build_surplus_candidates(
         (
             _candidate('EV_CHARGER', threshold_w=0),
             _candidate('HOME_BATTERY', threshold_w=0),
@@ -40,7 +40,7 @@ def test_generic_builder_does_not_derive_missing_activation_threshold_from_devic
 
 @pytest.mark.unit
 def test_generic_builder_preserves_independent_device_thresholds_and_dispatch_modes():
-    targets = build_surplus_device_targets(
+    targets = build_surplus_candidates(
         (
             _candidate('EV_A', priority=4, threshold_w=4400, surplus_dispatch_mode='max_absorb'),
             _candidate('EV_B', priority=3, threshold_w=3600, surplus_dispatch_mode='max_absorb'),
@@ -62,7 +62,7 @@ def test_generic_builder_preserves_independent_device_thresholds_and_dispatch_mo
 
 @pytest.mark.unit
 def test_generic_builder_preserves_caller_owned_eligibility_and_lifecycle_flags():
-    targets = build_surplus_device_targets(
+    targets = build_surplus_candidates(
         (
             _candidate('EV_A', enabled=False, activation_allowed=False),
             _candidate('RELAY1', enabled=True, force_on=True, active=True),
@@ -77,7 +77,7 @@ def test_generic_builder_preserves_caller_owned_eligibility_and_lifecycle_flags(
 
 @pytest.mark.unit
 def test_generic_builder_accepts_neutral_absorb_candidate_without_kind_contract():
-    targets = build_surplus_device_targets(
+    targets = build_surplus_candidates(
         (
             _candidate(
                 'THERMAL_BUFFER',

@@ -176,9 +176,7 @@ class TickFrame:
     ev_states: dict[str, dict]
     surplus_freeze_until_ts: Optional[float]
     active_surplus_device_ids: tuple[str, ...]
-    previous_device_state: dict
     previous_device_states: dict[str, dict]
-    previous_ev_device_states: dict[str, dict]
     haeo_battery_state_kw: float
     haeo_ev_state_kw: float
     haeo_battery_age_s: float
@@ -204,20 +202,6 @@ class TickFrame:
             ev_target_kw=max(float(self.haeo_ev_state_kw), 0.0),
         )
 
-    def selected_previous_device_state(self, device_id: str) -> dict:
-        device_id = str(device_id or '')
-        if device_id and device_id in self.previous_device_states:
-            return dict(self.previous_device_states[device_id])
-        state = dict(self.previous_device_state or {})
-        if state.get('device_id') == device_id:
-            return state
-        return {
-            'device_id': device_id,
-            'mode': '',
-            'low_pv_cycles': 0,
-            'hard_off_release_ready_cycles': 0,
-            'hard_off_active': False,
-        }
 
 
 @dataclass
@@ -700,10 +684,6 @@ def parse_tick_frame_v2(
             _fail('policy_state.surplus.active_device_ids', f'unknown device id {device_id}')
     freeze_raw = _required(surplus, 'freeze_until', 'policy_state.surplus')
     freeze_until = None if freeze_raw in (None, '') else _number(freeze_raw, 'policy_state.surplus.freeze_until')
-    previous_state = _normalize_previous_device_state(
-        _required(surplus, 'previous_device_state', 'policy_state.surplus'),
-        'policy_state.surplus.previous_device_state',
-    )
     previous_device_states = {}
     raw_device_states = surplus.get('previous_device_states', {})
     if raw_device_states is not None:
@@ -714,9 +694,6 @@ def parse_tick_frame_v2(
                 raw_state,
                 f'policy_state.surplus.previous_device_states.{text_id}',
             )
-    if previous_state.get('device_id'):
-        previous_device_states.setdefault(previous_state['device_id'], dict(previous_state))
-
     haeo = _mapping(_required(state_packet, 'haeo', 'policy_state'), 'policy_state.haeo')
     haeo_battery_state_kw = _number(_required(haeo, 'battery_state_kw', 'policy_state.haeo'), 'policy_state.haeo.battery_state_kw')
     haeo_ev_state_kw = _number(_required(haeo, 'ev_state_kw', 'policy_state.haeo'), 'policy_state.haeo.ev_state_kw')
@@ -788,10 +765,7 @@ def parse_tick_frame_v2(
         ev_states=ev_states,
         surplus_freeze_until_ts=freeze_until,
         active_surplus_device_ids=active_ids,
-        previous_device_state=previous_state,
         previous_device_states=previous_device_states,
-        # Compatibility alias derived from the generic device-owned state map.
-        previous_ev_device_states=previous_device_states,
         haeo_battery_state_kw=haeo_battery_state_kw,
         haeo_ev_state_kw=haeo_ev_state_kw,
         haeo_battery_age_s=haeo_battery_age_s,

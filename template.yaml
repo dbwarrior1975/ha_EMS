@@ -321,8 +321,7 @@
                       else states(
                         'input_boolean.ems_relay1_enabled_import_zero'
                       ),
-  
-                    'surplus_dispatch_mode': 'fixed',
+                    'surplus_dispatch_mode': 'fixed',  
 
                     'force_on':
                       true
@@ -373,7 +372,7 @@
                         'input_boolean.ems_relay2_enabled_import_zero'
                       ),
   
-                    'surplus_dispatch_mode': 'fixed',
+                    'surplus_dispatch_mode': 'fixed',                                                     
 
                     'force_on':
                       true
@@ -643,23 +642,10 @@
                     'sensor.ems_active_surplus_devices',
                     'device_ids'
                   ) or [],
-  
-                'previous_device_state':
-                  state_attr(
-                    'sensor.ems_policy_state_pyscript',
-                    'previous_device_state'
-                  ) or {
-                    'device_id': 'EV_CHARGER',
-                    'mode': '',
-                    'low_pv_cycles': 0,
-                    'hard_off_release_ready_cycles': 0,
-                    'hard_off_active': false
-                  },
-  
                 'previous_device_states':
                   state_attr(
                     'sensor.ems_policy_state_pyscript',
-                    'previous_ev_device_states'
+                    'previous_device_states'
                   ) or {}
               }
             }}
@@ -882,7 +868,7 @@
         unit_of_measurement: "kWh"
         state: |-
           {{
-            (states('sensor.heater_on_today')|float * 3)|round(2)
+            (states('sensor.heater_on_today')|float(0) * 3)|round(2)
           }}
 
 # EM340 mittarin kahdesta rekisteristä luetut arvot yhdistetään. 

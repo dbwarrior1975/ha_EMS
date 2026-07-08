@@ -379,10 +379,6 @@ class QuarterScenarioHarness:
 
         if self.ent:
             seed_active_surplus_devices(self, active_device_ids=())
-        previous_device_state = self._optional_entity_id('previous_device_state')
-        if previous_device_state:
-            self.store.set_value(previous_device_state, '')
-
         # HAEO defaults / attrs
         for key in ('haeo_battery_power_active', 'haeo_ev_battery_power_active',
                     'haeo_battery_active_power_fresh_source', 'haeo_ev_active_power_fresh_source'):

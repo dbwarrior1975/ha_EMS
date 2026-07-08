@@ -224,19 +224,12 @@ def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
 
     expected_action = policy_trace.get('surplus_dispatch_action')
     expected_device_id = policy_trace.get('surplus_dispatch_device_id')
-    expected_target = expected_device_id
-
     actual_action = dispatch_state_trace.get('device_dispatch_action')
-    actual_target = dispatch_state_trace.get('device_dispatch_target')
     actual_device_id = dispatch_state_trace.get('device_dispatch_device_id')
 
     assert actual_action == expected_action, (
         f"step={idx} note={note} dispatch_state.device_dispatch_action "
         f"actual={actual_action} expected={expected_action}"
-    )
-    assert actual_target == expected_target, (
-        f"step={idx} note={note} dispatch_state.device_dispatch_target "
-        f"actual={actual_target} expected={expected_target}"
     )
     assert actual_device_id == expected_device_id, (
         f"step={idx} note={note} dispatch_state.device_dispatch_device_id "
@@ -256,15 +249,15 @@ def seed_previous_device_state(
     if hard_off_active is None:
         hard_off_active = mode == 'hard_off'
 
-    previous_device_state = _entity(h, 'previous_device_state')
-    h.set_entities({previous_device_state: device_id})
-    h.set_attrs(previous_device_state, {
+    policy_state = _entity(h, 'policy_state')
+    state = {
         'device_id': device_id,
         'mode': mode,
         'low_pv_cycles': low_pv_cycles,
         'hard_off_release_ready_cycles': hard_off_release_ready_cycles,
         'hard_off_active': hard_off_active,
-    })
+    }
+    h.set_attrs(policy_state, {'previous_device_states': {device_id: state}})
 
 
 def seed_previous_policy_trace(h, **attrs):

@@ -181,7 +181,6 @@ Generic diagnostics:
 3. `surplus_active_device_ids`
 4. `surplus_next_device_id`
 5. `surplus_release_device_id`
-6. `surplus_targets_by_device_id`
 
 `adjustable_surplus_load`, `adjustable_surplus_activation_w` ja
 `surplus_adjustable_device_id` on poistettu aktiivisesta config/runtime/diagnostics-
@@ -231,8 +230,7 @@ Kanoniset runtime-avaimet:
 5. `actuator_writer_trace`
 6. `dispatch_state_applier_trace`
 7. `active_surplus_devices`
-8. `previous_device_state`
-9. `surplus_freeze_until`
+8. `surplus_freeze_until`
 
 Legacy-trace- ja standalone surplus summary -avaimia ei exposeerata aktiivisessa
 registryssa.
@@ -272,9 +270,9 @@ Diagnostiikkapayload sisaltaa selitys- ja seurantakenttia kuten:
 13. `config_source`
 14. `policy_output_contract`
 
-Diagnostic-projektio poistaa vanhat `surplus_device_*`-duplikaatit,
-selected-single-EV scalarit ja `decision_name`-peilin kandidaattiriveilta. Sisaiset
-dispatch- ja policy-state -sensorisopimukset sailyvat erillisina eika cleanup muuta
-execution-polun omistajuutta.
+P0-cleanup poistaa legacy surplus-/selected-EV-tuottajat ennen diagnostiikkaprojektiota.
+Diagnostiikkaprojektion jaljelle jaava blacklist koskee vain myohempien P1/P2-vaiheiden
+viitta legacy-avainta. Dispatch- ja policy-state -sensorisopimukset sailyvat erillisina
+eika cleanup muuta execution-polun omistajuutta.
 
 Se ei ole erillinen command-bus eika state-bus.

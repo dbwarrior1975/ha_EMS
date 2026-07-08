@@ -323,15 +323,15 @@ Surplus-policy-contract per laite:
 3. `surplus_dispatch_mode`: `max_absorb` tai `fixed`
 4. surplus-aktivointikynnys johdetaan aina `capabilities.max_absorb_w`:sta
 
-Diagnostiikan authoritative generic pinnat ovat `surplus_candidate_device_ids`,
-`surplus_candidate_stack`, `surplus_active_device_ids` ja
-`surplus_targets_by_device_id`.
+Diagnostiikan authoritative generic pinnat ovat `surplus_candidates`,
+`surplus_candidate_device_ids`, `surplus_candidate_stack` ja
+`surplus_active_device_ids`. Lopulliset wattitargetit luetaan `device_policies`-rakenteesta.
 
 Keskeiset surplus-state-avaimet (EMS):
 
 1. `surplus_freeze_until`
 2. `active_surplus_devices`
-3. `previous_device_state`
+3. `policy_state.previous_device_states`
 
 Keskeiset releiden override- ja sallinta-avaimet (EMS):
 
@@ -354,8 +354,8 @@ Keskeiset policy-ulostuloavaimet (EMS):
 
 1. `device_policies`
 2. `dispatch_command`
-3. `active_surplus_devices`
-4. `previous_device_state`
+3. `policy_state`
+4. `active_surplus_devices`
 5. `policy_decision_trace` (diagnostiikkapeili)
 
 Oleellinen tulkinta:

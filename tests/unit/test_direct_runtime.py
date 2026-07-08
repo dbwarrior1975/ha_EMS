@@ -172,13 +172,6 @@ def _state_packet():
         'surplus': {
             'freeze_until': None,
             'active_device_ids': [],
-            'previous_device_state': {
-                'device_id': 'EV_CHARGER',
-                'mode': '',
-                'low_pv_cycles': 0,
-                'hard_off_release_ready_cycles': 0,
-                'hard_off_active': False,
-            },
             'previous_device_states': {},
         },
         'haeo': {
@@ -239,7 +232,6 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         previous_primary_device_id=frame.previous_primary_device_id,
     )
     selected_ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
-    previous_ev = frame.selected_previous_device_state(selected_ev_device_id)
     adjustable_active = selected_ev_device_id in set(frame.active_surplus_device_ids)
     outputs = compute_net_zero_engine_outputs(
         profiles,
@@ -252,11 +244,8 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         ev_burn_active=adjustable_active,
         selected_ev_surplus_active=adjustable_active,
         pv_power_kw=frame.pv_power_w / 1000.0,
-        ev_hard_off_active=bool(previous_ev['hard_off_active']),
-        ev_low_pv_cycles=previous_ev['low_pv_cycles'],
-        ev_hard_off_release_ready_cycles=previous_ev['hard_off_release_ready_cycles'],
         relay_device_states=frame.relay_states,
-        previous_ev_device_states=frame.previous_ev_device_states,
+        previous_device_states=frame.previous_device_states,
         previous_force_on_device_ids=frame.previous_force_on_device_ids,
         haeo_nz_plan=haeo_plan,
     )
@@ -501,7 +490,6 @@ def test_direct_tick_frame_preserves_generic_device_owned_lifecycle_states(proje
 
     assert frame.previous_device_states['EV_CHARGER']['low_pv_cycles'] == 50
     assert frame.previous_device_states['EV_GARAGE']['low_pv_cycles'] == 3
-    assert frame.previous_ev_device_states == frame.previous_device_states
 
 
 @pytest.mark.unit
@@ -597,7 +585,7 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
         (
             'ev_force_on_binding',
             lambda p, m, s: p['devices']['EV_CHARGER']['policy'].update(force_on=True),
-            {'ev_force_on': True},
+            {'ev_force_on_candidate': True},
         ),
         (
             'relay_force_on_binding',
@@ -608,11 +596,14 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
             'hard_off_state_transition',
             lambda p, m, s: (
                 m.update(pv_power_w=500),
-                s['surplus']['previous_device_state'].update(
-                    mode='hard_off',
-                    low_pv_cycles=100,
-                    hard_off_release_ready_cycles=0,
-                    hard_off_active=True,
+                s['surplus']['previous_device_states'].update(
+                    EV_CHARGER={
+                        'device_id': 'EV_CHARGER',
+                        'mode': 'hard_off',
+                        'low_pv_cycles': 100,
+                        'hard_off_release_ready_cycles': 0,
+                        'hard_off_active': True,
+                    }
                 ),
             ),
             {'ev_policy_mode': 'hard_off', 'ev_hard_off_active': True, 'ev_low_pv_cycles': 101},
@@ -624,11 +615,6 @@ def test_direct_policy_golden_cases(project_root, name, mutate, expected):
     measurements = _measurements_packet()
     state = _state_packet()
     mutate(policy, measurements, state)
-    if name == 'hard_off_state_transition':
-        state['surplus']['previous_device_states'] = {
-            'EV_CHARGER': copy.deepcopy(state['surplus']['previous_device_state'])
-        }
-
     _cfg, _frame, guard, _derived, outputs = _compute(
         project_root,
         policy=policy,
@@ -642,18 +628,20 @@ def test_direct_policy_golden_cases(project_root, name, mutate, expected):
     if 'battery_target_w' in expected:
         assert outputs.battery_target_w == expected['battery_target_w']
     if 'dispatch_action' in expected:
-        assert outputs.attrs['surplus_device_dispatch_action'] == expected['dispatch_action']
+        assert outputs.attrs['surplus_dispatch_action'] == expected['dispatch_action']
     if 'dispatch_device_id' in expected:
-        assert outputs.attrs['surplus_device_dispatch_device_id'] == expected['dispatch_device_id']
-    if 'ev_force_on' in expected:
-        assert outputs.attrs['ev_force_on'] is expected['ev_force_on']
+        assert outputs.attrs['surplus_dispatch_device_id'] == expected['dispatch_device_id']
+    if 'ev_force_on_candidate' in expected:
+        candidates = {item['device_id']: item for item in outputs.attrs['surplus_candidates']}
+        assert candidates['EV_CHARGER']['force_on'] is expected['ev_force_on_candidate']
     if 'relay1_target_w' in expected:
         assert policies['RELAY1'].target_w == expected['relay1_target_w']
         assert policies['RELAY1'].enabled is expected['relay1_enabled']
     if 'ev_policy_mode' in expected:
-        assert outputs.attrs['ev_policy_mode'] == expected['ev_policy_mode']
-        assert outputs.attrs['ev_hard_off_active'] is expected['ev_hard_off_active']
-        assert outputs.attrs['ev_low_pv_cycles'] == expected['ev_low_pv_cycles']
+        assert policies['EV_CHARGER'].mode == expected['ev_policy_mode']
+        lifecycle = outputs.attrs['device_lifecycle_states']['EV_CHARGER']
+        assert lifecycle['hard_off_active'] is expected['ev_hard_off_active']
+        assert lifecycle['low_pv_cycles'] == expected['ev_low_pv_cycles']
 
 
 @pytest.mark.unit

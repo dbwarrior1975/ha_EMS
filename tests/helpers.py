@@ -232,7 +232,6 @@ def make_cfg(**overrides):
         state=CoreStateConfig(
             surplus_freeze_until='input_datetime.surplus_freeze_until',
             active_surplus_devices='sensor.active_surplus_devices',
-            previous_device_state='sensor.previous_device_state',
         ),
         policy_outputs=CorePolicyOutputsConfig(
             device_policies='sensor.device_policies',

@@ -22,18 +22,16 @@ def test_dispatch_state_applier_prefers_canonical_dispatch_command_over_trace(pr
         ENT['dispatch_command'],
         {
             'dispatch_command_version': '7',
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'RELAY1',
-            'surplus_device_dispatch_device_id': 'RELAY1',
+            'surplus_dispatch_action': 'ACTIVATE',
+            'surplus_dispatch_device_id': 'RELAY1',
             'surplus_freeze_until_ts': 60.0,
         },
     )
     harness.set_attrs(
         ENT['policy_diagnostics'],
         {
-            'surplus_device_dispatch_action': 'CLEAR_ALL',
-            'surplus_device_dispatch_target': '',
-            'surplus_device_dispatch_device_id': '',
+            'surplus_dispatch_action': 'CLEAR_ALL',
+            'surplus_dispatch_device_id': '',
             'surplus_freeze_until_ts': 30.0,
         },
     )
@@ -57,51 +55,6 @@ def test_dispatch_state_applier_prefers_canonical_dispatch_command_over_trace(pr
 
 
 @pytest.mark.unit
-def test_dispatch_state_applier_reports_adjustable_active_device_id_from_trace(project_root):
-    harness = QuarterScenarioHarness(project_root)
-    harness.set_attrs(
-        ENT['dispatch_command'],
-        {
-            'dispatch_command_version': '11',
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'ADJUSTABLE',
-            'surplus_device_dispatch_device_id': 'HOME_BATTERY',
-            'surplus_device_targets': (
-                {
-                    'device_id': 'HOME_BATTERY',
-                    'decision_name': 'ADJUSTABLE',
-                    'active': False,
-                },
-            ),
-        },
-    )
-    harness.set_attrs(
-        ENT['policy_diagnostics'],
-        {
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'ADJUSTABLE',
-            'surplus_device_dispatch_device_id': 'HOME_BATTERY',
-            'surplus_device_targets': (
-                {
-                    'device_id': 'HOME_BATTERY',
-                    'decision_name': 'ADJUSTABLE',
-                    'active': False,
-                },
-            ),
-        },
-    )
-
-    harness._run_dispatch_state_applier_loop()
-
-    trace = harness.getattrs(DISPATCH_TRACE)
-    assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ('HOME_BATTERY',)
-    assert trace['decision'] == 'ACTIVATE_HOME_BATTERY'
-    assert trace['device_dispatch_decision_name'] == 'ADJUSTABLE'
-    assert trace['device_dispatch_device_id'] == 'HOME_BATTERY'
-    assert trace['active_surplus_device_ids'] == ('HOME_BATTERY',)
-
-
-@pytest.mark.unit
 def test_dispatch_state_applier_missing_canonical_dispatch_command_is_noop(project_root):
     harness = QuarterScenarioHarness(project_root)
 
@@ -118,35 +71,14 @@ def test_dispatch_state_applier_missing_canonical_dispatch_command_is_noop(proje
 
 
 @pytest.mark.unit
-def test_dispatch_state_applier_activates_nth_relay_from_device_trace(project_root):
+def test_dispatch_state_applier_activates_nth_relay_by_device_id(project_root):
     harness = QuarterScenarioHarness(project_root)
     harness.set_attrs(
         ENT['dispatch_command'],
         {
             'dispatch_command_version': '21',
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'RELAY3',
-            'surplus_device_dispatch_device_id': 'RELAY3',
-            'surplus_device_targets': (
-                {'device_id': 'RELAY1', 'decision_name': 'RELAY1', 'active': True},
-                {'device_id': 'EV_CHARGER', 'decision_name': 'ADJUSTABLE', 'active': True},
-                {'device_id': 'RELAY2', 'decision_name': 'RELAY2', 'active': True},
-                {'device_id': 'RELAY3', 'decision_name': 'RELAY3', 'active': False},
-            ),
-        },
-    )
-    harness.set_attrs(
-        ENT['policy_diagnostics'],
-        {
-            'surplus_device_dispatch_action': 'ACTIVATE',
-            'surplus_device_dispatch_target': 'RELAY3',
-            'surplus_device_dispatch_device_id': 'RELAY3',
-            'surplus_device_targets': (
-                {'device_id': 'RELAY1', 'decision_name': 'RELAY1', 'active': True},
-                {'device_id': 'EV_CHARGER', 'decision_name': 'ADJUSTABLE', 'active': True},
-                {'device_id': 'RELAY2', 'decision_name': 'RELAY2', 'active': True},
-                {'device_id': 'RELAY3', 'decision_name': 'RELAY3', 'active': False},
-            ),
+            'surplus_dispatch_action': 'ACTIVATE',
+            'surplus_dispatch_device_id': 'RELAY3',
         },
     )
     harness.set_attrs(ENT['active_surplus_devices'], {'device_ids': ('RELAY1', 'EV_CHARGER', 'RELAY2')})
@@ -161,42 +93,20 @@ def test_dispatch_state_applier_activates_nth_relay_from_device_trace(project_ro
         'RELAY3',
     )
     assert trace['decision'] == 'ACTIVATE_RELAY3'
-    assert trace['device_dispatch_decision_name'] == 'RELAY3'
     assert trace['device_dispatch_device_id'] == 'RELAY3'
     assert trace['active_surplus_device_ids'] == ('RELAY1', 'EV_CHARGER', 'RELAY2', 'RELAY3')
     assert trace['writes'] == ['on:RELAY3']
 
 
 @pytest.mark.unit
-def test_dispatch_state_applier_releases_nth_relay_from_decision_name(project_root):
+def test_dispatch_state_applier_releases_nth_relay_by_device_id(project_root):
     harness = QuarterScenarioHarness(project_root)
     harness.set_attrs(
         ENT['dispatch_command'],
         {
             'dispatch_command_version': '22',
-            'surplus_device_dispatch_action': 'RELEASE',
-            'surplus_device_dispatch_target': 'RELAY3',
-            'surplus_device_dispatch_device_id': '',
-            'surplus_device_targets': (
-                {'device_id': 'RELAY1', 'decision_name': 'RELAY1', 'active': True},
-                {'device_id': 'EV_CHARGER', 'decision_name': 'ADJUSTABLE', 'active': True},
-                {'device_id': 'RELAY2', 'decision_name': 'RELAY2', 'active': True},
-                {'device_id': 'RELAY3', 'decision_name': 'RELAY3', 'active': True},
-            ),
-        },
-    )
-    harness.set_attrs(
-        ENT['policy_diagnostics'],
-        {
-            'surplus_device_dispatch_action': 'RELEASE',
-            'surplus_device_dispatch_target': 'RELAY3',
-            'surplus_device_dispatch_device_id': '',
-            'surplus_device_targets': (
-                {'device_id': 'RELAY1', 'decision_name': 'RELAY1', 'active': True},
-                {'device_id': 'EV_CHARGER', 'decision_name': 'ADJUSTABLE', 'active': True},
-                {'device_id': 'RELAY2', 'decision_name': 'RELAY2', 'active': True},
-                {'device_id': 'RELAY3', 'decision_name': 'RELAY3', 'active': True},
-            ),
+            'surplus_dispatch_action': 'RELEASE',
+            'surplus_dispatch_device_id': 'RELAY3',
         },
     )
     harness.set_attrs(
@@ -213,7 +123,6 @@ def test_dispatch_state_applier_releases_nth_relay_from_decision_name(project_ro
         'RELAY2',
     )
     assert trace['decision'] == 'RELEASE_RELAY3'
-    assert trace['device_dispatch_decision_name'] == 'RELAY3'
     assert trace['device_dispatch_device_id'] == 'RELAY3'
     assert trace['active_surplus_device_ids'] == ('RELAY1', 'EV_CHARGER', 'RELAY2')
     assert trace['writes'] == ['off:RELAY3']
@@ -226,17 +135,8 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
         ENT['dispatch_command'],
         {
             'dispatch_command_version': '23',
-            'surplus_device_dispatch_action': 'CLEAR_ALL',
-            'surplus_device_dispatch_target': '',
-            'surplus_device_dispatch_device_id': '',
-        },
-    )
-    harness.set_attrs(
-        ENT['policy_diagnostics'],
-        {
-            'surplus_device_dispatch_action': 'CLEAR_ALL',
-            'surplus_device_dispatch_target': '',
-            'surplus_device_dispatch_device_id': '',
+            'surplus_dispatch_action': 'CLEAR_ALL',
+            'surplus_dispatch_device_id': '',
         },
     )
     harness.set_attrs(
@@ -251,6 +151,7 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
     assert trace['decision'] == 'CLEAR_ALL'
     assert trace['active_surplus_device_ids'] == ()
     assert trace['writes'] == ['off:RELAY1', 'off:EV_CHARGER', 'off:RELAY2', 'off:RELAY3']
+
 
 @pytest.mark.unit
 def test_dispatch_state_applier_fails_closed_when_runtime_context_is_invalid(monkeypatch, project_root):

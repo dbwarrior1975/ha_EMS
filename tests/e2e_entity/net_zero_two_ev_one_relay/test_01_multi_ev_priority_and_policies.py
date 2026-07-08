@@ -127,8 +127,8 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
     assert candidates['RELAY1']['surplus_dispatch_mode'] == 'fixed'
     assert policies['EV_GARAGE']['target_w'] == 3680
     assert policies['EV_CHARGER']['target_w'] == 6440
-    assert attrs['surplus_targets_by_device_id']['EV_GARAGE'] == 3680
-    assert attrs['surplus_targets_by_device_id']['EV_CHARGER'] == 6440
+    assert 'EV_GARAGE' in attrs['surplus_active_device_ids']
+    assert 'EV_CHARGER' in attrs['surplus_active_device_ids']
 
 
 @pytest.mark.scenario

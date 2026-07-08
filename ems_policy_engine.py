@@ -55,9 +55,6 @@ def _policy_output_contract_attrs():
     return {
         'policy_engine_build': _POLICY_ENGINE_BUILD,
         'policy_output_contract': 'device_policy_primary',
-        'canonical_policy_output_contract': 'device_policies',
-        'diagnostics_contract': 'policy_explanation_only',
-        'runtime_contract': False,
     }
 
 
@@ -273,9 +270,6 @@ def _read_active_surplus_device_ids(cfg_or_entities, entities=None):
     return ()
 
 
-def _read_previous_device_state(cfg_or_entities, entities=None):
-    return _read_selected_previous_device_state(cfg_or_entities, entities)
-
 
 def _default_previous_device_state(device_id=''):
     return {
@@ -298,46 +292,15 @@ def _normalize_previous_device_state_entry(device_id, state):
     return normalized
 
 
-def _read_previous_device_states(cfg_or_entities, entities=None):
-    cfg = cfg_or_entities if entities is not None else None
-    entities = entities if entities is not None else cfg_or_entities
+def _read_previous_device_states(entities):
     states = {}
-    raw_cfg_state = _cfg_state_value(cfg, 'previous_device_state', None) if cfg is not None else None
-    if isinstance(raw_cfg_state, dict):
-        raw_states = raw_cfg_state.get('device_states')
-        if isinstance(raw_states, dict):
-            for device_id, state in raw_states.items():
-                states[str(device_id)] = _normalize_previous_device_state_entry(device_id, state)
-        mode = raw_cfg_state.get('mode')
-        if mode:
-            device_id = raw_cfg_state.get('device_id')
-            if device_id:
-                states[str(device_id)] = _normalize_previous_device_state_entry(device_id, raw_cfg_state)
-    previous_entity = (entities or {}).get('previous_device_state', '')
-    raw_states = get_attr(previous_entity, 'device_states', None)
+    policy_state_entity = (entities or {}).get('policy_state', '')
+    raw_states = get_attr(policy_state_entity, 'previous_device_states', None)
     if isinstance(raw_states, dict):
         for device_id, state in raw_states.items():
             states[str(device_id)] = _normalize_previous_device_state_entry(device_id, state)
-
-    mode = get_attr(previous_entity, 'mode', '')
-    if mode:
-        device_id = get_attr(previous_entity, 'device_id', '')
-        if device_id:
-            states[str(device_id)] = _normalize_previous_device_state_entry(
-                device_id,
-                {
-                    'device_id': device_id,
-                    'mode': mode,
-                    'low_pv_cycles': get_attr(previous_entity, 'low_pv_cycles', 0),
-                    'hard_off_release_ready_cycles': get_attr(previous_entity, 'hard_off_release_ready_cycles', 0),
-                    'hard_off_active': get_attr(previous_entity, 'hard_off_active', False),
-                },
-            )
     return states
 
-
-# Compatibility alias for legacy tests/callers.
-_read_previous_ev_device_states = _read_previous_device_states
 
 
 def _compat_selected_ev_device_id(cfg):
@@ -362,44 +325,6 @@ def _compat_selected_ev_device_id(cfg):
     return 'EV_CHARGER'
 
 
-def _read_selected_previous_device_state(cfg_or_entities, entities=None):
-    cfg = cfg_or_entities if entities is not None else None
-    entities = entities if entities is not None else cfg_or_entities
-    states = _read_previous_device_states(cfg, entities) if cfg is not None else _read_previous_device_states(entities)
-    selected_ev_device_id = _compat_selected_ev_device_id(cfg) if cfg is not None else 'EV_CHARGER'
-    if selected_ev_device_id in states:
-        return states[selected_ev_device_id]
-    return _default_previous_device_state(selected_ev_device_id)
-
-
-def _selected_ev_device_id_from_outputs(outputs):
-    return str(outputs.attrs.get('selected_ev_device_id', 'EV_CHARGER') or 'EV_CHARGER')
-
-
-def _previous_device_state_attrs_from_outputs(outputs):
-    device_id = _selected_ev_device_id_from_outputs(outputs)
-    selected_state = outputs.attrs.get('previous_device_state', {}) or {}
-    normalized_selected = _normalize_previous_device_state_entry(device_id, selected_state)
-    normalized_states = {}
-    raw_states = outputs.attrs.get('previous_device_states', outputs.attrs.get('previous_ev_device_states', {})) or {}
-    for raw_device_id, raw_state in raw_states.items():
-        normalized_states[str(raw_device_id)] = _normalize_previous_device_state_entry(raw_device_id, raw_state)
-    if device_id not in normalized_states:
-        normalized_states[device_id] = normalized_selected
-    return {
-        'device_id': normalized_selected['device_id'],
-        'mode': normalized_selected['mode'],
-        'low_pv_cycles': normalized_selected['low_pv_cycles'],
-        'hard_off_active': normalized_selected['hard_off_active'],
-        'hard_off_release_ready_cycles': normalized_selected['hard_off_release_ready_cycles'],
-        'device_states': normalized_states,
-    }
-
-
-def _selected_previous_device_state_for_outputs(outputs):
-    device_id = _selected_ev_device_id_from_outputs(outputs)
-    return _normalize_previous_device_state_entry(device_id, outputs.attrs.get('previous_device_state', {}))
-
 
 
 _MISSING = object()
@@ -423,8 +348,8 @@ def _device_policies_key(attrs):
 
 
 def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
-    action = str(attrs.get('surplus_device_dispatch_action') or '')
-    decision = str(attrs.get('surplus_device_dispatch_decision') or '')
+    action = str(attrs.get('surplus_dispatch_action') or '')
+    decision = str(attrs.get('surplus_dispatch_decision') or '')
     clear_reason = str(attrs.get('surplus_state_clear_reason') or '')
     freeze_until_ts = attrs.get('surplus_freeze_until_ts')
     if action == 'CLEAR_ALL' and decision == 'CLEAR_ALL' and clear_reason != 'HAEO_COMBO_CHANGED':
@@ -434,11 +359,9 @@ def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
 
 def _dispatch_command_key(attrs):
     return (
-        str(attrs.get('surplus_device_dispatch_action', '') or ''),
-        str(attrs.get('surplus_device_dispatch_decision', '') or ''),
-        str(attrs.get('surplus_device_dispatch_device_id', '') or ''),
-        _stable_key(attrs.get('surplus_device_dispatch_target', '')),
-        _stable_key(attrs.get('surplus_device_targets', ())),
+        str(attrs.get('surplus_dispatch_action', '') or ''),
+        str(attrs.get('surplus_dispatch_decision', '') or ''),
+        str(attrs.get('surplus_dispatch_device_id', '') or ''),
         _canonical_surplus_freeze_until_ts_for_dispatch(attrs),
         str(attrs.get('surplus_state_clear_reason', '') or ''),
     )
@@ -449,11 +372,10 @@ def _dispatch_command_attrs(attrs, version=0):
     return {
         'dispatch_command_state_kind': 'monotonic_version',
         'dispatch_command_version': int(version),
-        'surplus_device_dispatch_action': attrs.get('surplus_device_dispatch_action', ''),
-        'surplus_device_dispatch_decision': attrs.get('surplus_device_dispatch_decision', ''),
-        'surplus_device_dispatch_device_id': attrs.get('surplus_device_dispatch_device_id', ''),
-        'surplus_device_dispatch_target': attrs.get('surplus_device_dispatch_target', ''),
-        'surplus_device_targets': attrs.get('surplus_device_targets', ()),
+        'surplus_dispatch_action': attrs.get('surplus_dispatch_action', ''),
+        'surplus_dispatch_decision': attrs.get('surplus_dispatch_decision', ''),
+        'surplus_dispatch_device_id': attrs.get('surplus_dispatch_device_id', ''),
+        'surplus_dispatch_contract': attrs.get('surplus_dispatch_contract', 'device_id_primary'),
         'surplus_freeze_until_ts': freeze_until_ts,
         'surplus_state_clear_reason': attrs.get('surplus_state_clear_reason', ''),
         'surplus_explanation': attrs.get('surplus_explanation', ''),
@@ -465,8 +387,7 @@ def _policy_state_key(attrs, previous_force_on_device_ids=()):
         str(attrs.get('haeo_nz_quarter_key', '') or ''),
         str(attrs.get('haeo_nz_primary_device_id', '') or ''),
         tuple(_parse_active_device_ids(attrs.get('prev_force_on_device_ids', previous_force_on_device_ids))),
-        _stable_key(attrs.get('previous_device_state', {})),
-        _stable_key(attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {}))),
+        _stable_key(attrs.get('previous_device_states', {})),
     )
 
 
@@ -480,73 +401,17 @@ def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
         'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
         'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
         'prev_force_on_device_ids': prev_force_on_device_ids,
-        'previous_device_state': attrs.get('previous_device_state', {}),
-        'previous_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
-        'previous_ev_device_states': attrs.get('previous_device_states', attrs.get('previous_ev_device_states', {})),
+        'previous_device_states': attrs.get('previous_device_states', {}),
     }
 
 
-
 def _diagnostic_projection_attrs(attrs):
-    """Return the public diagnostics-only canonical projection.
-
-    Internal result attrs stay unchanged because dispatch, policy-state persistence,
-    writers and change detection have separate contracts.
-    """
+    """Return the public diagnostics projection of canonical policy attrs."""
     projected = dict(attrs or {})
 
-    raw_candidates = projected.get('surplus_candidates', ()) or ()
-    candidates = []
-    for raw_candidate in raw_candidates:
-        candidate = dict(raw_candidate or {})
-        candidate.pop('decision_name', None)
-        candidates.append(candidate)
-    projected['surplus_candidates'] = tuple(candidates)
-
-    projected['surplus_dispatch_action'] = projected.get(
-        'surplus_device_dispatch_action', 'NOOP'
-    )
-    projected['surplus_dispatch_device_id'] = projected.get(
-        'surplus_device_dispatch_device_id', ''
-    )
-    projected['surplus_dispatch_contract'] = projected.get(
-        'surplus_device_dispatch_contract', 'device_id_primary'
-    )
-
+    # P1/P2 compatibility producers still exist temporarily; keep only those
+    # out of the public diagnostics surface until their phases remove them.
     legacy_keys = (
-        'surplus_next_target',
-        'surplus_release_candidate',
-        'active_stack',
-        'surplus_device_active_stack',
-        'surplus_device_active_device_stack',
-        'surplus_device_next_target',
-        'surplus_device_next_device_id',
-        'surplus_device_release_candidate',
-        'surplus_device_release_device_id',
-        'surplus_device_dispatch_decision',
-        'surplus_device_dispatch_action',
-        'surplus_device_dispatch_target',
-        'surplus_device_dispatch_device_id',
-        'surplus_device_dispatch_contract',
-        'surplus_device_targets',
-        'selected_ev_device_id',
-        'ev_policy_mode',
-        'ev_low_pv_cycles',
-        'ev_hard_off_active',
-        'ev_hard_off_release_ready_cycles',
-        'previous_device_state',
-        'previous_ev_device_states',
-        'ev_hard_off_release_cycles_required',
-        'ev_hard_off_release_rpc_kw',
-        'ev_hard_off_pv_threshold_kw',
-        'ev_primary_burn_active',
-        'ev_surplus_burn_active',
-        'ev_current_step_a',
-        'ev_force_on',
-        'ev_min_power_w',
-        'ev_max_power_w',
-        'ev_power_step_w',
-        'ev_target_w',
         'legacy_device_bridge_count',
         'legacy_device_bridge_counts_by_kind',
         'adjustable_primary_load',
@@ -725,7 +590,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         haeo = direct_frame.haeo_targets(profiles, cfg)
         previous_quarter_key = direct_frame.previous_quarter_key
         previous_primary_device_id = direct_frame.previous_primary_device_id
-        previous_device_state = direct_frame.selected_previous_device_state(selected_ev_device_id)
         previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
         previous_device_states = direct_frame.previous_device_states
         freeze_until_ts = direct_frame.surplus_freeze_until_ts
@@ -735,9 +599,8 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         haeo = read_haeo(now_ts, profiles, cfg, entities)
         previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
         previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
-        previous_device_state = _read_previous_device_state(cfg, entities)
         previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-        previous_device_states = _read_previous_device_states(cfg, entities)
+        previous_device_states = _read_previous_device_states(entities)
         freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
         active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
         selected_ev_surplus_active = selected_ev_device_id in set(active_surplus_device_ids)
@@ -774,9 +637,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         ev_burn_active=selected_ev_surplus_active,
         selected_ev_surplus_active=selected_ev_surplus_active,
         pv_power_kw=pv_power_kw,
-        ev_hard_off_active=bool(previous_device_state['hard_off_active']),
-        ev_low_pv_cycles=previous_device_state['low_pv_cycles'],
-        ev_hard_off_release_ready_cycles=previous_device_state['hard_off_release_ready_cycles'],
         relay_device_states=getattr(m, 'relay_states', {}),
         previous_device_states=previous_device_states,
         previous_force_on_device_ids=previous_force_on_device_ids,
@@ -872,14 +732,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     published_device_policies = False
     published_dispatch_command = False
     published_policy_state = False
-    if direct_frame is None:
-        previous_device_state_entity = entities.get('previous_device_state') or entities.get('policy_state')
-        if previous_device_state_entity:
-            publish_sensor(
-                previous_device_state_entity,
-                _selected_previous_device_state_for_outputs(outputs)['mode'],
-                _previous_device_state_attrs_from_outputs(outputs),
-            )
     if device_policies_changed:
         publish_sensor(entities['device_policies'], device_policies_version, result.attrs)
         published_device_policies = True

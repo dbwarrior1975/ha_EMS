@@ -92,7 +92,7 @@ Seuraa ensisijaisesti `sensor.ems_policy_diagnostics_pyscript` -attribuutteja:
 3. `surplus_active_device_ids`: mitka kandidaatit ovat aktiivisia
 4. `surplus_next_device_id`: seuraava activation-kohde
 5. `surplus_release_device_id`: seuraava release-kohde
-6. `surplus_targets_by_device_id`: per-device target/mode/active-yhteenveto
+6. `device_policies`: lopulliset per-device target/mode/enabled-arvot
 7. `device_lifecycle_states`: device-owned hard-off/lifecycle-state
 
 Kandidaattirivista tarkista ainakin `priority`, `threshold_w`,
