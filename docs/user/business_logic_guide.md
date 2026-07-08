@@ -100,6 +100,30 @@ Tulos:
 1. Kuormat kayttaytyvat ennustettavammin.
 2. Ohjaus on vakaampaa mittauskohinassa.
 
+### FORCE_ON ja control-feedbackin esto
+
+`force_on=true` tarkoittaa eksplisiittista kayttajan tahdonilmaisua: laite
+halutaan paalle, vaikka NET_ZERO-tavoite ei sen seurauksena toteutuisi. EV:n
+FORCE_ON etenee capabilityn rajaamaan positiiviseen `DevicePolicy.target_w`-
+arvoon ja fyysiseen enable/current-kirjoitukseen.
+
+FORCE_ON ohittaa optimointiperusteiset estot, kuten surplus-kynnyksen,
+`surplus_allowed`-eligibilityn, low-PV/HARD_OFF-lifecycle-eston, HAEO:n
+NET_ZERO-plan-limitin ja primary/residual feedback-optimointiblokin. HARD_OFF-
+lifecycle-statea ei kuitenkaan nollata: se voi pysya taustalla aktiivisena ja
+palata voimaan heti, kun FORCE_ON poistuu.
+
+FORCE_ON ei ohita aitoa turvallisuus- tai toteutusestetta. Esimerkiksi
+`guard=DEGRADED`, puuttuva absorb-capability, invalidi laite/writer-polku tai muu
+fyysinen safety-interlock voi edelleen estaa aktuaattorikomennon.
+
+Feedback-suojaus ei perustu enaa siihen, etta PV on matala ja akun setpoint
+negatiivinen. Se aktivoituu vain, jos absorboiva primary ja eri tuottava residual-
+regulaattori muodostavat todellisen control-loop-riskin. Paatos perustuu rooleihin,
+capabilityihin ja residual-regulaattorin todelliseen tuotantotilaan. FORCE_ON-
+tilassa EV-target on kiintea capability-rajoitettu kayttajapyynto, ei vapaasti
+kasvava primary-regulation-muuttuja.
+
 Quarter-release kaytanto:
 
 1. EMS ei vapauta aktiivista surplus-kuormaa vain siksi, etta vartti vaihtui.

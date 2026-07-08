@@ -195,3 +195,47 @@ def test_pyscript_runtime_avoids_object_setattr(project_root):
             violations.append(f'{relative_path}:{node.lineno}: object.__setattr__')
 
     assert not violations, 'Pyscript runtime object.__setattr__ violations:\n' + '\n'.join(violations)
+
+def _decorator_name(decorator):
+    if isinstance(decorator, ast.Name):
+        return decorator.id
+    if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
+        return decorator.func.id
+    return ''
+
+
+def _blocking_filesystem_call_name(call):
+    if not isinstance(call, ast.Call):
+        return ''
+    func = call.func
+    if isinstance(func, ast.Attribute):
+        if func.attr in ('read_text', 'write_text', 'open', 'exists'):
+            return func.attr
+        if func.attr == 'stat' and isinstance(func.value, ast.Name) and func.value.id == 'os':
+            return 'os.stat'
+    return ''
+
+
+@pytest.mark.smoke
+def test_pyscript_runtime_filesystem_io_is_executor_wrapped(project_root):
+    violations = []
+    for path in _runtime_python_files(project_root):
+        source = path.read_text(encoding='utf-8')
+        tree = ast.parse(source, filename=str(path))
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            decorators = []
+            for decorator in function.decorator_list:
+                decorators.append(_decorator_name(decorator))
+            executor_wrapped = 'pyscript_executor' in decorators
+            for node in ast.walk(function):
+                call_name = _blocking_filesystem_call_name(node)
+                if not call_name or executor_wrapped:
+                    continue
+                relative_path = path.relative_to(project_root)
+                violations.append(
+                    f'{relative_path}:{node.lineno}: {function.name}: {call_name} without @pyscript_executor'
+                )
+
+    assert not violations, 'Pyscript runtime blocking filesystem I/O violations:\n' + '\n'.join(violations)

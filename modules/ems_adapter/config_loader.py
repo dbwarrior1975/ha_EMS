@@ -39,6 +39,13 @@ from ems_adapter.direct_runtime import (
     build_static_topology,
 )
 
+try:
+    pyscript_executor
+except NameError:
+    def pyscript_executor(func):
+        return func
+
+
 from ems_core.domain.ev_power import (
     ev_current_a_to_power_w,
     ev_max_current_a_from_max_absorb_w,
@@ -636,12 +643,14 @@ class CoreConfigView:
         return device
 
 
+@pyscript_executor
 def load_grouped_ems_config(path: Union[str, Path]) -> dict:
     config_path = Path(path)
     if not config_path.exists():
         raise FileNotFoundError(f'Grouped EMS config not found: {config_path}')
 
-    yaml = _load_yaml_module()
+    import yaml
+
     try:
         loaded = yaml.safe_load(config_path.read_text(encoding='utf-8'))
     except yaml.YAMLError as exc:

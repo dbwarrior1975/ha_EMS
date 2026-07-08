@@ -82,8 +82,10 @@ stateDiagram-v2
 Tulkitse kaavio nain:
 
 1. `RESTORE_MIN` on anti-flap valitila ennen mahdollista hard_offia tai burnia.
-2. `HARD_OFF` pysyy aktiivisena kunnes release-ehdot tayttyvat (PV + RPC + hysteresis-syklit).
+2. `HARD_OFF` pysyy lifecycle-statessa aktiivisena kunnes release-ehdot tayttyvat (PV + RPC + hysteresis-syklit).
 3. `BURN` on aktiivinen EV-ohjauspolku, jossa EV-current paivittyy envelope/step-saantojen mukaan.
+4. `force_on=true` on effective-policy bypass: EV voi saada `BURN`-DevicePolicyn samalla kun device-owned lifecycle-state pysyy `HARD_OFF`-tilassa.
+5. FORCE_ON ei tee lifecycle-siirtymaa eika nollaa laskureita. Kun FORCE_ON poistuu, latched `HARD_OFF` saa heti uudelleen auktoriteetin.
 
 ## 4) EV-primary ja battery-target authority -kaavio
 

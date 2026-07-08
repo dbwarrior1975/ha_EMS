@@ -221,6 +221,31 @@ tarinakuvaus loytyvat itse testitiedostoista, scenario-helperista seka
 
 Nama muodostavat projektin todellisen regressiosuojan rungon.
 
+### FORCE_ON- ja feedback-protection -regressiot
+
+Pakollinen regressioketju kattaa nyt seuraavat tapaukset:
+
+1. `net_zero_force_on_battery_support/test_05_ev_force_on_writer_chain.py` todistaa
+   runtime FORCE_ON -> `surplus_candidates.force_on` -> positiivinen EV
+   `DevicePolicy` -> writer `enable_and_set_current` -> EV actuator entity
+2. sama E2E ajetaan low-PV + negatiivinen battery setpoint -olosuhteessa ja
+   todistaa, ettei ei-HARD_OFF FORCE_ON huku yleiseen heuristiikkaan
+3. `net_zero_ev_adjustable_load/test_04_primary_residual_feedback_protection.py`
+   todistaa primary absorber + eri producing residual -topologian, generic
+   diagnostics-kentan ja lifecycle-progression HARD_OFFiin
+4. unit-testit todistavat, ettei feedback-suojaus aktivoidu ilman residual-tuotantoa,
+   kun primary ja residual ovat sama laite, tai eksplisiittisen FORCE_ON-pyynnon aikana
+5. `hard_off_on_low_pv/test_07_force_on_bypasses_hard_off.py` todistaa, etta
+   FORCE_ON ohittaa jo latched HARD_OFFin writerille asti mutta lifecycle-state sailyy;
+   FORCE_ONin poistuessa sama HARD_OFF saa heti uudelleen auktoriteetin
+6. unit-testi todistaa, etta FORCE_ON ohittaa `surplus_allowed=false` optimizer-gaten
+7. relay FORCE_ON -E2E:t sailyvat ennallaan
+8. capability/ownership-semanttiikka testataan synteettisilla
+   `PRIMARY_ABSORBER` / `RESIDUAL_PRODUCER` -konteksteilla ilman production-adapteria
+
+Regressioissa ei saa palauttaa `battery_to_ev_loop_risk`-kenttaa. Diagnostiikan
+policy-syy on `primary_residual_feedback_protection`.
+
 ## Testikattavuuden puutteet
 
 ### Battery controller

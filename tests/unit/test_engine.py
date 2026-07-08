@@ -4,7 +4,11 @@ from ems_core.domain.models import (
     HaeoNetZeroPlan, DeviceControlContext,
 )
 from ems_core.domain.ev_power import ev_min_power_w
-from ems_core.net_zero.engine import compute_net_zero_engine_outputs, compute_primary_device_target_w
+from ems_core.net_zero.engine import (
+    compute_net_zero_engine_outputs,
+    compute_primary_device_target_w,
+    compute_primary_residual_feedback_protection,
+)
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
     build_policy_context_view,
@@ -627,6 +631,94 @@ def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
     assert out.attrs['surplus_device_next_device_id'] == 'HOME_BATTERY'
     assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
 
+
+@pytest.mark.unit
+def test_engine_ev_force_on_bypasses_surplus_allowed_optimizer_gate():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_primary_load='HOME_BATTERY',
+        ev_surplus_allowed=False,
+        ev_force_on=True,
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(pv_power_w=500), make_haeo(),
+        make_nz(rpnz_w=-100.0, required_power_consumption_kw=0.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=False,
+    )
+
+    candidates = {item['device_id']: item for item in out.attrs['surplus_device_targets']}
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert candidates['EV_CHARGER']['force_on'] is True
+    assert candidates['EV_CHARGER']['enabled'] is True
+    assert candidates['EV_CHARGER']['activation_allowed'] is True
+    assert policies['EV_CHARGER'].target_w == 6440
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].reason == 'ev_force_on'
+
+
+@pytest.mark.unit
+def test_engine_ev_force_on_bypasses_haeo_net_zero_plan_limit():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_primary_load='EV_CHARGER',
+        ev_force_on=True,
+    )
+    plan = HaeoNetZeroPlan(
+        active=True,
+        primary_device_id='EV_CHARGER',
+        preferred_surplus_device_id='HOME_BATTERY',
+        device_limits_w={'EV_CHARGER': 1000, 'HOME_BATTERY': 3700},
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(), make_haeo(),
+        make_nz(rpnz_w=100.0, required_power_consumption_kw=0.1), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=False,
+        pv_power_kw=0.0,
+        haeo_nz_plan=plan,
+    )
+
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert out.attrs['haeo_nz_plan_active'] is True
+    assert out.attrs['haeo_nz_device_limits_w']['EV_CHARGER'] == 1000
+    assert policies['EV_CHARGER'].target_w == 6440
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].reason == 'ev_force_on'
+
+
+@pytest.mark.unit
+def test_engine_forced_active_ev_ignores_allocator_release_for_effective_policy():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
+    cfg = make_cfg(
+        adjustable_primary_load='HOME_BATTERY',
+        ev_force_on=True,
+    )
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, make_m(), make_haeo(),
+        make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0), 30.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=True,
+        pv_power_kw=0.0,
+    )
+
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert out.attrs['surplus_device_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_device_dispatch_device_id'] == 'EV_CHARGER'
+    assert policies['EV_CHARGER'].target_w == 6440
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].reason == 'ev_force_on'
+
+
 @pytest.mark.unit
 def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
@@ -1063,7 +1155,7 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
 
 
 @pytest.mark.unit
-def test_engine_primary_ev_low_pv_and_battery_discharge_triggers_hard_off():
+def test_engine_primary_ev_feedback_protection_triggers_hard_off():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
@@ -1085,7 +1177,10 @@ def test_engine_primary_ev_low_pv_and_battery_discharge_triggers_hard_off():
         ev_low_pv_cycles=2,
     )
 
-    assert out.attrs['battery_to_ev_loop_risk'] is True
+    assert out.attrs['feedback_protection_active'] is True
+    assert out.attrs['feedback_protection_primary_device_id'] == 'EV_CHARGER'
+    assert out.attrs['feedback_protection_residual_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['activation_block_reason'] == 'primary_residual_feedback_protection'
     assert out.attrs['ev_primary_burn_active'] is False
     assert out.attrs['ev_policy_mode'] == 'hard_off'
     assert out.attrs['ev_hard_off_active'] is True
@@ -1117,14 +1212,15 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
         ev_hard_off_active=False,
     )
 
-    assert out.attrs['battery_to_ev_loop_risk'] is True
+    assert out.attrs['feedback_protection_active'] is True
+    assert out.attrs['feedback_protection_residual_producing'] is True
     assert out.attrs['ev_policy_mode'] == 'restore_min'
     assert out.attrs['ev_hard_off_active'] is False
     assert out.attrs['ev_target_w'] == 920
 
 
 @pytest.mark.unit
-def test_engine_primary_ev_force_on_does_not_override_low_pv_battery_safety():
+def test_engine_primary_ev_force_on_bypasses_feedback_protection_before_hard_off():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
@@ -1147,9 +1243,162 @@ def test_engine_primary_ev_force_on_does_not_override_low_pv_battery_safety():
     )
 
     assert out.attrs['ev_force_on'] is True
-    assert out.attrs['battery_to_ev_loop_risk'] is True
-    assert out.attrs['ev_policy_mode'] == 'hard_off'
-    assert out.attrs['ev_target_w'] == 0
+    assert out.attrs['feedback_protection_active'] is False
+    assert out.attrs['activation_block_reason'] == ''
+    assert out.attrs['ev_policy_mode'] == 'burn'
+    assert out.attrs['ev_hard_off_active'] is False
+    assert out.attrs['ev_target_w'] == 6440
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].target_w == 6440
+
+
+@pytest.mark.unit
+def test_engine_primary_ev_force_on_bypasses_active_hard_off_without_clearing_state():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+        ev_force_on=True,
+        ev_hard_off_pv_threshold_kw=1.6,
+        ev_hard_off_release_cycles=2,
+    )
+    m = make_m(current_battery_setpoint_w=-1200, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
+    nz = make_nz(rpnz_w=500, required_power_consumption_kw=0.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=False,
+        pv_power_kw=0.0,
+        ev_hard_off_active=True,
+        ev_low_pv_cycles=2,
+        ev_hard_off_release_ready_cycles=0,
+    )
+
+    assert out.attrs['ev_force_on'] is True
+    assert out.attrs['feedback_protection_active'] is False
+    assert out.attrs['ev_hard_off_active'] is True
+    assert out.attrs['ev_policy_mode'] == 'burn'
+    assert out.attrs['ev_target_w'] == 6440
+    assert out.attrs['force_on_active_device_ids'] == ('EV_CHARGER',)
+    assert out.attrs['force_on_hard_off_bypass_device_ids'] == ('EV_CHARGER',)
+    policies = {policy.device_id: policy for policy in out.device_policies}
+    assert policies['EV_CHARGER'].enabled is True
+    assert policies['EV_CHARGER'].target_w == 6440
+    assert policies['EV_CHARGER'].reason == 'ev_force_on'
+
+
+@pytest.mark.unit
+def test_engine_primary_ev_feedback_protection_requires_actual_residual_production():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
+    cfg = make_cfg(
+        adjustable_surplus_load='HOME_BATTERY',
+        adjustable_primary_load='EV_CHARGER',
+        ev_force_on=False,
+        ev_hard_off_pv_threshold_kw=1.6,
+        ev_hard_off_low_pv_cycles=2,
+    )
+    m = make_m(current_battery_setpoint_w=0, ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=4)})
+    nz = make_nz(rpnz_w=500, required_power_consumption_kw=3.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=False,
+        pv_power_kw=0.0,
+        ev_low_pv_cycles=1,
+    )
+
+    assert out.attrs['feedback_protection_active'] is False
+    assert out.attrs['feedback_protection_residual_producing'] is False
+    assert out.attrs['ev_hard_off_active'] is False
+    assert out.attrs['ev_policy_mode'] == 'burn'
+
+
+@pytest.mark.unit
+def test_engine_battery_primary_negative_setpoint_does_not_create_cross_device_feedback_block():
+    profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
+    cfg = make_cfg(
+        adjustable_primary_load='HOME_BATTERY',
+        ev_force_on=False,
+        ev_hard_off_pv_threshold_kw=1.6,
+    )
+    m = make_m(current_battery_setpoint_w=-1200)
+    nz = make_nz(rpnz_w=500, required_power_consumption_kw=3.0)
+
+    out = compute_net_zero_engine_outputs(
+        profiles, cfg, m, make_haeo(), nz, 60.0,
+        freeze_until_ts=None,
+        ev_burn_active=False,
+        **_relay_runtime_args(surplus_allowed=False),
+        selected_ev_surplus_active=False,
+        pv_power_kw=0.0,
+    )
+
+    assert out.attrs['primary_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['residual_regulator_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['feedback_protection_active'] is False
+    assert out.attrs['activation_block_reason'] == ''
+
+
+@pytest.mark.unit
+def test_primary_residual_feedback_protection_is_capability_and_ownership_driven():
+    primary = DeviceControlContext(
+        device_id='PRIMARY_ABSORBER',
+        kind='SYNTHETIC',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=100,
+        max_absorb_w=2000,
+        max_produce_w=0,
+        step_w=100,
+        supports_primary_regulation=True,
+        supports_residual_regulation=False,
+        uses_hard_off_lifecycle=True,
+        priority=10,
+        current_measured_power_w=500,
+    )
+    residual = DeviceControlContext(
+        device_id='RESIDUAL_PRODUCER',
+        kind='SYNTHETIC',
+        can_absorb_w=False,
+        can_produce_w=True,
+        min_absorb_w=0,
+        max_absorb_w=0,
+        max_produce_w=4000,
+        step_w=100,
+        supports_primary_regulation=False,
+        supports_residual_regulation=True,
+        uses_hard_off_lifecycle=False,
+        priority=0,
+        current_measured_power_w=-1200,
+    )
+
+    assert compute_primary_residual_feedback_protection(
+        primary, residual, low_energy_active=True
+    ) is True
+    assert compute_primary_residual_feedback_protection(
+        primary, residual, low_energy_active=True, explicit_activation_request=True
+    ) is False
+
+    residual_not_producing = DeviceControlContext(
+        **{**residual.__dict__, 'current_measured_power_w': 0}
+    )
+    assert compute_primary_residual_feedback_protection(
+        primary, residual_not_producing, low_energy_active=True
+    ) is False
+
+    same_device_residual = DeviceControlContext(
+        **{**residual.__dict__, 'device_id': 'PRIMARY_ABSORBER'}
+    )
+    assert compute_primary_residual_feedback_protection(
+        primary, same_device_residual, low_energy_active=True
+    ) is False
 
 
 @pytest.mark.unit

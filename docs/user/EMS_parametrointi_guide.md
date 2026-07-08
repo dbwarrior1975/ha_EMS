@@ -151,8 +151,8 @@ referenssi: `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_confi
 Useampi EV voi olla konfiguroituna ja jokainen `can_absorb_w=true` +
 `policy.surplus_allowed=true` -EV voi osallistua samaan NET_ZERO-pooliin.
 Jokaisella EV:lla on oma priority, `max_absorb_w`, force-on, lifecycle-tila ja
-`DevicePolicy`-tulos. `selected_ev_device_id` on vain compatibility-diagnostiikka;
-se ei rajaa muuta EV:ta automaattisesti pois poolista.
+`DevicePolicy`-tulos. Julkinen diagnostics seuraa EV-laitteita device-ID-pohjaisesti
+ilman selected-single-EV compatibility -kenttaa.
 
 ```yaml
 ems:
@@ -418,7 +418,7 @@ RELAY1.max_absorb_w = 2600 W
 
 Vahintaan seuraa naita kenttia ongelmanrajausta varten:
 
-- `surplus_device_dispatch_action`
+- `surplus_dispatch_action`
 - `surplus_explanation`
 - `surplus_candidate_device_ids`
 - `surplus_candidate_stack`
@@ -429,8 +429,10 @@ Vahintaan seuraa naita kenttia ongelmanrajausta varten:
 - kandidaattien `threshold_w`
 - kandidaattien `threshold_source` (odotus: `device_capabilities.max_absorb_w`)
 - `device_lifecycle_states`
-- `selected_ev_device_id` vain compatibility-nakymana
-- `adjustable_primary_load`
+- `surplus_dispatch_device_id`
+- `surplus_candidates`
+- `previous_device_states`
+- `device_lifecycle_states`
 
 ## 6.1 Quarter balance ja RPNZ
 

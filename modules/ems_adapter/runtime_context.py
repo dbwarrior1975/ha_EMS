@@ -1,6 +1,13 @@
 import os
 import time
 
+try:
+    pyscript_executor
+except NameError:
+    def pyscript_executor(func):
+        return func
+
+
 from ems_adapter.config_loader import (
     build_policy_context_view,
     compile_dynamic_runtime_read_plan,
@@ -217,6 +224,7 @@ def _reset_runtime_context_metrics():
     )
 
 
+@pyscript_executor
 def _grouped_config_file_signature(path):
     stat_result = os.stat(path)
     return stat_result.st_mtime_ns, stat_result.st_size

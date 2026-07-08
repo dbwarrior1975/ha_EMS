@@ -18,7 +18,8 @@ def ev_strategy_target_w(profiles, ev_context, haeo, burn_active):
     if profiles.control == ControlProfile.MANUAL_SAFE:
         return max_absorb_w if force_on else 0.0
 
-    # NET_ZERO -> force_on overrides optimizer mode but not downstream safety gates.
+    # NET_ZERO -> force_on is an explicit user override of optimizer-owned gates.
+    # True guard/capability/writer safety remains authoritative downstream.
     if profiles.goal == GoalProfile.NET_ZERO:
         return max_absorb_w if (force_on or burn_active) else 0.0
 

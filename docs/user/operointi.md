@@ -101,10 +101,10 @@ Kandidaattirivista tarkista ainakin `priority`, `threshold_w`,
 nakya poolissa, jos molemmilla on `can_absorb_w=true` ja
 `surplus_allowed=true`.
 
-`selected_ev_device_id` on compatibility-diagnostiikkaa. Poistetut
-`adjustable_surplus_load`- ja `adjustable_surplus_activation_w`-kentat eivat kuulu
-enaa aktiiviseen runtime-sopimukseen. Vianetsinnassa poolin generic kentat ja
-`device_policies` ovat authoritative.
+Julkinen policy-diagnostics ei julkaise `selected_ev_device_id`-,
+`previous_ev_device_states`- tai scalar `ev_*` compatibility -peileja.
+Vianetsinnassa `surplus_candidates`, `device_policies`, `previous_device_states` ja
+`device_lifecycle_states` ovat canonical seuranta.
 
 ## Troubleshooting
 
@@ -128,10 +128,58 @@ Tarkista ensin `sensor.ems_policy_diagnostics_pyscript` attribuutit:
 1. `explanation`
 2. `dominant_limitation`
 3. `surplus_explanation`
-4. `surplus_device_dispatch_action`
-5. `surplus_device_dispatch_target`
-6. `surplus_device_dispatch_device_id`
-7. `surplus_device_targets`
+4. `surplus_dispatch_action`
+5. `surplus_dispatch_device_id`
+6. `surplus_candidates`
+7. `surplus_active_device_ids`
+8. `surplus_next_device_id`
+9. `surplus_release_device_id`
+10. `device_policies`
+11. `device_lifecycle_states`
+12. `activation_block_reason`
+13. `feedback_protection_active`
+14. `feedback_protection_primary_device_id`
+15. `feedback_protection_residual_device_id`
+16. `feedback_protection_residual_producing`
+17. `feedback_protection_residual_power_w`
+
+### EV FORCE_ON ei kaynnista latausta
+
+Tarkista ketju jarjestyksessa:
+
+1. `surplus_candidates`-rivilla EV:n `force_on=true`
+2. `surplus_candidates`-rivilla EV:n `activation_allowed=true`
+3. `device_policies`-rivilla EV:n `target_w > 0`, `enabled=true` ja syy `ev_force_on`
+4. `sensor.ems_actuator_writer_trace`-rivilla action `enable_and_set_current`
+5. EV:n enabled/current actuator entityt paivittyvat
+
+Low PV, negatiivinen akun setpoint, liian pieni surplus RPC, `surplus_allowed=false`,
+HAEO NET_ZERO -limit tai aktiivinen low-PV HARD_OFF eivät saa perua FORCE_ON-
+pyyntoa. Jos HARD_OFF on taustalla aktiivinen, tarkista:
+
+1. `device_lifecycle_states[device_id].hard_off_active=true`
+2. `force_on_hard_off_bypass_device_ids` sisaltaa laitteen
+3. DevicePolicy on silti `enabled=true`
+
+FORCE_ON ei nollaa HARD_OFF-statea. Kun FORCE_ON poistuu, latched HARD_OFF voi
+palata heti voimaan, kunnes normaali consecutive recovery/release -sopimus vapauttaa sen.
+Jos FORCE_ON ei silti etene writerille, tarkista aito safety/toteutuskerros:
+`guard`, capabilityt, writer-entityt ja laitekohtaiset fyysiset interlockit.
+
+### Primary/residual feedback protection on aktiivinen
+
+`feedback_protection_active=true` tarkoittaa todellista control-topologiaa, jossa
+absorboiva primary ja eri tuottava residual-regulaattori voisivat syottaa toisiaan.
+Tarkista:
+
+1. `feedback_protection_primary_device_id`
+2. `feedback_protection_residual_device_id`
+3. `feedback_protection_residual_producing=true`
+4. `feedback_protection_residual_power_w < 0`
+5. `activation_block_reason=primary_residual_feedback_protection`
+6. primary-laitteen `device_lifecycle_states` low-PV/HARD_OFF progression
+
+Historiallista `battery_to_ev_loop_risk`-diagnostiikkaa ei enaa ole.
 
 ### Invalidi tai puuttuva runtime-output
 

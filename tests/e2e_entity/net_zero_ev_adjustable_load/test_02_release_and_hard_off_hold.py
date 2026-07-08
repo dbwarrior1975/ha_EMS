@@ -49,7 +49,6 @@ def test_02_release_and_hard_off_hold(project_root):
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
                 'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
-                'battery_to_ev_loop_risk': 0.0,
             },
             'expect_values': {
                 E['actuator_ev_current_a']: 6,
@@ -78,7 +77,6 @@ def test_02_release_and_hard_off_hold(project_root):
             'expect_policy': {
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
-                'battery_to_ev_loop_risk': False,
             },
             'expect_values': {
                 E['actuator_ev_current_a']: 6,
@@ -108,7 +106,6 @@ def test_02_release_and_hard_off_hold(project_root):
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'battery_min_floor_w': 0.0,
                 'battery_min_floor_reason': 'ev_active_floor_override',
-                'battery_to_ev_loop_risk': False,
             },
             'expect_values': {
                 E['actuator_battery_setpoint_w']: 200,

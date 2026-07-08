@@ -114,6 +114,66 @@ Jokainen eligible `uses_hard_off_lifecycle=true` -laite arvioidaan itsenaisesti,
 myos silloin kun toinen EV on aktiivisempi tai korkeammalla prioriteetilla.
 Consecutive release -laskurit etenevat ja nollautuvat device-kohtaisesti.
 
+### Primary/residual feedback protection ja FORCE_ON
+
+NET_ZERO ei kayta enaa yleista `low PV + negatiivinen battery setpoint` -porttia
+EV-targetin nollaamiseen. Feedback-suojaus aktivoituu vain todellisessa
+control-topologiassa, jossa kaikki seuraavat ehdot tayttyvat:
+
+1. valittu `primary_device_id` tukee primary-regulaatiota ja voi absorboida tehoa
+2. valittu `residual_regulator_device_id` on eri laite
+3. residual-regulaattori tukee residual-regulaatiota ja voi tuottaa tehoa
+4. primary-laitteen low-energy/PV-ehto on aktiivinen
+5. valittu residual-regulaattori tuottaa oikeasti tehoa (`measured_power_w < 0`)
+6. primary-laitteella ei ole eksplisiittista `force_on=true` aktivointipyyntoa
+
+Policy-merkitys on `primary_residual_feedback_protection`. Suojaus on
+capability- ja ownership-vetoinen; generic paatos ei haarauta `EV_CHARGER`-kindilla.
+Battery-mittauksen signitulkinta kuuluu adapter/read-model -tasolle.
+
+`force_on=true` on eksplisiittinen kayttajan aktivointipyynto ja sen precedence
+on NET_ZERO-optimointia korkeampi. Capabilityt validilla EV:lla FORCE_ON saa
+positiivisen `DevicePolicy.target_w`-arvon ja `enabled=true`; `max_absorb`-EV:lla
+target on `capabilities.max_absorb_w`.
+
+FORCE_ON ohittaa optimizer-owned gate -kerroksen:
+
+1. surplus activation threshold
+2. `surplus_allowed`-eligibility
+3. low-PV/HARD_OFF-lifecycle activation gate
+4. HAEO NET_ZERO plan/limit
+5. primary/residual feedback-protection block
+6. dispatch clear/release -paatos siltä osin kuin se yrittäisi nollata pakotetun EV-targetin
+
+HARD_OFF-state sailyy silti device-owned lifecycle-storessa. FORCE_ON on effective
+activation bypass, ei lifecycle reset. Kun FORCE_ON poistuu, edelleen aktiivinen
+HARD_OFF saa heti uudelleen auktoriteetin normaalilla consecutive release -sopimuksella.
+
+Aito safety/toteutuskerros pysyy FORCE_ONia korkeammalla. `GuardProfile.DEGRADED`,
+puuttuva absorb-capability, invalidi writer/entity-polku tai muu fyysinen
+safety-interlock voi edelleen estaa aktuaattorikomennon.
+
+Lifecycle-request on eksplisiittinen: feedback-suojattu primary kasitellaan
+`activation_blocked=true`-tilassa, jolloin low-PV persistence voi edeta kohti
+HARD_OFFia ilman historiallista battery/EV-riskibooleanin sivuvaikutusta. FORCE_ON
+voi samanaikaisesti bypassata taman optimizer-owned tilan effective policyssa;
+lifecycle-historiaa ei tuhota.
+
+Generic feedback diagnostics:
+
+1. `activation_block_reason`
+2. `feedback_protection_active`
+3. `feedback_protection_primary_device_id`
+4. `feedback_protection_residual_device_id`
+5. `feedback_protection_low_energy_active`
+6. `feedback_protection_residual_producing`
+7. `feedback_protection_residual_power_w`
+8. `force_on_active_device_ids`
+9. `force_on_hard_off_bypass_device_ids`
+
+Historiallista `battery_to_ev_loop_risk`-kenttaa ei julkaista execution- eika
+diagnostics-sopimuksessa.
+
 Generic diagnostics:
 
 1. `surplus_candidate_device_ids`
@@ -125,9 +185,10 @@ Generic diagnostics:
 
 `adjustable_surplus_load`, `adjustable_surplus_activation_w` ja
 `surplus_adjustable_device_id` on poistettu aktiivisesta config/runtime/diagnostics-
-sopimuksesta. `selected_ev_device_id` on edelleen compatibility-nakyma, joka
-johdetaan deterministisesti: primary-EV ensin, muuten korkein device-owned priority
-eligible-EV-joukosta ja sen jalkeen vakaa konfiguraatiojarjestys.
+sopimuksesta. Julkinen policy-diagnostics ei julkaise `selected_ev_device_id`-,
+`previous_ev_device_states`- tai scalar `ev_*` compatibility -peileja. Canonical
+seuranta tapahtuu `device_policies`, `surplus_candidates`, `previous_device_states`
+ja `device_lifecycle_states` -kentilla.
 
 ### Dispatch State Applier
 
@@ -176,6 +237,11 @@ Kanoniset runtime-avaimet:
 Legacy-trace- ja standalone surplus summary -avaimia ei exposeerata aktiivisessa
 registryssa.
 
+Grouped `EMS_config.yaml` -tiedoston olemassaolo-, luku- ja signature-I/O ajetaan
+Pyscriptin `@pyscript_executor`-wrapperilla erillisessa threadissa. Runtime-cache ja
+validation pysyvat samoina, mutta Home Assistantin main event loopissa ei tehda
+synkronista `Path.read_text()`- tai `os.stat()`-filesystem-I/O:ta.
+
 ## Konfiguraatiosopimus
 
 Kanoninen grouped config -sopimus erottaa read targetit ja output-pinnat:
@@ -192,12 +258,23 @@ Tiedosto: `modules/ems_core/diagnostics/policy_diagnostics.py`
 Diagnostiikkapayload sisaltaa selitys- ja seurantakenttia kuten:
 
 1. `device_policies`
-2. `surplus_device_dispatch_action`
-3. `surplus_device_dispatch_target`
-4. `surplus_device_dispatch_device_id`
-5. `surplus_device_targets`
-6. `surplus_explanation`
-7. `config_source`
-8. `policy_output_contract`
+2. `surplus_dispatch_action`
+3. `surplus_dispatch_device_id`
+4. `surplus_dispatch_contract`
+5. `surplus_candidates`
+6. `surplus_candidate_device_ids`
+7. `surplus_active_device_ids`
+8. `surplus_next_device_id`
+9. `surplus_release_device_id`
+10. `surplus_explanation`
+11. `previous_device_states`
+12. `device_lifecycle_states`
+13. `config_source`
+14. `policy_output_contract`
+
+Diagnostic-projektio poistaa vanhat `surplus_device_*`-duplikaatit,
+selected-single-EV scalarit ja `decision_name`-peilin kandidaattiriveilta. Sisaiset
+dispatch- ja policy-state -sensorisopimukset sailyvat erillisina eika cleanup muuta
+execution-polun omistajuutta.
 
 Se ei ole erillinen command-bus eika state-bus.
