@@ -1,3 +1,37 @@
+## 2026-07-08 — Legacy compatibility cleanup P2
+
+P2 viimeistelee primary-role -nimimigraation ilman control-policy redesignia.
+
+Muutokset:
+
+1. canonical config/core/runtime-nimi on kaikkialla `primary_device_id`
+2. direct-runtime wire contract on versionoitu `direct_tick_frame_v3`:ksi ja packet `schema_version=3`:ksi
+3. policy-config packet julkaisee `config.primary_device_id`; v2-paketti ei kelpaa v3-parserille
+4. fyysinen HA-helper `input_select.ems_adjustable_primary_load` saa sailyä arvon lahteena; vain sisainen semanttinen avain muuttui
+5. config loader, CoreConfig, runtime context, NET_ZERO engine, HAEO plan, testit, fixturet ja docs kayttavat canonical nimea
+6. viimeinen diagnostics legacy blacklist poistettiin; canonical `primary_device_id` julkaistaan suoraan
+7. ei dual-readia eika rinnakkaista truth sourcea; ZIP ja template on tarkoitus deployata yhdessa
+
+---
+
+## 2026-07-08 — Legacy compatibility cleanup P1
+
+P1 poistaa P0:n jalkeen jaljelle jaaneet migration-/selected-device-yhteensopivuuspinnat
+ilman control-policy redesignia.
+
+Muutokset:
+
+1. HAEO NET_ZERO julkaisee vain `haeo_nz_device_limits_w[device_id]` -mapin; battery/EV scalar limit -peilit on poistettu
+2. `HaeoNetZeroPlan` kayttaa per-device limit-mapia ilman `battery_limit_w`/`ev_limit_w`-mirror-kenttia
+3. legacy device bridge -laskurit ja diagnostics-metriikat on poistettu; lazy device materialization sailyy toteutusdetaljina
+4. `CoreConfig.ev_charger` ja direct/config-view selected-EV compatibility -nakyma on poistettu; callerit kayttavat `device_by_id()`/kind-kyselyita
+5. policy-wrapperin selected-EV active -silta on poistettu; core saa canonical `active_surplus_device_ids` -joukon
+6. testiharnessin `__legacy__.*` derived-input override -polku on poistettu; NET_ZERO E2E syottaa tuotantoa vastaavat raw runtime -inputit
+7. diagnostics legacy blacklistissa oli P1:n jalkeen vain P2:ssa poistettava legacy primary-role -avain
+8. `activation_block_reason` sailyy tarkoituksella singular-muodossa, koska nykyisessa arkkitehtuurissa on yksi `primary_device_id` ja yksi primary/residual feedback-protection -pari
+
+---
+
 ## 2026-07-07 — Legacy compatibility cleanup P0
 
 P0 poistaa redundantit execution/output-yhteensopivuuskerrokset ilman policy-algoritmin
@@ -11,7 +45,7 @@ Muutokset:
 4. dispatch-command ja state applier kayttavat vain `device_id`-identiteettia
 5. `surplus_targets_by_device_id` on poistettu; targetit luetaan `device_policies`-rakenteesta
 6. redundantit diagnostics contract -markerit on poistettu; `policy_output_contract` sailyy
-7. diagnostics legacy blacklist pieneni 38 avaimesta viiteen P1/P2-avaimeen
+7. diagnostics legacy blacklist pieneni 38 avaimesta viiteen P1/P2-avaimeen; P1 jatkaa taman yhteen P2-avaimeen
 8. FORCE_ON/HARD_OFF-precedence, feedback protection, strict priority ja multi-EV writer routing sailyvat
 
 ---
@@ -114,7 +148,7 @@ Muutokset:
 
 Compatibility:
 
-1. `adjustable_primary_load` sailyy singular primary-role -valintana
+1. `primary_device_id` sailyy singular primary-role -valintana
 2. vanhat `adjustable_surplus_load`, `adjustable_surplus_activation_w` ja device-policy `activation_threshold_w` -syotteet hylataan direct-v2:ssa eksplisiittisesti
 3. sisaiset dispatch-command- ja policy-state -sensorisopimukset sailyvat execution/persistence-kaytossa, mutta niiden compatibility-peileja ei julkaista policy-diagnosticsissa
 

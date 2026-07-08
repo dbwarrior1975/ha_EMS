@@ -69,7 +69,7 @@ class CoreGlobalConfig:
     haeo_stale_timeout_s: ScalarRef
     nz_battery_floor_default_w: ScalarRef
     nz_battery_floor_ev_active_w: ScalarRef
-    adjustable_primary_load: EntityRef
+    primary_device_id: EntityRef
 
 
 @dataclass
@@ -272,7 +272,6 @@ class CoreConfig:
     haeo: Optional[CoreHaeoConfig] = None
     role_constraints: Optional[CoreRoleConstraintsConfig] = None
     devices: Optional[dict[str, CoreDeviceConfig]] = None
-    ev_charger: Optional[CoreEvChargerDeviceConfig] = None
     deadband_w: Optional[ScalarRef] = None
     ramp_max_w: Optional[ScalarRef] = None
     strict_limits_max_w: Optional[ScalarRef] = None
@@ -287,7 +286,7 @@ class CoreConfig:
     battery_protect_charge_floor_w: Optional[ScalarRef] = None
     nz_battery_floor_default_w: Optional[ScalarRef] = None
     nz_battery_floor_ev_active_w: Optional[ScalarRef] = None
-    adjustable_primary_load: Optional[EntityRef] = None
+    primary_device_id: Optional[EntityRef] = None
     surplus_freeze_s: Optional[ScalarRef] = None
 
     def __post_init__(self):
@@ -300,7 +299,6 @@ class CoreConfig:
         if 'HOME_BATTERY' not in self.devices:
             self.devices['HOME_BATTERY'] = self.home_battery
         self.home_battery = self._resolve_home_battery_device()
-        self.ev_charger = self._resolve_ev_compat_device()
         if self.deadband_w is None:
             self.deadband_w = self.global_config.deadband_w
         if self.ramp_max_w is None:
@@ -329,8 +327,8 @@ class CoreConfig:
             self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
         if self.nz_battery_floor_ev_active_w is None:
             self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        if self.adjustable_primary_load is None:
-            self.adjustable_primary_load = self.global_config.adjustable_primary_load
+        if self.primary_device_id is None:
+            self.primary_device_id = self.global_config.primary_device_id
         if self.surplus_freeze_s is None:
             self.surplus_freeze_s = self.global_config.surplus_freeze_s
     def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
@@ -355,12 +353,6 @@ class CoreConfig:
         if index < 0 or index >= len(devices):
             return None
         return devices[index]
-
-    def _resolve_ev_compat_device(self) -> Optional[CoreEvChargerDeviceConfig]:
-        device = self.device_by_id('EV_CHARGER')
-        if device is not None and str(device.kind) == 'EV_CHARGER':
-            return device
-        return self.first_device_by_kind('EV_CHARGER')
 
     def devices_by_kind(self, kind: str) -> tuple[CoreDeviceConfig, ...]:
         if self.devices is None:
@@ -420,8 +412,6 @@ class HaeoNetZeroPlan:
     primary_device_id: str = ''
     preferred_surplus_device_id: str = ''
     device_limits_w: Optional[dict] = None
-    battery_limit_w: int = 0
-    ev_limit_w: int = 0
     reason: str = ''
     changed: bool = False
 

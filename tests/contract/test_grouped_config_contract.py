@@ -27,7 +27,7 @@ def test_example_grouped_config_builds_expected_runtime_registry_for_profiles_gl
         'haeo_stale_timeout_s',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'adjustable_primary_load',
+        'primary_device_id',
         'battery_protect_soc',
         'battery_protect_soc_recovery_margin',
         'battery_protect_min_cell_voltage_v',
@@ -79,7 +79,7 @@ def test_grouped_config_aliases_cover_runtime_alias_fields(project_root):
         'ev_current_step_a',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'adjustable_primary_load',
+        'primary_device_id',
         'haeo_stale_timeout_s',
         'surplus_freeze_s',
     }

@@ -10,10 +10,8 @@ from types import SimpleNamespace
 
 from ems_adapter.config_loader import load_grouped_ems_config
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
-from ems_core.net_zero.derived_inputs import NetZeroDerivedInputs
-from ems_core.net_zero.derived_inputs import seconds_until_next_quarter
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
-from tests.helpers import balance_for_rpnz_w
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 
 
 class FakeEntityStore:
@@ -79,26 +77,13 @@ class QuarterScenarioHarness:
         )
         self.grouped_config = None
         self.ent = {}
-        self._legacy_required_power_w = None
-        self._legacy_rpnz_w = None
-        self._legacy_derived_override_active = True
         if self.grouped_config_path is not None and self.grouped_config_path.exists():
             self.grouped_config = load_grouped_ems_config(self.grouped_config_path)
             self.ent = build_runtime_entities_from_grouped_config(self.grouped_config)
-        self.ent.update(
-            {
-                'required_power_consumption_kw': '__legacy__.required_power_consumption_kw',
-                'required_power_w': '__legacy__.required_power_w',
-                'rpnz_w': '__legacy__.rpnz_w',
-                'pv_power_kw': '__legacy__.pv_power_kw',
-            }
-        )
-
         if self.grouped_config_path is not None:
             os.environ['EMS_GROUPED_CONFIG_PATH'] = str(self.grouped_config_path)
 
         self.policy_mod = self._load_module(self.project_root / 'ems_policy_engine.py', kind='policy')
-        self._real_derive_net_zero_inputs = self.policy_mod['derive_net_zero_inputs']
         self.dispatch_state_applier_mod = self._load_module(
             self.project_root / 'ems_dispatch_state_applier.py',
             kind='dispatch_state_applier',
@@ -169,7 +154,7 @@ class QuarterScenarioHarness:
 
     def set_entities(self, mapping: dict):
         self.store.set_now(self.now)
-        for entity_id, value in self._normalize_legacy_runtime_inputs(mapping).items():
+        for entity_id, value in dict(mapping or {}).items():
             self.store.set_value(entity_id, value)
             self._sync_grouped_config_entities(entity_id, value)
 
@@ -193,70 +178,6 @@ class QuarterScenarioHarness:
             'values': copy.deepcopy(self.store.values),
             'attrs': copy.deepcopy(self.store.attrs),
         }
-
-    def _normalize_legacy_runtime_inputs(self, set_values: dict | None):
-        # Test-only migration surface: legacy NET_ZERO intent keys are still
-        # accepted while scenarios move to raw runtime inputs.
-        normalized = dict(set_values or {})
-        self._legacy_derived_override_active = False
-        legacy_rpnz_w = normalized.pop('__legacy__.rpnz_w', None)
-        legacy_required_power_w = normalized.pop('__legacy__.required_power_w', None)
-        legacy_required_power_kw = normalized.pop('__legacy__.required_power_consumption_kw', None)
-        legacy_pv_power_kw = normalized.pop('__legacy__.pv_power_kw', None)
-
-        if legacy_pv_power_kw is not None and self.ent.get('pv_power_w') not in normalized:
-            normalized[self.ent['pv_power_w']] = float(legacy_pv_power_kw) * 1000.0
-
-        grid_entity = self.ent.get('grid_power_w')
-        quarter_entity = self.ent.get('quarter_energy_balance_kwh')
-        if legacy_required_power_kw is not None and legacy_required_power_w is None:
-            legacy_required_power_w = float(legacy_required_power_kw) * 1000.0
-
-        if legacy_required_power_w is not None:
-            self._legacy_required_power_w = float(legacy_required_power_w)
-        if legacy_rpnz_w is not None:
-            self._legacy_rpnz_w = float(legacy_rpnz_w)
-
-        if legacy_rpnz_w is None and legacy_required_power_w is None and legacy_required_power_kw is None:
-            return normalized
-
-        self._legacy_derived_override_active = True
-
-        # Keep raw grid_power_w as authored in the old scenarios. The legacy
-        # derived values are supplied through a test-only derive shim below.
-        if legacy_rpnz_w is not None and quarter_entity not in normalized:
-            remaining_s = seconds_until_next_quarter(self.now)
-            normalized[quarter_entity] = balance_for_rpnz_w(
-                legacy_rpnz_w,
-                remaining_s=remaining_s,
-            )
-        return normalized
-
-    def _derive_net_zero_inputs_for_test(self, **kwargs):
-        # Test-only migration surface: legacy scenarios override derived
-        # NET_ZERO intent while policy logic is migrated to raw runtime inputs.
-        derived = self._real_derive_net_zero_inputs(**kwargs)
-        required_power_w = (
-            derived.required_power_w
-            if self._legacy_required_power_w is None
-            else int(round(float(self._legacy_required_power_w)))
-        )
-        rpnz_w = (
-            derived.rpnz_w
-            if self._legacy_rpnz_w is None
-            else int(round(float(self._legacy_rpnz_w)))
-        )
-        if self._legacy_required_power_w is None and self._legacy_rpnz_w is None:
-            return derived
-        return NetZeroDerivedInputs(
-            remaining_quarter_s=derived.remaining_quarter_s,
-            remaining_quarter_min=derived.remaining_quarter_min,
-            rpnz_w=rpnz_w,
-            required_power_w=required_power_w,
-            required_power_consumption_kw=float(required_power_w) / 1000.0,
-            input_quality='legacy_e2e_derived_inputs',
-            input_warnings=derived.input_warnings,
-        )
 
     def step(self, set_values: dict | None = None, note: str = '', at_s: float | None = None):
         if at_s is not None:
@@ -312,9 +233,6 @@ class QuarterScenarioHarness:
             ('charger_current', 6),
             ('relay1', False),
             ('relay2', False),
-            ('required_power_consumption_kw', 0.0),
-            ('rpnz_w', 500.0),
-            ('pv_power_kw', 3.5),
             ('surplus_freeze_until', None),
             ('actuator_battery_setpoint_w', 0.0),
             ('actuator_ev_current_a', 6),
@@ -322,8 +240,6 @@ class QuarterScenarioHarness:
             ('actuator_relay1', False),
             ('actuator_relay2', False),
         )
-        self._legacy_required_power_w = 0.0
-        self._legacy_rpnz_w = 500.0
         defaults = {}
         for key, value in default_specs:
             entity_id = self._optional_entity_id(key)
@@ -359,6 +275,17 @@ class QuarterScenarioHarness:
         for k, v in defaults.items():
             self.store.set_value(k, v)
             self._sync_grouped_config_entities(k, v)
+
+        raw_net_zero_defaults = runtime_inputs_for_net_zero_intent(
+            self.ent,
+            rpnz_w=500.0,
+            required_power_consumption_kw=0.0,
+            at_s=self.now,
+            pv_power_kw=3.5,
+        )
+        for entity_id, value in raw_net_zero_defaults.items():
+            self.store.set_value(entity_id, value)
+            self._sync_grouped_config_entities(entity_id, value)
 
         for device_id, field, value in (
             ('EV_CHARGER', 'priority', 2),
@@ -587,10 +514,6 @@ class QuarterScenarioHarness:
 
     def _run_policy_loop(self):
         with self._fake_time_module():
-            if self._legacy_derived_override_active:
-                self.policy_mod['derive_net_zero_inputs'] = self._derive_net_zero_inputs_for_test
-            else:
-                self.policy_mod['derive_net_zero_inputs'] = self._real_derive_net_zero_inputs
             self.policy_mod['ems_policy_engine_loop'](trigger_reason='e2e')
 
     def _run_dispatch_state_applier_loop(self):

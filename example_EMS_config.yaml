@@ -15,7 +15,7 @@ ems:
     haeo_stale_timeout_s: input_number.ems_haeo_stale_timeout_s
     nz_battery_floor_default_w: input_number.ems_nz_battery_floor_default_w
     nz_battery_floor_ev_active_w: input_number.ems_nz_battery_floor_ev_active_w
-    adjustable_primary_load: input_select.ems_adjustable_primary_load
+    primary_device_id: input_select.ems_adjustable_primary_load
   role_constraints:
     EV_PRIMARY:
       HOME_BATTERY:

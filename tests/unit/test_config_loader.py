@@ -733,7 +733,7 @@ def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alia
     assert cfg.max_battery_discharge_w == 4600
     assert cfg.device_by_id('EV_CHARGER').policy.low_pv_threshold_w == 1.8
     assert not hasattr(cfg, 'adjustable_surplus_load')
-    assert cfg.adjustable_primary_load == 'HOME_BATTERY'
+    assert cfg.primary_device_id == 'HOME_BATTERY'
 
 
 @pytest.mark.unit
@@ -766,8 +766,8 @@ def test_core_config_view_uses_plain_methods_not_partial_callables(project_root)
     assert not hasattr(cfg.device_by_id, 'func')
     assert not hasattr(cfg.first_device_by_kind, 'func')
     assert not hasattr(cfg.devices_by_kind, 'func')
-    assert cfg.legacy_device_bridge_count() == 0
-    assert cfg.ev_charger == cfg.first_device_by_kind('EV_CHARGER')
+    assert cfg.device_by_id('EV_CHARGER') == cfg.first_device_by_kind('EV_CHARGER')
+    assert not hasattr(cfg, 'ev_charger')
 
 
 @pytest.mark.unit
@@ -873,14 +873,13 @@ def test_core_config_devices_view_materializes_each_device_at_most_once_per_view
     monkeypatch.setattr('ems_adapter.config_loader._build_view_relay_device', counting_build_relay)
 
     cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-    assert cfg.legacy_device_bridge_count() == 0
 
     assert cfg.home_battery.device_id == 'HOME_BATTERY'
-    assert cfg.ev_charger.device_id == 'EV_CHARGER'
+    assert cfg.device_by_id('EV_CHARGER').device_id == 'EV_CHARGER'
     assert cfg.device_by_id('RELAY1').device_id == 'RELAY1'
     assert cfg.device_by_id('RELAY2').device_id == 'RELAY2'
     assert cfg.devices['HOME_BATTERY'] is cfg.home_battery
-    assert cfg.devices['EV_CHARGER'] is cfg.ev_charger
+    assert cfg.devices['EV_CHARGER'] is cfg.device_by_id('EV_CHARGER')
     assert cfg.devices['RELAY1'] is cfg.device_by_id('RELAY1')
     assert cfg.devices['RELAY2'] is cfg.device_by_id('RELAY2')
     assert len(cfg.devices.values()) == 4
@@ -890,18 +889,6 @@ def test_core_config_devices_view_materializes_each_device_at_most_once_per_view
     assert call_counts['EV_CHARGER'] == 1
     assert call_counts['RELAY1'] == 1
     assert call_counts['RELAY2'] == 1
-    assert cfg.legacy_device_bridge_count() == 4
-
-
-@pytest.mark.unit
-def test_core_config_view_hot_path_starts_without_legacy_device_bridge(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-
-    assert cfg.legacy_device_bridge_count() == 0
-    assert cfg.legacy_device_bridge_counts_by_kind() == {}
 
 
 @pytest.mark.unit
@@ -961,12 +948,12 @@ def test_device_view_memoization_is_per_view_not_cross_run(project_root):
 
     assert first_cfg is not second_cfg
     assert first_cfg.home_battery is not second_cfg.home_battery
-    assert first_cfg.ev_charger is not second_cfg.ev_charger
+    assert first_cfg.device_by_id('EV_CHARGER') is not second_cfg.device_by_id('EV_CHARGER')
     assert first_cfg.device_by_id('RELAY1') is not second_cfg.device_by_id('RELAY1')
-    assert first_cfg.ev_charger.policy.priority == 4
-    assert second_cfg.ev_charger.policy.priority == 9
-    assert first_cfg.ev_charger.policy.force_on is False
-    assert second_cfg.ev_charger.policy.force_on is True
+    assert first_cfg.device_by_id('EV_CHARGER').policy.priority == 4
+    assert second_cfg.device_by_id('EV_CHARGER').policy.priority == 9
+    assert first_cfg.device_by_id('EV_CHARGER').policy.force_on is False
+    assert second_cfg.device_by_id('EV_CHARGER').policy.force_on is True
 
 
 @pytest.mark.unit
@@ -975,7 +962,7 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
 
     plan = compile_core_config_plan_from_grouped_config(config)
     deadband_ref = plan.grouped_config_plan['ems']['global_config']['deadband_w']
-    primary_ref = plan.grouped_config_plan['ems']['global_config']['adjustable_primary_load']
+    primary_ref = plan.grouped_config_plan['ems']['global_config']['primary_device_id']
     ev_force_on_ref = plan.grouped_config_plan['ems']['devices']['EV_CHARGER']['policy']['force_on']
 
     assert isinstance(deadband_ref, DynamicConfigRef)
@@ -1051,7 +1038,7 @@ def test_battery_priority_does_not_inherit_ev_priority_when_battery_value_equals
     )
 
     assert cfg.home_battery.policy.priority == 3
-    assert cfg.ev_charger.policy.priority == 8
+    assert cfg.device_by_id('EV_CHARGER').policy.priority == 8
 
 
 @pytest.mark.unit
@@ -1069,7 +1056,7 @@ def test_device_priorities_are_independent_of_removed_surplus_selector(project_r
     )
 
     assert cfg.home_battery.policy.priority == 2
-    assert cfg.ev_charger.policy.priority == 3
+    assert cfg.device_by_id('EV_CHARGER').policy.priority == 3
     assert not hasattr(cfg, 'adjustable_surplus_load')
 
 

@@ -83,6 +83,10 @@ ole enaa projektin ensisijainen e2e-pinta.
 NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
 `tests/e2e_entity/net_zero_fixture_conventions.md`.
 
+Harness ei tue `__legacy__.*`-derived-input overrideja. Skenaariot seedaavat `grid_power_w`,
+`quarter_energy_balance_kwh` ja tarvittaessa `pv_power_w` -runtime-inputit ja production
+`derive_net_zero_inputs()` laskee RPNZ/RPC-arvot.
+
 Nykyinen e2e-malli:
 
 1. jokaisella `tests/e2e_entity/<scenario>/` -kansiolla on oma

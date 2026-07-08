@@ -161,6 +161,11 @@ lifecycle-historiaa ei tuhota.
 
 Generic feedback diagnostics:
 
+`activation_block_reason` sailyy tarkoituksella singular-kenttana: nykyinen execution-
+arkkitehtuuri ratkaisee yhden `primary_device_id`:n ja feedback protection arvioi yhden
+primary/residual-parin kerrallaan. Jos multi-primary joskus tulee execution-sopimukseen,
+tama diagnostiikkamuoto on migroitava per-device-rakenteeksi.
+
 1. `activation_block_reason`
 2. `feedback_protection_active`
 3. `feedback_protection_primary_device_id`
@@ -271,8 +276,10 @@ Diagnostiikkapayload sisaltaa selitys- ja seurantakenttia kuten:
 14. `policy_output_contract`
 
 P0-cleanup poistaa legacy surplus-/selected-EV-tuottajat ennen diagnostiikkaprojektiota.
-Diagnostiikkaprojektion jaljelle jaava blacklist koskee vain myohempien P1/P2-vaiheiden
-viitta legacy-avainta. Dispatch- ja policy-state -sensorisopimukset sailyvat erillisina
-eika cleanup muuta execution-polun omistajuutta.
+P1 poistaa HAEO scalar limit -peilit, device bridge -metriikat, selected-EV config-view'n ja
+testiharnessin derived-input shimmin. P2 tekee `primary_device_id`:sta ainoan sisaisen
+primary-role -nimen, versionoi direct-runtime wire contractin v3:ksi ja poistaa viimeisen
+diagnostics legacy blacklistin. Dispatch- ja policy-state -sensorisopimukset sailyvat
+edelleen erillisina eika cleanup muuta execution-polun omistajuutta.
 
 Se ei ole erillinen command-bus eika state-bus.

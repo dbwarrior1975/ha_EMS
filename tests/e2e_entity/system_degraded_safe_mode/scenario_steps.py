@@ -12,7 +12,7 @@ def build_harness(project_root):
         E['forecast_profile']: 'NONE',
         E['soc']: 50.0,
         E['battery_heartbeat']: 0.0,
-        E['adjustable_primary_load']: 'HOME_BATTERY',
+        E['primary_device_id']: 'HOME_BATTERY',
     })
     h.set_stale(E['battery_heartbeat'], 1000.0)
     return h

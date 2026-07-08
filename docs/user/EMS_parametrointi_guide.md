@@ -157,7 +157,7 @@ ilman selected-single-EV compatibility -kenttaa.
 ```yaml
 ems:
   global_config:
-    adjustable_primary_load: input_select.ems_adjustable_primary_load
+    primary_device_id: input_select.ems_adjustable_primary_load
 
   devices:
     EV_MAIN:

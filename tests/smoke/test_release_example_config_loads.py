@@ -3,6 +3,7 @@ import pytest
 from ems_adapter.config_loader import load_grouped_ems_config, validate_grouped_ems_config
 from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
 from tests.entity_ids import ENT
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
@@ -21,10 +22,12 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_config_path)
     snap = harness.step(
         {
-            ENT['grid_power_w']: -2600,
-            ENT['quarter_energy_balance']: -0.6,
-            ENT['rpnz_w']: 1800,
-            ENT['required_power_consumption_kw']: 1.8,
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=1800,
+                required_power_consumption_kw=1.8,
+                at_s=harness.now,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,

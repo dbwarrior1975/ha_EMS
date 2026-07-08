@@ -303,30 +303,6 @@ def _read_previous_device_states(entities):
 
 
 
-def _compat_selected_ev_device_id(cfg):
-    primary_device_id = str(getattr(cfg, 'adjustable_primary_load', '') or '')
-    try:
-        if primary_device_id and str(cfg.device_kind(primary_device_id) or '') == 'EV_CHARGER':
-            return primary_device_id
-    except Exception:
-        pass
-    try:
-        ev_ids = tuple(cfg.device_ids_by_kind('EV_CHARGER') or ())
-        if ev_ids:
-            return str(ev_ids[0])
-    except Exception:
-        pass
-    try:
-        ev_ids = tuple(getattr(cfg, 'ev_device_ids', ()) or ())
-        if ev_ids:
-            return str(ev_ids[0])
-    except Exception:
-        pass
-    return 'EV_CHARGER'
-
-
-
-
 _MISSING = object()
 
 
@@ -407,20 +383,7 @@ def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
 
 def _diagnostic_projection_attrs(attrs):
     """Return the public diagnostics projection of canonical policy attrs."""
-    projected = dict(attrs or {})
-
-    # P1/P2 compatibility producers still exist temporarily; keep only those
-    # out of the public diagnostics surface until their phases remove them.
-    legacy_keys = (
-        'legacy_device_bridge_count',
-        'legacy_device_bridge_counts_by_kind',
-        'adjustable_primary_load',
-        'haeo_nz_battery_limit_w',
-        'haeo_nz_ev_limit_w',
-    )
-    for key in legacy_keys:
-        projected.pop(key, None)
-    return projected
+    return dict(attrs or {})
 
 
 def _policy_engine_interval_seconds(cfg):
@@ -566,7 +529,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
 
     direct_frame = (entities or {}).get('_direct_tick_frame')
     phase_started_ts = time.time()
-    selected_ev_device_id = _compat_selected_ev_device_id(cfg)
     if direct_frame is not None:
         profiles = cfg.profiles
         m = direct_frame
@@ -594,7 +556,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_device_states = direct_frame.previous_device_states
         freeze_until_ts = direct_frame.surplus_freeze_until_ts
         active_surplus_device_ids = tuple(direct_frame.active_surplus_device_ids)
-        selected_ev_surplus_active = selected_ev_device_id in set(active_surplus_device_ids)
     else:
         haeo = read_haeo(now_ts, profiles, cfg, entities)
         previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
@@ -603,7 +564,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_device_states = _read_previous_device_states(entities)
         freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
         active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
-        selected_ev_surplus_active = selected_ev_device_id in set(active_surplus_device_ids)
         timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
 
     phase_started_ts = time.time()
@@ -634,8 +594,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     outputs = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, nz, now_ts,
         freeze_until_ts=freeze_until_ts,
-        ev_burn_active=selected_ev_surplus_active,
-        selected_ev_surplus_active=selected_ev_surplus_active,
         pv_power_kw=pv_power_kw,
         relay_device_states=getattr(m, 'relay_states', {}),
         previous_device_states=previous_device_states,
@@ -656,7 +614,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     attrs.update(_policy_output_contract_attrs())
     attrs.update(
         {
-            'runtime_input_contract': 'direct_tick_frame_v2' if direct_frame is not None else 'raw_measurements_only',
+            'runtime_input_contract': 'direct_tick_frame_v3' if direct_frame is not None else 'raw_measurements_only',
             'runtime_policy_config_revision': int(getattr(cfg, 'revision', 0) or 0),
             'net_zero_derived_source': 'internal',
             'net_zero_input_quality': derived.input_quality,
@@ -790,7 +748,7 @@ def _publish_runtime_schema_error(exc, trigger_reason):
             'error_path': getattr(exc, 'path', ''),
             'error_message': str(exc),
             'policy_engine_last_run_reason': str(trigger_reason or ''),
-            'policy_engine_runtime_schema_version': 2,
+            'policy_engine_runtime_schema_version': 3,
             'actuator_writes_suppressed': True,
         },
     )

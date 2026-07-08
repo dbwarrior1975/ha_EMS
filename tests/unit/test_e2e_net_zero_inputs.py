@@ -37,8 +37,8 @@ def test_runtime_inputs_helper_generates_raw_values_matching_expected_derived(pr
         ],
     )
 
-    assert harness._legacy_derived_override_active is False
-    assert harness.policy_mod['derive_net_zero_inputs'] is harness._real_derive_net_zero_inputs
+    attrs = harness.getattrs(ENT['policy_diagnostics'])
+    assert attrs['net_zero_derived_source'] == 'internal'
 
 
 @pytest.mark.unit
@@ -54,19 +54,3 @@ def test_runtime_inputs_helper_rejects_nonzero_required_power_above_export_stop_
         )
 
 
-@pytest.mark.unit
-def test_legacy_keys_keep_derived_override_active(project_root):
-    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
-
-    harness.step(
-        at_s=135,
-        note='legacy override still supported',
-        set_values={
-            ENT['required_power_consumption_kw']: -3.4,
-            ENT['rpnz_w']: -10.0,
-            ENT['grid_power_w']: 3290.0,
-        },
-    )
-
-    assert harness._legacy_derived_override_active is True
-    assert harness.policy_mod['derive_net_zero_inputs'].__func__ is harness._derive_net_zero_inputs_for_test.__func__

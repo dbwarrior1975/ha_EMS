@@ -494,8 +494,8 @@ def _resolved_device_id(cfg, raw_value, default='', facts=None):
     return text
 
 
-def _normalized_adjustable_primary_load(cfg, facts=None):
-    raw_value = _cfg_scalar_value(cfg, 'adjustable_primary_load', '')
+def _normalized_primary_device_id(cfg, facts=None):
+    raw_value = _cfg_scalar_value(cfg, 'primary_device_id', '')
     raw = str(raw_value or '').strip().lower()
     if raw in ('ev_charger', 'ev', 'charger_current'):
         return _default_ev_device_id(cfg, facts=facts)
@@ -1062,11 +1062,11 @@ def _haeo_plan_preferred_surplus_device_id(plan):
     return getattr(plan, 'preferred_surplus_device_id', '')
 
 
-def _haeo_plan_device_limit_w(plan, device_id, legacy_limit_w=0):
+def _haeo_plan_device_limit_w(plan, device_id):
     limits = getattr(plan, 'device_limits_w', {}) or {}
     if isinstance(limits, dict) and device_id in limits:
         return int(limits.get(device_id, 0) or 0)
-    return int(legacy_limit_w or 0)
+    return 0
 
 
 def _decision_text_from_dispatch(surplus_decision, combo_change_requires_clear):
@@ -1476,28 +1476,6 @@ def _device_policy_payloads(device_policies):
 
 
 
-def _legacy_bridge_metrics(cfg):
-    if not hasattr(cfg, 'legacy_device_bridge_count'):
-        return 0, {}
-    try:
-        count = int(_cfg_accessor_call('policy_engine_net_zero_cfg_legacy_bridge_count_calls', cfg.legacy_device_bridge_count))
-    except Exception:
-        count = 0
-    try:
-        counts_by_kind = dict(
-            _cfg_accessor_call(
-                'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls',
-                cfg.legacy_device_bridge_counts_by_kind,
-            )
-        )
-    except Exception:
-        counts_by_kind = {}
-    normalized = {}
-    for kind, item_count in counts_by_kind.items():
-        normalized[str(kind)] = int(item_count)
-    return count, normalized
-
-
 def _build_device_policies(
     cfg,
     *,
@@ -1703,17 +1681,9 @@ def _battery_target_and_authority(
         if (
             haeo_nz_plan is not None
             and bool(getattr(haeo_nz_plan, 'active', False))
-            and raw > _haeo_plan_device_limit_w(
-                haeo_nz_plan,
-                'HOME_BATTERY',
-                getattr(haeo_nz_plan, 'battery_limit_w', 0),
-            )
+            and raw > _haeo_plan_device_limit_w(haeo_nz_plan, 'HOME_BATTERY')
         ):
-            raw = _haeo_plan_device_limit_w(
-                haeo_nz_plan,
-                'HOME_BATTERY',
-                getattr(haeo_nz_plan, 'battery_limit_w', 0),
-            )
+            raw = _haeo_plan_device_limit_w(haeo_nz_plan, 'HOME_BATTERY')
     elif haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal in (GoalProfile.MAX_EXPORT, GoalProfile.CHEAP_GRID_CHARGE):
         raw = int(round(haeo.battery_target_kw * 1000.0))
     elif profiles.goal == GoalProfile.MAX_EXPORT:
@@ -1790,7 +1760,7 @@ def _ev_policy_mode_and_target_w(
         and target_w > 0
         and (not force_on)
     ):
-        limit_w = float(getattr(haeo_nz_plan, 'ev_limit_w', 0))
+        limit_w = float(_haeo_plan_device_limit_w(haeo_nz_plan, ev_context.device_id))
         target_w = min(float(target_w), limit_w) if limit_w > 0 else 0.0
 
     if profiles.goal == GoalProfile.MAX_EXPORT and target_w == 0:
@@ -1892,8 +1862,7 @@ def _ev_surplus_policy_for_device(
         and target_w > 0.0
         and (not force_on)
     ):
-        legacy_limit_w = int(getattr(haeo_nz_plan, 'ev_limit_w', 0) or 0)
-        limit_w = float(_haeo_plan_device_limit_w(haeo_nz_plan, device_id, legacy_limit_w))
+        limit_w = float(_haeo_plan_device_limit_w(haeo_nz_plan, device_id))
         target_w = min(target_w, limit_w) if limit_w > 0.0 else 0.0
 
     if (
@@ -1998,8 +1967,6 @@ def _canonical_surplus_freeze_until_ts_for_output(
 def compute_net_zero_engine_outputs(
     profiles, cfg, m, haeo, nz, now_ts, *,
     freeze_until_ts,
-    ev_burn_active,
-    selected_ev_surplus_active=False,
     pv_power_kw=None,
     relay_device_states=None,
     previous_device_states=None,
@@ -2048,14 +2015,13 @@ def compute_net_zero_engine_outputs(
             primary_surplus_combo_source = 'HAEO_NET_ZERO_PLAN'
         else:
             requested_primary_device_id = str(
-                _normalized_adjustable_primary_load(cfg, facts=policy_runtime_facts) or ''
+                _normalized_primary_device_id(cfg, facts=policy_runtime_facts) or ''
             )
             primary_device_id = requested_primary_device_id or _default_primary_device_id(
                 cfg, facts=policy_runtime_facts
             )
             primary_surplus_combo_source = 'CONFIG'
 
-        adjustable_primary_load = primary_device_id
         current_power_by_id = {}
         for device_id, power_w in (current_device_power_w_by_id or {}).items():
             current_power_by_id[str(device_id)] = float(power_w or 0.0)
@@ -2182,9 +2148,6 @@ def compute_net_zero_engine_outputs(
         for item in (active_surplus_device_ids or ()):
             active_device_ids.add(str(item))
         if active_surplus_device_ids is None:
-            if bool(selected_ev_surplus_active or ev_burn_active):
-                if selected_ev_device_id:
-                    active_device_ids.add(str(selected_ev_device_id))
             for device_id, state in (relay_device_states or {}).items():
                 if bool((state or {}).get('active', False)):
                     active_device_ids.add(str(device_id))
@@ -2469,7 +2432,7 @@ def compute_net_zero_engine_outputs(
                         primary_device, primary_envelope_w
                     )
                     if haeo_nz_plan_active:
-                        limit_w = float(getattr(haeo_nz_plan, 'ev_limit_w', 0))
+                        limit_w = float(_haeo_plan_device_limit_w(haeo_nz_plan, selected_ev_device_id))
                         primary_device_target_w = (
                             min(float(primary_device_target_w), limit_w) if limit_w > 0 else 0.0
                         )
@@ -2504,7 +2467,7 @@ def compute_net_zero_engine_outputs(
             primary_active=ev_burn_active_for_battery,
             battery_surplus_release_pending=(str(surplus_device_decision.release or '') == 'HOME_BATTERY'),
             primary_target_w=primary_device_target_w,
-            selected_ev_surplus_active=selected_ev_surplus_active,
+            selected_ev_surplus_active=selected_ev_surplus_active_current,
             separate_primary_regulation=(primary_device_id != residual_regulator_device_id),
             haeo_nz_plan=haeo_nz_plan,
             battery_surplus_target=surplus_target_by_id.get('HOME_BATTERY'),
@@ -2606,7 +2569,6 @@ def compute_net_zero_engine_outputs(
             if device_id in updated_previous_device_states:
                 device_lifecycle_states[device_id] = updated_previous_device_states[device_id]
 
-        legacy_device_bridge_count, legacy_device_bridge_counts_by_kind = _legacy_bridge_metrics(cfg)
 
         surplus_candidate_device_ids = []
         surplus_active_device_ids_payload = []
@@ -2687,9 +2649,6 @@ def compute_net_zero_engine_outputs(
                 else 0.0
             ),
             'primary_power_envelope_w': primary_envelope_w,
-            # Compatibility diagnostic: derived from the selected device policy.
-            # DevicePolicy.priority is the only surplus-priority authority.
-            'adjustable_primary_load': adjustable_primary_load,
             'primary_surplus_combo_source': primary_surplus_combo_source,
             'primary_surplus_combo_valid': bool(primary_surplus_combo_valid),
             'primary_surplus_combo_reason': primary_surplus_combo_reason,
@@ -2706,12 +2665,8 @@ def compute_net_zero_engine_outputs(
             'haeo_nz_primary_device_id': _haeo_plan_primary_device_id(haeo_nz_plan),
             'haeo_nz_preferred_surplus_device_id': _haeo_plan_preferred_surplus_device_id(haeo_nz_plan),
             'haeo_nz_device_limits_w': getattr(haeo_nz_plan, 'device_limits_w', {}) or {},
-            'haeo_nz_battery_limit_w': int(getattr(haeo_nz_plan, 'battery_limit_w', 0)),
-            'haeo_nz_ev_limit_w': int(getattr(haeo_nz_plan, 'ev_limit_w', 0)),
             'haeo_nz_combo_reason': getattr(haeo_nz_plan, 'reason', ''),
             'prev_force_on_device_ids': current_force_on_device_ids,
-            'legacy_device_bridge_count': int(legacy_device_bridge_count),
-            'legacy_device_bridge_counts_by_kind': legacy_device_bridge_counts_by_kind,
         },
     )
         return result

@@ -11,7 +11,7 @@ from ems_adapter.direct_runtime import (
     RuntimePacketSchemaError,
     build_static_topology,
     parse_policy_config_cached,
-    parse_tick_frame_v2,
+    parse_tick_frame_v3,
     reset_direct_runtime_cache,
 )
 from ems_adapter import runtime_context
@@ -32,7 +32,7 @@ def _topology(project_root):
 
 def _policy_packet(*, revision=17):
     return {
-        'schema_version': 2,
+        'schema_version': 3,
         'revision': revision,
         'profiles': {
             'control': 'AUTOMATIC',
@@ -50,7 +50,7 @@ def _policy_packet(*, revision=17):
             'haeo_stale_timeout_s': 900,
             'nz_battery_floor_default_w': 100,
             'nz_battery_floor_ev_active_w': 100,
-            'adjustable_primary_load': 'HOME_BATTERY',
+            'primary_device_id': 'HOME_BATTERY',
         },
         'devices': {
             'HOME_BATTERY': {
@@ -141,7 +141,7 @@ def _policy_packet(*, revision=17):
 
 def _measurements_packet():
     return {
-        'schema_version': 2,
+        'schema_version': 3,
         'grid_power_w': 221.8,
         'quarter_energy_balance_kwh': 0.014,
         'pv_power_w': 489,
@@ -168,7 +168,7 @@ def _measurements_packet():
 
 def _state_packet():
     return {
-        'schema_version': 2,
+        'schema_version': 3,
         'surplus': {
             'freeze_until': None,
             'active_device_ids': [],
@@ -192,7 +192,7 @@ def _parse(project_root, policy=None, measurements=None, state=None, *, now_ts=N
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     runtime_cfg, cache_hit = parse_policy_config_cached(topology, policy or _policy_packet())
-    frame = parse_tick_frame_v2(
+    frame = parse_tick_frame_v3(
         topology,
         runtime_cfg,
         measurements or _measurements_packet(),
@@ -241,8 +241,6 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         nz,
         now_ts,
         freeze_until_ts=frame.surplus_freeze_until_ts,
-        ev_burn_active=adjustable_active,
-        selected_ev_surplus_active=adjustable_active,
         pv_power_kw=frame.pv_power_w / 1000.0,
         relay_device_states=frame.relay_states,
         previous_device_states=frame.previous_device_states,
@@ -273,7 +271,7 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
     first_packet = _policy_packet(revision=17)
     first, first_hit = parse_policy_config_cached(topology, first_packet)
 
-    malformed_same_revision = {'schema_version': 2, 'revision': 17}
+    malformed_same_revision = {'schema_version': 3, 'revision': 17}
     second, second_hit = parse_policy_config_cached(topology, malformed_same_revision)
 
     changed = _policy_packet(revision=18)
@@ -409,6 +407,34 @@ def test_policy_config_rejects_removed_legacy_adjustable_surplus_alias(project_r
 
 
 @pytest.mark.unit
+def test_direct_runtime_v3_rejects_v2_policy_packet(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=189)
+    packet['schema_version'] = 2
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.schema_version'
+    assert 'must equal 3' in str(exc.value)
+
+
+@pytest.mark.unit
+def test_direct_runtime_v3_requires_primary_device_id_key(project_root):
+    reset_direct_runtime_cache()
+    topology = _topology(project_root)
+    packet = _policy_packet(revision=1891)
+    packet['config'].pop('primary_device_id')
+    packet['config']['adjustable_primary_load'] = 'HOME_BATTERY'
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, packet)
+
+    assert exc.value.path == 'policy_config.config.primary_device_id'
+
+
+@pytest.mark.unit
 def test_direct_parser_rejects_primary_without_primary_regulation_capability(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
@@ -418,7 +444,7 @@ def test_direct_parser_rejects_primary_without_primary_regulation_capability(pro
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.adjustable_primary_load'
+    assert exc.value.path == 'policy_config.config.primary_device_id'
     assert 'does not support primary regulation' in str(exc.value)
 
 
@@ -433,7 +459,7 @@ def test_direct_parser_rejects_combination_without_residual_regulator(project_ro
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.adjustable_primary_load'
+    assert exc.value.path == 'policy_config.config.primary_device_id'
     assert 'no residual regulator capability' in str(exc.value)
 
 
@@ -442,12 +468,12 @@ def test_direct_parser_primary_role_is_independent_of_removed_surplus_alias(proj
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=192)
-    packet['config']['adjustable_primary_load'] = 'HOME_BATTERY'
+    packet['config']['primary_device_id'] = 'HOME_BATTERY'
 
     cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cache_hit is False
-    assert cfg.adjustable_primary_load == 'HOME_BATTERY'
+    assert cfg.primary_device_id == 'HOME_BATTERY'
     assert not hasattr(cfg, 'adjustable_surplus_load')
     assert cfg.device_capabilities_by_id['HOME_BATTERY']['supports_primary_regulation'] is True
 
@@ -486,7 +512,7 @@ def test_direct_tick_frame_preserves_generic_device_owned_lifecycle_states(proje
         },
     }
 
-    frame = parse_tick_frame_v2(topology, cfg, _measurements_packet(), state, NOW_TS)
+    frame = parse_tick_frame_v3(topology, cfg, _measurements_packet(), state, NOW_TS)
 
     assert frame.previous_device_states['EV_CHARGER']['low_pv_cycles'] == 50
     assert frame.previous_device_states['EV_GARAGE']['low_pv_cycles'] == 3
@@ -501,7 +527,7 @@ def test_direct_parser_fails_closed_on_missing_required_measurement(project_root
     del measurements['battery']['soc']
 
     with pytest.raises(RuntimePacketSchemaError, match=r'RUNTIME_PACKET_INVALID: measurements\.battery\.soc missing') as exc:
-        parse_tick_frame_v2(topology, cfg, measurements, _state_packet(), NOW_TS)
+        parse_tick_frame_v3(topology, cfg, measurements, _state_packet(), NOW_TS)
 
     assert exc.value.path == 'measurements.battery.soc'
 
@@ -787,6 +813,20 @@ def test_runtime_packet_policy_config_revision_is_automatic_not_missing_helper(p
 
 
 @pytest.mark.unit
+def test_runtime_packet_templates_use_v3_primary_device_id_contract(project_root):
+    for filename in ('template.yaml', 'example_EMS_runtime_packet_sensors.yaml'):
+        source = yaml.safe_load((project_root / filename).read_text(encoding='utf-8'))
+        sensors = source['template'][0]['sensor']
+        policy_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Policy Config Runtime')
+        config_template = policy_sensor['attributes']['config']
+
+        assert policy_sensor['attributes']['schema_version'].strip() == '{{ 3 }}'
+        assert "'primary_device_id':" in config_template
+        assert "states('input_select.ems_adjustable_primary_load')" in config_template
+        assert "'adjustable_primary_load':" not in config_template
+
+
+@pytest.mark.unit
 def test_runtime_packet_policy_config_uses_runtime_helpers_instead_of_hardcoded_device_policy(project_root):
     source = yaml.safe_load(
         (project_root / 'example_EMS_runtime_packet_sensors.yaml').read_text(encoding='utf-8')
@@ -846,7 +886,7 @@ def test_direct_parser_requires_and_preserves_heartbeat_age(project_root):
         RuntimePacketSchemaError,
         match=r'RUNTIME_PACKET_INVALID: measurements\.battery\.heartbeat_age_s missing',
     ):
-        parse_tick_frame_v2(topology, cfg, measurements, _state_packet(), NOW_TS)
+        parse_tick_frame_v3(topology, cfg, measurements, _state_packet(), NOW_TS)
 
 
 @pytest.mark.unit
@@ -950,13 +990,13 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=198)
-    packet['config']['adjustable_primary_load'] = ''
+    packet['config']['primary_device_id'] = ''
 
     cfg, _cache_hit = parse_policy_config_cached(topology, packet)
     out = compute_net_zero_engine_outputs(
         cfg.profiles,
         cfg,
-        parse_tick_frame_v2(topology, cfg, _measurements_packet(), _state_packet(), NOW_TS),
+        parse_tick_frame_v3(topology, cfg, _measurements_packet(), _state_packet(), NOW_TS),
         HaeoTargets(
             effective_forecast='NONE',
             configured_forecast='NONE',
@@ -967,7 +1007,6 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
         NetZeroState(rpnz_w=0.0, required_power_consumption_kw=0.0),
         NOW_TS,
         freeze_until_ts=None,
-        ev_burn_active=False,
     )
 
     assert out.attrs['primary_device_id'] == 'HOME_BATTERY'

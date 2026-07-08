@@ -19,7 +19,7 @@ from ems_adapter.direct_runtime import (
     RUNTIME_SCHEMA_VERSION,
     RuntimePacketSchemaError,
     parse_policy_config_cached,
-    parse_tick_frame_v2,
+    parse_tick_frame_v3,
     reset_direct_runtime_cache,
 )
 from ems_core.domain.models import CorePolicyEngineConfig
@@ -563,7 +563,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
         config_parse_ms = _elapsed_ms(config_parse_started_ts, time.time())
 
         frame_parse_started_ts = _runtime_context_profile_started_ts()
-        tick_frame = parse_tick_frame_v2(
+        tick_frame = parse_tick_frame_v3(
             static_topology,
             runtime_cfg,
             runtime_packets.get('measurements', {}),
@@ -835,7 +835,7 @@ def build_runtime_entities_from_grouped_config(config):
         'haeo_stale_timeout_s',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'adjustable_primary_load',
+        'primary_device_id',
         'max_solar_charge_w',
         'max_battery_discharge_w',
         'battery_protect_soc',

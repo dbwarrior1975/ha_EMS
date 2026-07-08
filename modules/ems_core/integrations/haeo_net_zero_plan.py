@@ -93,7 +93,7 @@ def _is_ev_device_id(cfg, device_id):
 
 
 def _selected_ev_device_id(cfg):
-    primary_device_id = str(getattr(cfg, 'adjustable_primary_load', '') or '')
+    primary_device_id = str(getattr(cfg, 'primary_device_id', '') or '')
     if _is_ev_device_id(cfg, primary_device_id):
         return primary_device_id
 
@@ -189,8 +189,6 @@ def compute_haeo_net_zero_plan(
         primary_device_id=primary_device_id,
         preferred_surplus_device_id=preferred_surplus_device_id,
         device_limits_w=device_limits_w,
-        battery_limit_w=int(battery_limit_w),
-        ev_limit_w=int(ev_limit_w),
         reason=reason,
         changed=bool(changed),
     )

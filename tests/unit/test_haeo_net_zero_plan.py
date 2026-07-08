@@ -145,8 +145,10 @@ def test_battery_larger_forecast_selects_home_battery_primary():
     assert plan.primary_device_id == 'HOME_BATTERY'
     assert plan.preferred_surplus_device_id == 'EV_CHARGER'
     assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
-    assert plan.battery_limit_w == 3000
-    assert plan.ev_limit_w == 1500
+    assert not hasattr(plan, 'battery_limit_w')
+    assert not hasattr(plan, 'ev_limit_w')
+    assert plan.device_limits_w['HOME_BATTERY'] == 3000
+    assert plan.device_limits_w['EV_CHARGER'] == 1500
 
 
 @pytest.mark.unit
@@ -239,8 +241,6 @@ def test_limits_are_clamped_to_device_bounds():
         now_ts=0.0,
     )
 
-    assert plan.battery_limit_w == 2500
-    assert plan.ev_limit_w == 2300
     assert plan.device_limits_w == {'HOME_BATTERY': 2500, 'EV_CHARGER': 2300}
 
 
@@ -275,7 +275,7 @@ def test_custom_selected_ev_device_limit_cap_is_used(project_root):
 
     assert plan.primary_device_id == 'EV_GARAGE'
     assert plan.device_limits_w == {'HOME_BATTERY': 1000, 'EV_GARAGE': 6900}
-    assert plan.ev_limit_w == 6900
+    assert plan.device_limits_w['EV_GARAGE'] == 6900
 
 
 @pytest.mark.unit

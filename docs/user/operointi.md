@@ -194,6 +194,9 @@ Seuraavia ei tule enaa kayttaa dashboardeissa, automaatioissa tai templateissa:
 1. vanha policy-trace-sensori
 2. standalone surplus summary -sensorit
 3. vanhat surplus active -boolean peilit
+4. HAEO `haeo_nz_battery_limit_w` / `haeo_nz_ev_limit_w` scalar-peilit
+5. legacy device bridge -metriikat
+6. selected-EV config compatibility -nakyma
 
 Jos Home Assistantissa on viela riippuvuuksia naihin, ne on paivitettava
 kanonisiin `device_policies`, `dispatch_command`, `policy_state` ja

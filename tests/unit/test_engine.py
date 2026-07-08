@@ -73,6 +73,7 @@ def _relay_runtime_args(
         states.setdefault(str(device_id), {}).update(state_overrides or {})
     return {
         'relay_device_states': states,
+        'active_surplus_device_ids': tuple(active_device_ids),
         'previous_force_on_device_ids': tuple(previous_force_on_device_ids),
     }
 
@@ -290,9 +291,9 @@ def _garage_ev_device_config():
     }
 
 
-def _garage_ev_value_overrides(*, adjustable_primary_load='HOME_BATTERY'):
+def _garage_ev_value_overrides(*, primary_device_id='HOME_BATTERY'):
     return {
-        'input_select.ems_adjustable_primary_load': adjustable_primary_load,
+        'input_select.ems_adjustable_primary_load': primary_device_id,
         'input_number.garage_ev_min_power_w': 1380,
         'input_number.garage_ev_max_power_w': 3680,
         'input_number.garage_ev_power_step_w': 460,
@@ -317,7 +318,6 @@ def test_engine_manual_disables_battery_write_and_keeps_current_battery_setpoint
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == 650
@@ -333,7 +333,6 @@ def test_engine_manual_safe_without_guard_clamp_keeps_current_and_write_disabled
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == 444
@@ -348,7 +347,6 @@ def test_engine_manual_safe_clamps_in_battery_protect():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=500), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == 0
@@ -365,7 +363,6 @@ def test_engine_battery_protect_applies_configured_charge_floor():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -382,7 +379,6 @@ def test_engine_respects_max_solar_charge_limit_in_net_zero():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w <= 500
@@ -399,7 +395,6 @@ def test_engine_normal_limits_caps_discharge_with_max_battery_discharge_w():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -417,7 +412,6 @@ def test_engine_normal_limits_caps_discharge_with_negative_canonical_limit():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -437,7 +431,7 @@ def test_engine_selected_ev_context_uses_normalized_power_step_without_partial_c
         project_root,
         extra_devices={'GARAGE_EV': _garage_ev_device_config()},
         value_overrides={
-            **_garage_ev_value_overrides(adjustable_primary_load='GARAGE_EV'),
+            **_garage_ev_value_overrides(primary_device_id='GARAGE_EV'),
             'input_number.garage_ev_power_step_w': 0,
             'input_number.garage_ev_current_step_a': 1.0,
             'input_number.garage_ev_phases': 1.0,
@@ -453,9 +447,7 @@ def test_engine_selected_ev_context_uses_normalized_power_step_without_partial_c
         make_nz(rpnz_w=2000.0),
         0.0,
         freeze_until_ts=None,
-        ev_burn_active=True,
-        **_relay_runtime_args(),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('GARAGE_EV',)),
     )
 
     policy = _device_policy(out, 'GARAGE_EV')
@@ -479,9 +471,7 @@ def test_engine_ev_surplus_burn_max_target_does_not_require_measured_current_at_
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=True,
-        **_relay_runtime_args(),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('EV_CHARGER',)),
     )
 
     assert _device_policy(out).target_w == 11040
@@ -501,9 +491,7 @@ def test_engine_trace_attrs_contain_device_policies_with_watt_based_ev_contract(
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), make_nz(rpnz_w=2000.0), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=True,
-        **_relay_runtime_args(active_device_ids=('RELAY1',)),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('RELAY1', 'EV_CHARGER')),
     )
 
     policies = {item['device_id']: item for item in out.attrs['device_policies']}
@@ -564,9 +552,9 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=100.0, required_power_consumption_kw=0.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(
             surplus_allowed=False,
+            active_device_ids=('RELAY3',),
             relay_device_states={
                 'RELAY3': {'surplus_allowed': True, 'force_on': False, 'active': True},
             },
@@ -591,7 +579,7 @@ def test_engine_relay_policies_include_registry_relays_without_direct_alias_depe
 def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         adjustable_surplus_load_priority=2,
         ev_priority=3,
     )
@@ -599,9 +587,7 @@ def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
         profiles, cfg, make_m(pv_power_w=7000), make_haeo(),
         make_nz(rpnz_w=7000.0, required_power_consumption_kw=7.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'EV_CHARGER')
@@ -612,7 +598,7 @@ def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
 def test_engine_haeo_role_switch_uses_device_owned_candidate_priority():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         adjustable_surplus_load_priority=2,
         ev_priority=3,
         battery_surplus_allowed=True,
@@ -628,9 +614,7 @@ def test_engine_haeo_role_switch_uses_device_owned_candidate_priority():
         profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
         make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         haeo_nz_plan=plan,
     )
 
@@ -644,7 +628,7 @@ def test_engine_haeo_role_switch_uses_device_owned_candidate_priority():
 def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         ev_surplus_allowed=False,
     )
 
@@ -652,9 +636,7 @@ def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
         profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
         make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     candidate_ids = {item['device_id'] for item in out.attrs['surplus_candidates']}
@@ -668,7 +650,7 @@ def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
 def test_engine_ev_force_on_bypasses_surplus_allowed_optimizer_gate():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         ev_surplus_allowed=False,
         ev_force_on=True,
     )
@@ -677,9 +659,7 @@ def test_engine_ev_force_on_bypasses_surplus_allowed_optimizer_gate():
         profiles, cfg, make_m(pv_power_w=500), make_haeo(),
         make_nz(rpnz_w=-100.0, required_power_consumption_kw=0.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     candidates = {item['device_id']: item for item in out.attrs['surplus_candidates']}
@@ -696,7 +676,7 @@ def test_engine_ev_force_on_bypasses_surplus_allowed_optimizer_gate():
 def test_engine_ev_force_on_bypasses_haeo_net_zero_plan_limit():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_force_on=True,
     )
     plan = HaeoNetZeroPlan(
@@ -710,9 +690,7 @@ def test_engine_ev_force_on_bypasses_haeo_net_zero_plan_limit():
         profiles, cfg, make_m(), make_haeo(),
         make_nz(rpnz_w=100.0, required_power_consumption_kw=0.1), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         haeo_nz_plan=plan,
     )
@@ -720,6 +698,8 @@ def test_engine_ev_force_on_bypasses_haeo_net_zero_plan_limit():
     policies = {policy.device_id: policy for policy in out.device_policies}
     assert out.attrs['haeo_nz_plan_active'] is True
     assert out.attrs['haeo_nz_device_limits_w']['EV_CHARGER'] == 1000
+    assert 'haeo_nz_battery_limit_w' not in out.attrs
+    assert 'haeo_nz_ev_limit_w' not in out.attrs
     assert policies['EV_CHARGER'].target_w == 6440
     assert policies['EV_CHARGER'].enabled is True
     assert policies['EV_CHARGER'].reason == 'ev_force_on'
@@ -729,7 +709,7 @@ def test_engine_ev_force_on_bypasses_haeo_net_zero_plan_limit():
 def test_engine_forced_active_ev_ignores_allocator_release_for_effective_policy():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         ev_force_on=True,
     )
 
@@ -737,9 +717,7 @@ def test_engine_forced_active_ev_ignores_allocator_release_for_effective_policy(
         profiles, cfg, make_m(), make_haeo(),
         make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
-        **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(surplus_allowed=False, active_device_ids=('EV_CHARGER',)),
         pv_power_kw=0.0,
     )
 
@@ -756,7 +734,7 @@ def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='EV_CHARGER',
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         adjustable_surplus_activation=2000,
         ev_surplus_allowed=False,
     )
@@ -765,9 +743,7 @@ def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
         profiles, cfg, make_m(pv_power_w=5000), make_haeo(),
         make_nz(rpnz_w=5000.0, required_power_consumption_kw=5.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
-        **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(surplus_allowed=False, active_device_ids=('EV_CHARGER',)),
     )
 
     target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'EV_CHARGER')
@@ -781,7 +757,7 @@ def test_engine_active_ev_is_released_when_surplus_allowed_turns_false():
 def test_engine_surplus_device_trace_uses_max_absorb_as_activation_threshold():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         battery_surplus_allowed=False,
         ev_min_absorb_w=ev_w(4),
         ev_max_absorb_w=ev_w(28),
@@ -794,9 +770,7 @@ def test_engine_surplus_device_trace_uses_max_absorb_as_activation_threshold():
         profiles, cfg, m, make_haeo(),
         make_nz(rpnz_w=500, required_power_consumption_kw=ev_max_w / 1000.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     assert out.surplus_dispatch_decision == 'ACTIVATE_EV_CHARGER'
@@ -817,7 +791,6 @@ def test_engine_cheap_grid_charge_local_battery_target_and_explanation():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == 100
@@ -838,7 +811,6 @@ def test_engine_cheap_grid_charge_haeo_battery_target_and_explanation():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == 1234
@@ -853,7 +825,6 @@ def test_engine_max_export_local_battery_target_and_explanation():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == -4000
@@ -875,7 +846,6 @@ def test_engine_max_export_force_on_keeps_ev_at_max_power():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -901,7 +871,6 @@ def test_engine_force_on_uses_ev_capability_max_w_not_top_level_current_alias(pr
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(ev_states={'EV_CHARGER': ev_state(enabled=False, current_a=0)}), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -924,7 +893,6 @@ def test_engine_max_export_haeo_battery_target_and_explanation():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, haeo, make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     assert out.battery_target_w == -2500
@@ -939,7 +907,6 @@ def test_engine_blocks_max_export_when_battery_cannot_produce(project_root):
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(), make_haeo(effective_forecast=ForecastProfile.NONE, configured_forecast=ForecastProfile.NONE), make_nz(), 0.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -959,9 +926,7 @@ def test_engine_excludes_ev_when_ev_cannot_absorb_and_keeps_battery_candidate(pr
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(), make_haeo(), nz, 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
@@ -979,7 +944,6 @@ def test_engine_force_rising_edge_sets_freeze_and_blocks_immediate_activation():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 100.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(forced_device_ids=('RELAY1',)),
     )
 
@@ -997,7 +961,6 @@ def test_engine_force_without_rising_edge_allows_activation_without_new_freeze()
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 100.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(
             forced_device_ids=('RELAY1',),
             previous_force_on_device_ids=('RELAY1',),
@@ -1017,13 +980,11 @@ def test_policy_inactive_clear_all_freeze_until_is_stable_across_now_ts():
     first = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 100.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
     second = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 105.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 
@@ -1045,9 +1006,7 @@ def test_engine_home_battery_adjustable_uses_rpnz_controller_when_not_primary_ev
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
-        ev_burn_active=False,
-        **_relay_runtime_args(),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('EV_CHARGER',)),
     )
 
     assert out.surplus_dispatch_decision in ('NOOP', 'ACTIVATE_RELAY1', 'ACTIVATE_RELAY2')
@@ -1068,9 +1027,7 @@ def test_engine_net_zero_uses_configurable_default_battery_floor():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
-        ev_burn_active=False,
-        **_relay_runtime_args(),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('EV_CHARGER',)),
     )
 
     assert out.battery_target_w == 250
@@ -1079,7 +1036,7 @@ def test_engine_net_zero_uses_configurable_default_battery_floor():
 def test_engine_home_battery_candidate_release_stops_max_hold():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         max_solar_charge_w=2000,
     )
     m = make_m(grid_power_w=0, current_battery_setpoint_w=100)
@@ -1088,9 +1045,7 @@ def test_engine_home_battery_candidate_release_stops_max_hold():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=45.0,
-        ev_burn_active=False,
-        **_relay_runtime_args(),
-        active_surplus_device_ids=('HOME_BATTERY',),
+        **_relay_runtime_args(active_device_ids=('HOME_BATTERY',)),
     )
 
     assert out.surplus_dispatch_decision == 'RELEASE_HOME_BATTERY'
@@ -1103,7 +1058,7 @@ def test_engine_surplus_activation_threshold_is_device_max_absorb_capability():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     ev_max_w = ev_w(28)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         battery_surplus_allowed=False,
         ev_max_absorb_w=ev_max_w,
         ev_min_absorb_w=ev_w(4),
@@ -1115,18 +1070,14 @@ def test_engine_surplus_activation_threshold_is_device_max_absorb_capability():
         profiles, cfg, m, make_haeo(),
         make_nz(rpnz_w=500, required_power_consumption_kw=(ev_max_w - 1) / 1000.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     at = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(),
         make_nz(rpnz_w=500, required_power_consumption_kw=ev_max_w / 1000.0), 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     target = below.attrs['surplus_candidates'][0]
@@ -1148,7 +1099,7 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
 
     cfg_step_2 = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_charger_phases=1,
         ev_min_absorb_w=ev_w(4),
         ev_max_absorb_w=ev_w(28),
@@ -1157,14 +1108,12 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
     out_step_2 = compute_net_zero_engine_outputs(
         profiles, cfg_step_2, m, make_haeo(), nz, 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     cfg_step_4 = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_charger_phases=1,
         ev_min_absorb_w=ev_w(4),
         ev_max_absorb_w=ev_w(28),
@@ -1173,9 +1122,7 @@ def test_engine_primary_ev_target_w_uses_derived_power_step():
     out_step_4 = compute_net_zero_engine_outputs(
         profiles, cfg_step_4, m, make_haeo(), nz, 30.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     assert _device_policy(out_step_2).target_w == 1380
@@ -1188,7 +1135,7 @@ def test_engine_primary_ev_feedback_protection_triggers_hard_off():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
@@ -1199,9 +1146,7 @@ def test_engine_primary_ev_feedback_protection_triggers_hard_off():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=_previous_device_states(low_pv_cycles=2),
     )
@@ -1222,7 +1167,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_min_absorb_w=ev_w(4),
         ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
@@ -1234,9 +1179,7 @@ def test_engine_primary_ev_low_pv_pre_hard_off_keeps_min_current():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.5,
         previous_device_states=_previous_device_states(low_pv_cycles=0, hard_off_active=False),
     )
@@ -1255,7 +1198,7 @@ def test_engine_primary_ev_force_on_bypasses_feedback_protection_before_hard_off
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_force_on=True,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
@@ -1266,9 +1209,7 @@ def test_engine_primary_ev_force_on_bypasses_feedback_protection_before_hard_off
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=_previous_device_states(low_pv_cycles=2),
     )
@@ -1290,7 +1231,7 @@ def test_engine_primary_ev_force_on_bypasses_active_hard_off_without_clearing_st
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_force_on=True,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
@@ -1301,9 +1242,7 @@ def test_engine_primary_ev_force_on_bypasses_active_hard_off_without_clearing_st
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1330,7 +1269,7 @@ def test_engine_primary_ev_feedback_protection_requires_actual_residual_producti
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=2,
@@ -1341,9 +1280,7 @@ def test_engine_primary_ev_feedback_protection_requires_actual_residual_producti
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=_previous_device_states(low_pv_cycles=1),
     )
@@ -1358,7 +1295,7 @@ def test_engine_primary_ev_feedback_protection_requires_actual_residual_producti
 def test_engine_battery_primary_negative_setpoint_does_not_create_cross_device_feedback_block():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO, guard=GuardProfile.NORMAL_LIMITS)
     cfg = make_cfg(
-        adjustable_primary_load='HOME_BATTERY',
+        primary_device_id='HOME_BATTERY',
         ev_force_on=False,
         ev_hard_off_pv_threshold_kw=1.6,
     )
@@ -1368,9 +1305,7 @@ def test_engine_battery_primary_negative_setpoint_does_not_create_cross_device_f
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
     )
 
@@ -1440,7 +1375,7 @@ def test_engine_ev_primary_home_battery_small_positive_rpnz_does_not_release_har
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         adjustable_surplus_activation=2500,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
@@ -1451,9 +1386,7 @@ def test_engine_ev_primary_home_battery_small_positive_rpnz_does_not_release_har
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 270.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1472,7 +1405,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         adjustable_surplus_activation=2500,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
@@ -1484,9 +1417,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
     first = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 275.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.6,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1502,9 +1433,7 @@ def test_engine_ev_primary_home_battery_releases_hard_off_after_release_cycles()
     second = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 305.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.6,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1523,7 +1452,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         adjustable_surplus_activation=2500,
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_release_cycles=2,
@@ -1535,9 +1464,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
     first = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 335.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.6,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1552,9 +1479,7 @@ def test_engine_ev_primary_home_battery_release_counter_resets_on_condition_brea
     broken = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 365.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.5,
         previous_device_states=_previous_device_states(
             mode='hard_off', low_pv_cycles=2, hard_off_active=True,
@@ -1579,10 +1504,7 @@ def test_engine_two_ev_policies_are_derived_independently_from_candidate_and_lif
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=4000.0, required_power_consumption_kw=4.0), 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
-        **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
-        active_surplus_device_ids=('GARAGE_EV',),
+        **_relay_runtime_args(surplus_allowed=False, active_device_ids=('GARAGE_EV',)),
         previous_device_states={
             'EV_CHARGER': {
                 'device_id': 'EV_CHARGER',
@@ -1613,7 +1535,7 @@ def test_engine_primary_ev_owns_primary_target_while_other_ev_remains_surplus_ca
     cfg = _core_cfg_with_extra_devices(
         project_root,
         extra_devices={'GARAGE_EV': _garage_ev_device_config()},
-        value_overrides=_garage_ev_value_overrides(adjustable_primary_load='EV_CHARGER'),
+        value_overrides=_garage_ev_value_overrides(primary_device_id='EV_CHARGER'),
     )
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
 
@@ -1628,9 +1550,7 @@ def test_engine_primary_ev_owns_primary_target_while_other_ev_remains_surplus_ca
         make_nz(rpnz_w=1380.0, required_power_consumption_kw=1.0),
         60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
@@ -1678,9 +1598,7 @@ def test_engine_hard_off_release_counters_progress_and_reset_independently_per_e
         make_nz(rpnz_w=0.0, required_power_consumption_kw=4.0),
         60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=2.0,
         previous_device_states=previous_device_states,
     )
@@ -1728,9 +1646,7 @@ def test_engine_hard_off_lifecycle_state_is_device_owned_for_two_capable_evs(pro
         make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0),
         60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states=previous_device_states,
     )
@@ -1750,7 +1666,7 @@ def test_engine_hard_off_lifecycle_state_is_device_owned_for_two_capable_evs(pro
 def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
         ev_hard_off_pv_threshold_kw=1.6,
         ev_hard_off_low_pv_cycles=1,
     )
@@ -1765,9 +1681,7 @@ def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
         make_nz(rpnz_w=0.0, required_power_consumption_kw=0.0),
         60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=0.0,
         previous_device_states={
             'EV_CHARGER': {
@@ -1786,7 +1700,7 @@ def test_engine_ev_kind_does_not_enable_hard_off_lifecycle_without_capability():
 
 
 @pytest.mark.unit
-def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materialization(project_root):
+def test_engine_core_config_view_hot_path_uses_canonical_device_ids_without_ev_compat_view(project_root):
     cfg = _core_cfg_view_with_extra_devices(
         project_root,
         extra_devices={'GARAGE_EV': _garage_ev_device_config()},
@@ -1797,9 +1711,7 @@ def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materializa
     out = compute_net_zero_engine_outputs(
         profiles, cfg, make_m(), make_haeo(), make_nz(rpnz_w=4000.0, required_power_consumption_kw=4.0), 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
-        **_relay_runtime_args(surplus_allowed=False),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(surplus_allowed=False, active_device_ids=('GARAGE_EV',)),
         previous_device_states={
             'EV_CHARGER': {
                 'device_id': 'EV_CHARGER',
@@ -1812,10 +1724,9 @@ def test_engine_core_config_view_hot_path_avoids_legacy_ev_and_relay_materializa
     )
 
     assert 'GARAGE_EV' in out.attrs['surplus_active_device_ids']
-    assert cfg.legacy_device_bridge_count() == 0
-    assert cfg.legacy_device_bridge_counts_by_kind() == {}
-    assert out.attrs['legacy_device_bridge_count'] == 0
-    assert out.attrs['legacy_device_bridge_counts_by_kind'] == {}
+    assert not hasattr(cfg, 'ev_charger')
+    assert 'legacy_device_bridge_count' not in out.attrs
+    assert 'legacy_device_bridge_counts_by_kind' not in out.attrs
 
 @pytest.mark.unit
 def test_engine_without_ev_devices_skips_ev_policy_and_keeps_battery_relay_outputs(project_root):
@@ -1826,9 +1737,7 @@ def test_engine_without_ev_devices_skips_ev_policy_and_keeps_battery_relay_outpu
         profiles, cfg, make_m(grid_power_w=-4000.0), make_haeo(),
         make_nz(rpnz_w=4000.0, required_power_consumption_kw=4.0), 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=4.5,
         previous_device_states={
             'EV_CHARGER': {
@@ -1856,7 +1765,7 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
     )
     m = make_m(
         current_battery_setpoint_w=-1000,
@@ -1868,9 +1777,7 @@ def test_engine_ev_primary_restore_min_allows_battery_discharge_when_charger_off
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.7,
         previous_device_states=_previous_device_states(),
     )
@@ -1886,7 +1793,7 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         adjustable_surplus_load='HOME_BATTERY',
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
     )
     m = make_m(
         current_battery_setpoint_w=-1000,
@@ -1898,9 +1805,7 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
-        selected_ev_surplus_active=False,
         pv_power_kw=1.7,
         previous_device_states=_previous_device_states(),
     )
@@ -1925,7 +1830,7 @@ def test_engine_ev_primary_restore_min_holds_battery_floor_when_charger_on():
 def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_battery_authority(rpnz_w, expected_floor_hold):
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
-        adjustable_primary_load='EV_CHARGER',
+        primary_device_id='EV_CHARGER',
     )
     m = make_m(
         current_battery_setpoint_w=-1000,
@@ -1937,9 +1842,7 @@ def test_engine_ev_primary_treats_tiny_positive_rpnz_as_practical_zero_for_batte
     out = compute_net_zero_engine_outputs(
         profiles, cfg, m, make_haeo(), nz, 60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
-        **_relay_runtime_args(),
-        selected_ev_surplus_active=True,
+        **_relay_runtime_args(active_device_ids=('EV_CHARGER',)),
         pv_power_kw=1.7,
         previous_device_states=_previous_device_states(),
     )
@@ -2011,7 +1914,7 @@ def test_primary_target_eligibility_is_capability_driven_not_kind_driven():
 @pytest.mark.unit
 def test_engine_outputs_do_not_produce_p0_legacy_mirrors():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
-    cfg = make_cfg(adjustable_primary_load='HOME_BATTERY')
+    cfg = make_cfg(primary_device_id='HOME_BATTERY')
     out = compute_net_zero_engine_outputs(
         profiles,
         cfg,
@@ -2020,7 +1923,6 @@ def test_engine_outputs_do_not_produce_p0_legacy_mirrors():
         make_nz(rpnz_w=2500.0, required_power_consumption_kw=2.5),
         60.0,
         freeze_until_ts=None,
-        ev_burn_active=False,
         **_relay_runtime_args(),
     )
 

@@ -677,7 +677,7 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
     assert state['last_diagnostics_publish_ts'] == 100.0
 
 @pytest.mark.unit
-def test_public_policy_diagnostics_projection_preserves_canonical_fields_and_hides_remaining_phase_keys(project_root):
+def test_public_policy_diagnostics_projection_preserves_all_canonical_fields_after_p2(project_root):
     mod = _load_policy_module(project_root)
     canonical = {
         'surplus_candidates': (
@@ -687,7 +687,7 @@ def test_public_policy_diagnostics_projection_preserves_canonical_fields_and_hid
         'surplus_dispatch_device_id': 'EV_CHARGER',
         'surplus_dispatch_contract': 'device_id_primary',
         'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
-        'legacy_device_bridge_count': 0,
+        'primary_device_id': 'HOME_BATTERY',
     }
     projected = mod['_diagnostic_projection_attrs'](canonical)
 
@@ -696,4 +696,4 @@ def test_public_policy_diagnostics_projection_preserves_canonical_fields_and_hid
     assert projected['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert projected['surplus_dispatch_contract'] == 'device_id_primary'
     assert projected['previous_device_states'] == canonical['previous_device_states']
-    assert 'legacy_device_bridge_count' not in projected
+    assert projected['primary_device_id'] == 'HOME_BATTERY'

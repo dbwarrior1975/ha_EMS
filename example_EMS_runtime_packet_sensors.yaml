@@ -12,7 +12,7 @@ template:
         state: "{{ states('input_select.ems_control_profile') }}"
   
         attributes:
-          schema_version: "{{ 2 }}"
+          schema_version: "{{ 3 }}"
   
           revision: >-
             {%- set revision_sources = [
@@ -112,7 +112,7 @@ template:
                 'nz_battery_floor_ev_active_w':
                   states('input_number.ems_nz_battery_floor_ev_active_w'),
   
-                'adjustable_primary_load':
+                'primary_device_id':
                   states('input_select.ems_adjustable_primary_load'),
   
               }
@@ -407,7 +407,7 @@ template:
         state: "{{ states('sensor.average_active_power_2') }}"
   
         attributes:
-          schema_version: "{{ 2 }}"
+          schema_version: "{{ 3 }}"
   
           grid_power_w: >-
             {%- set raw =
@@ -626,7 +626,7 @@ template:
           }}
   
         attributes:
-          schema_version: "{{ 2 }}"
+          schema_version: "{{ 3 }}"
   
           surplus: >-
             {{

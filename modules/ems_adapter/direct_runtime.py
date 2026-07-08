@@ -11,7 +11,7 @@ from ems_core.domain.models import (
 )
 
 
-RUNTIME_SCHEMA_VERSION = 2
+RUNTIME_SCHEMA_VERSION = 3
 
 
 class RuntimePacketSchemaError(ValueError):
@@ -62,7 +62,7 @@ class RuntimePolicyConfig:
         self.haeo_stale_timeout_s = float(global_cfg.haeo_stale_timeout_s)
         self.nz_battery_floor_default_w = float(global_cfg.nz_battery_floor_default_w)
         self.nz_battery_floor_ev_active_w = float(global_cfg.nz_battery_floor_ev_active_w)
-        self.adjustable_primary_load = str(global_cfg.adjustable_primary_load)
+        self.primary_device_id = str(global_cfg.primary_device_id)
 
         battery_id = self.device_ids_by_kind_map.get('BATTERY', ('HOME_BATTERY',))[0]
         battery_caps = self.device_capabilities_by_id[battery_id]
@@ -80,7 +80,6 @@ class RuntimePolicyConfig:
         for device_id in self.device_kind_by_id:
             self.devices[device_id] = self._device_namespace(device_id)
         self.home_battery = self.devices.get(battery_id)
-        self.ev_charger = self.first_device_by_kind('EV_CHARGER')
 
         # Internal immutable-by-convention maps cached with this config revision.
         # The NET_ZERO engine consumes them directly; no per-tick PolicyRuntimeFacts
@@ -153,13 +152,6 @@ class RuntimePolicyConfig:
         guard = self.device_policy_by_id.get(battery_ids[0], {}).get('_guard', {}) or {}
         return guard.get(str(field), default)
 
-    def legacy_device_bridge_count(self) -> int:
-        return 0
-
-    def legacy_device_bridge_counts_by_kind(self) -> dict:
-        return {}
-
-
 @dataclass
 class TickFrame:
     now_ts: float
@@ -201,7 +193,6 @@ class TickFrame:
             battery_target_kw=float(self.haeo_battery_state_kw),
             ev_target_kw=max(float(self.haeo_ev_state_kw), 0.0),
         )
-
 
 
 @dataclass
@@ -428,12 +419,12 @@ def _parse_policy_config_v2(
     cfg_values = {}
     for field in number_fields:
         cfg_values[field] = _number(_required(cfg_raw, field, 'policy_config.config'), f'policy_config.config.{field}')
-    cfg_values['adjustable_primary_load'] = _text(
-        _required(cfg_raw, 'adjustable_primary_load', 'policy_config.config'),
-        'policy_config.config.adjustable_primary_load',
+    cfg_values['primary_device_id'] = _text(
+        _required(cfg_raw, 'primary_device_id', 'policy_config.config'),
+        'policy_config.config.primary_device_id',
         allow_empty=True,
     )
-    for field in ('adjustable_primary_load',):
+    for field in ('primary_device_id',):
         device_id = cfg_values[field]
         if device_id and device_id not in topology.device_kind_by_id:
             _fail(f'policy_config.config.{field}', f'unknown device id {device_id}')
@@ -544,7 +535,7 @@ def _parse_policy_config_v2(
         policy_by_id[device_id] = policy
         adapter_by_id[device_id] = adapter
 
-    requested_primary_device_id = str(cfg_values['adjustable_primary_load'] or '')
+    requested_primary_device_id = str(cfg_values['primary_device_id'] or '')
     if requested_primary_device_id:
         primary_device_id = requested_primary_device_id
     else:
@@ -557,7 +548,7 @@ def _parse_policy_config_v2(
     primary_caps = capabilities_by_id.get(primary_device_id, {}) or {}
     if not bool(primary_caps.get('supports_primary_regulation', False)):
         _fail(
-            'policy_config.config.adjustable_primary_load',
+            'policy_config.config.primary_device_id',
             f'{primary_device_id} does not support primary regulation',
         )
     residual_regulator_device_id = ''
@@ -573,7 +564,7 @@ def _parse_policy_config_v2(
                 break
     if not residual_regulator_device_id:
         _fail(
-            'policy_config.config.adjustable_primary_load',
+            'policy_config.config.primary_device_id',
             'selected primary configuration has no residual regulator capability',
         )
 
@@ -635,7 +626,7 @@ def _normalize_previous_device_state(value: dict, path: str) -> dict:
     }
 
 
-def parse_tick_frame_v2(
+def parse_tick_frame_v3(
     topology: StaticTopology,
     runtime_config: RuntimePolicyConfig,
     measurements_packet: dict,

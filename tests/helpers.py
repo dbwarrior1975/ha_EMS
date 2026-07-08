@@ -66,7 +66,7 @@ def make_cfg(**overrides):
         ev_current_step_a=4,
         nz_battery_floor_default_w=100.0,
         nz_battery_floor_ev_active_w=0.0,
-        adjustable_primary_load='',
+        primary_device_id='',
         adjustable_surplus_load_priority=3,
         ev_priority=3,
         surplus_freeze_s=30,
@@ -221,7 +221,7 @@ def make_cfg(**overrides):
             haeo_stale_timeout_s=float(data['haeo_stale_timeout_s']),
             nz_battery_floor_default_w=float(data['nz_battery_floor_default_w']),
             nz_battery_floor_ev_active_w=float(data['nz_battery_floor_ev_active_w']),
-            adjustable_primary_load=str(data['adjustable_primary_load']),
+            primary_device_id=str(data['primary_device_id']),
         ),
         home_battery=home_battery,
         runtime=CoreRuntimeConfig(

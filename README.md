@@ -231,7 +231,7 @@ Varttikohtainen semantiikka:
 
 1. HAEO:n ennuste on toiveellinen jakauma surplusille, ei takuuteho
 2. suurempi HAEO-teho voidaan tulkita korkeamman prioriteetin merkiksi, jos HAEO:lla oletetaan olevan riittava taustadata
-3. EMS:n sisainen plan voi ohittaa runtime-laskennassa `adjustable_primary_load`-valinnan plan-local primary-/preferred-device -paatoslogiikalla
+3. EMS:n sisainen plan voi ohittaa runtime-laskennassa `primary_device_id`-valinnan plan-local primary-/preferred-device -paatoslogiikalla
 4. EMS ei kirjoita primary-helperin arvoa takaisin Home Assistantiin
 5. EMS toteuttaa valintaa vain silta osin kuin hetkellinen surplus, guardit, rampit ja laiterajat sallivat
 
@@ -303,7 +303,7 @@ Keskeiset config-avaimet (EMS):
 18. `ev_voltage_v`
 19. `nz_battery_floor_default_w`
 20. `nz_battery_floor_ev_active_w`
-21. `adjustable_primary_load`
+21. `primary_device_id`
 22. device-kohtaiset surplus-priority-avaimet device-id:n mukaan
 23. relekohtaiset power-avaimet device-id:n mukaan
 24. EV-kohtaiset power-avaimet device-id:n mukaan
@@ -312,7 +312,7 @@ Keskeiset config-avaimet (EMS):
 27. `haeo_stale_timeout_s`
 
 Priority-contract: `DevicePolicy.priority` on ainoa surplus-prioriteetin authoritative lahde.
-HOME_BATTERY voi edelleen sitoutua vanhan nimiseen HA-helperiin
+Canonical `primary_device_id` voi edelleen sitoutua fyysisesti vanhan nimiseen HA-helperiin
 `input_number.ems_adjustable_surplus_load_priority`, mutta helper omistaa vain
 HOME_BATTERYn device-prioriteetin; kyse ei ole adjustable-rooliprioriteetista.
 
@@ -397,14 +397,14 @@ Uudessa kayttoonotossa:
 5. Primary-only-regulaattoria ei dispatchata toistamiseen surplus-kandidaattina. Nykyinen primary+residual-akku voi osallistua pooliin, jos sen oma `surplus_allowed=true` policy sallii sen; lopullinen `DevicePolicy`-omistus on silti yksi.
 6. `adjustable_surplus_load` ja `adjustable_surplus_activation_w` on poistettu aktiivisesta config/runtime-sopimuksesta.
 7. Production `template.yaml` antaa `HOME_BATTERY`lle ja `EV_CHARGER`ille omat eksplisiittiset `surplus_allowed=true` policyt.
-8. Tyhja `adjustable_primary_load` fallbackaa ensimmaiseen konfiguroituun `supports_primary_regulation=true` -laitteeseen.
+8. Tyhja `primary_device_id` fallbackaa ensimmaiseen konfiguroituun `supports_primary_regulation=true` -laitteeseen.
 
 Julkinen policy-diagnostics ei julkaise selected-single-EV compatibility -peileja. Multi-EV-tilaa seurataan `device_policies`, `surplus_candidates`, `previous_device_states` ja `device_lifecycle_states` -kentista.
 
 ### NET_ZERO floor-semanttiikka
 
 1. `nz_battery_floor_default_w` on akun yleinen minimi-floor.
-2. Kun `adjustable_primary_load = EV_CHARGER`, akun floor tulee arvosta `nz_battery_floor_ev_active_w`.
+2. Kun `primary_device_id = EV_CHARGER`, akun floor tulee arvosta `nz_battery_floor_ev_active_w`.
 3. EV-primary-polussa `nz_battery_floor_ev_active_w` korvaa default-floorin.
 
 ## Guardit ja turvallisuuskayttaytyminen

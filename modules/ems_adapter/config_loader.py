@@ -128,7 +128,7 @@ ALLOWED_GLOBAL_CONFIG_KEYS = frozenset(
         'haeo_stale_timeout_s',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'adjustable_primary_load',
+        'primary_device_id',
     )
 )
 ALLOWED_RUNTIME_KEYS = frozenset(
@@ -168,7 +168,7 @@ PACKET_DEFAULT_GLOBAL_CONFIG = {
     'haeo_stale_timeout_s': 300.0,
     'nz_battery_floor_default_w': 100.0,
     'nz_battery_floor_ev_active_w': 0.0,
-    'adjustable_primary_load': '',
+    'primary_device_id': '',
 }
 PACKET_DEFAULT_RUNTIME = {
     'grid_power_w': 0.0,
@@ -451,8 +451,6 @@ class CoreConfigView:
         self._context = context
         self._device_cache = {}
         self._policy_runtime_facts_cache = None
-        self._legacy_device_bridge_count = 0
-        self._legacy_device_bridge_counts_by_kind = {}
         self._device_order = tuple(context.plan.devices.keys()) + ('HOME_BATTERY',)
         self.profiles = _build_view_profiles(context.snapshot.profiles)
         self.policy_engine = _build_view_policy_engine(context.plan.policy_engine)
@@ -486,14 +484,12 @@ class CoreConfigView:
         self.battery_protect_charge_floor_w = self.home_battery_guard_value('protect_min_absorb_w')
         self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
         self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        self.adjustable_primary_load = self.global_config.adjustable_primary_load
+        self.primary_device_id = self.global_config.primary_device_id
         self.surplus_freeze_s = self.global_config.surplus_freeze_s
 
     def __getattr__(self, name: str):
         if name == 'home_battery':
             return self._materialize_device('HOME_BATTERY')
-        if name == 'ev_charger':
-            return self.first_device_by_kind('EV_CHARGER')
         raise AttributeError(name)
 
     def device_by_id(self, device_id: str):
@@ -544,15 +540,6 @@ class CoreConfigView:
         if self.device_kind(device_id) != 'EV_CHARGER':
             return default
         return self.device_adapter_value(device_id, field, default)
-
-    def legacy_device_bridge_count(self) -> int:
-        return int(self._legacy_device_bridge_count)
-
-    def legacy_device_bridge_counts_by_kind(self) -> dict[str, int]:
-        counts = {}
-        for kind, count in self._legacy_device_bridge_counts_by_kind.items():
-            counts[str(kind)] = int(count)
-        return counts
 
     def policy_runtime_facts(self) -> dict:
         cached = self._policy_runtime_facts_cache
@@ -614,13 +601,6 @@ class CoreConfigView:
             default,
         )
 
-    def _note_legacy_device_bridge(self, kind: str):
-        kind = str(kind)
-        self._legacy_device_bridge_count += 1
-        self._legacy_device_bridge_counts_by_kind[kind] = int(
-            self._legacy_device_bridge_counts_by_kind.get(kind, 0) or 0
-        ) + 1
-
     def _materialize_device(self, device_id: str):
         if device_id in self._device_cache:
             return self._device_cache[device_id]
@@ -637,7 +617,6 @@ class CoreConfigView:
             device = _build_view_battery_device(device_plan, values)
         else:
             return None
-        self._note_legacy_device_bridge(kind)
         self._device_cache[device_id] = device
         return device
 
@@ -855,7 +834,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         _validate_required_entities(
             ems['global_config'],
             'ems.global_config',
-            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s', 'adjustable_primary_load'),
+            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s', 'primary_device_id'),
             issues,
         )
 
@@ -990,7 +969,7 @@ def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
                 _alias('haeo_stale_timeout_s', 'ems.global_config.haeo_stale_timeout_s', global_config.get('haeo_stale_timeout_s')),
                 _alias('nz_battery_floor_default_w', 'ems.global_config.nz_battery_floor_default_w', global_config.get('nz_battery_floor_default_w')),
                 _alias('nz_battery_floor_ev_active_w', 'ems.global_config.nz_battery_floor_ev_active_w', global_config.get('nz_battery_floor_ev_active_w')),
-                _alias('adjustable_primary_load', 'ems.global_config.adjustable_primary_load', global_config.get('adjustable_primary_load')),
+                _alias('primary_device_id', 'ems.global_config.primary_device_id', global_config.get('primary_device_id')),
             ]
         )
 
@@ -1483,7 +1462,7 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
                 'haeo_stale_timeout_s': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), 'ems.global_config.haeo_stale_timeout_s', 300),
                 'nz_battery_floor_default_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), 'ems.global_config.nz_battery_floor_default_w', 100.0),
                 'nz_battery_floor_ev_active_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), 'ems.global_config.nz_battery_floor_ev_active_w', 0.0),
-                'adjustable_primary_load': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), 'ems.global_config.adjustable_primary_load', ''),
+                'primary_device_id': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'primary_device_id'), 'ems.global_config.primary_device_id', ''),
             },
             'runtime': {
                 'grid_power_w': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), 'ems.runtime.grid_power_w', 0),
@@ -2887,7 +2866,7 @@ def _build_view_global_config(values: dict) -> CoreGlobalConfig:
         haeo_stale_timeout_s=values['haeo_stale_timeout_s'],
         nz_battery_floor_default_w=values['nz_battery_floor_default_w'],
         nz_battery_floor_ev_active_w=values['nz_battery_floor_ev_active_w'],
-        adjustable_primary_load=values['adjustable_primary_load'],
+        primary_device_id=values['primary_device_id'],
     )
 
 
@@ -3096,7 +3075,7 @@ def _materialize_core_global_from_plan(
         haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(global_config, 'haeo_stale_timeout_s'), read_entity, 300),
         nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_default_w'), read_entity, 100.0),
         nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-        adjustable_primary_load=_resolve_core_config_value(_require_mapping_value(global_config, 'adjustable_primary_load'), read_entity, ''),
+        primary_device_id=_resolve_core_config_value(_require_mapping_value(global_config, 'primary_device_id'), read_entity, ''),
     )
 
 
@@ -3287,7 +3266,7 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
             haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), read_entity, 300),
             nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), read_entity, 100.0),
             nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-            adjustable_primary_load=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'adjustable_primary_load'), read_entity, ''),
+            primary_device_id=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'primary_device_id'), read_entity, ''),
         ),
         home_battery=home_battery,
         runtime=CoreRuntimeConfig(
@@ -3347,8 +3326,8 @@ def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
         core_config.nz_battery_floor_default_w = core_config.global_config.nz_battery_floor_default_w
     if core_config.nz_battery_floor_ev_active_w is None:
         core_config.nz_battery_floor_ev_active_w = core_config.global_config.nz_battery_floor_ev_active_w
-    if core_config.adjustable_primary_load is None:
-        core_config.adjustable_primary_load = core_config.global_config.adjustable_primary_load
+    if core_config.primary_device_id is None:
+        core_config.primary_device_id = core_config.global_config.primary_device_id
     if core_config.surplus_freeze_s is None:
         core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
     return core_config

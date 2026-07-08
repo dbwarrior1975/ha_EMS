@@ -16,11 +16,3 @@ def _load_entities():
 
 
 ENT = _load_entities()
-ENT.update(
-    {
-        'required_power_consumption_kw': '__legacy__.required_power_consumption_kw',
-        'required_power_w': '__legacy__.required_power_w',
-        'rpnz_w': '__legacy__.rpnz_w',
-        'pv_power_kw': '__legacy__.pv_power_kw',
-    }
-)

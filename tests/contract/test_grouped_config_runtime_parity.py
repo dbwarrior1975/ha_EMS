@@ -17,6 +17,7 @@ from ems_adapter.runtime_context import (
     runtime_context_dynamic_read_audit,
 )
 from tests.entity_ids import ENT
+from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 from tests.helpers import ev_w
 
@@ -103,7 +104,7 @@ def _write_grouped_config_without_ev(project_root, tmp_path):
         home_battery_primary = role_constraints.get('HOME_BATTERY_PRIMARY')
         if isinstance(home_battery_primary, dict):
             home_battery_primary.pop('EV_CHARGER', None)
-    config['ems']['global_config']['adjustable_primary_load'] = 'input_select.ems_adjustable_primary_load'
+    config['ems']['global_config']['primary_device_id'] = 'input_select.ems_adjustable_primary_load'
     path = tmp_path / 'grouped_no_ev.yaml'
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
     return path, config
@@ -172,7 +173,7 @@ def test_grouped_config_builds_same_core_config_and_device_configs_as_runtime_vi
             ENT['ev_current_step_a']: 2,
             ENT['nz_battery_floor_default_w']: 125,
             ENT['nz_battery_floor_ev_active_w']: 75,
-            ENT['adjustable_primary_load']: 'HOME_BATTERY',
+            ENT['primary_device_id']: 'HOME_BATTERY',
             ENT['haeo_stale_timeout_s']: 240,
             ENT['devices']['RELAY1']['max_absorb_w']: 2300,
             ENT['devices']['RELAY2']['max_absorb_w']: 4800,
@@ -222,7 +223,7 @@ def test_grouped_config_runtime_reader_matches_dict_core_view(project_root):
             ENT['ev_current_step_a']: 1,
             ENT['nz_battery_floor_default_w']: 175,
             ENT['nz_battery_floor_ev_active_w']: 25,
-            ENT['adjustable_primary_load']: 'HOME_BATTERY',
+            ENT['primary_device_id']: 'HOME_BATTERY',
             ENT['haeo_stale_timeout_s']: 180,
             ENT['devices']['RELAY1']['max_absorb_w']: 2100,
             ENT['devices']['RELAY2']['max_absorb_w']: 4400,
@@ -276,7 +277,7 @@ def test_policy_read_config_uses_grouped_config_as_default_source_when_available
             ENT['ev_current_step_a']: 2,
             ENT['nz_battery_floor_default_w']: 150,
             ENT['nz_battery_floor_ev_active_w']: 50,
-            ENT['adjustable_primary_load']: 'HOME_BATTERY',
+            ENT['primary_device_id']: 'HOME_BATTERY',
             ENT['haeo_stale_timeout_s']: 210,
             ENT['devices']['RELAY1']['max_absorb_w']: 2200,
             ENT['devices']['RELAY2']['max_absorb_w']: 4600,
@@ -514,7 +515,7 @@ def test_runtime_context_production_path_does_not_call_eager_materializers(proje
     cfg, _entities = read_runtime_context(*_stub_entity_readers())
 
     assert cfg is not None
-    assert cfg.ev_charger is not None
+    assert cfg.device_by_id('EV_CHARGER') is not None
 
 
 @pytest.mark.unit
@@ -794,8 +795,8 @@ def test_runtime_context_reuses_static_plan_object_on_cache_hit_while_refreshing
     second_plan = runtime_context_mod._RUNTIME_CONTEXT_CONFIG_CACHE['core_config_plan']
 
     assert first_plan is second_plan
-    assert first_cfg.ev_charger.policy.priority == 4
-    assert second_cfg.ev_charger.policy.priority == 9
+    assert first_cfg.device_by_id('EV_CHARGER').policy.priority == 4
+    assert second_cfg.device_by_id('EV_CHARGER').policy.priority == 9
     assert runtime_context_mod.runtime_context_metrics_attrs()['policy_engine_static_context_cache_hit'] is True
 
 
@@ -845,17 +846,17 @@ def test_dynamic_primary_device_value_updates_with_static_context_cache_hit(proj
     runtime_context_mod._reset_runtime_context_config_cache()
     monkeypatch.setattr(runtime_context_mod, '_grouped_config_file_signature', lambda _path: (1, 100))
     values = {
-        ENT['adjustable_primary_load']: 'HOME_BATTERY',
+        ENT['primary_device_id']: 'HOME_BATTERY',
     }
     read_bool, read_float, read_int, read_str = _mutable_entity_readers(values)
 
     first_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
-    values[ENT['adjustable_primary_load']] = 'EV_CHARGER'
+    values[ENT['primary_device_id']] = 'EV_CHARGER'
     second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
 
     metrics = runtime_context_mod.runtime_context_metrics_attrs()
-    assert first_cfg.adjustable_primary_load == 'HOME_BATTERY'
-    assert second_cfg.adjustable_primary_load == 'EV_CHARGER'
+    assert first_cfg.primary_device_id == 'HOME_BATTERY'
+    assert second_cfg.primary_device_id == 'EV_CHARGER'
     assert metrics['policy_engine_static_context_cache_hit'] is True
 
 
@@ -894,8 +895,8 @@ def test_dynamic_input_boolean_force_on_updates_with_static_context_cache_hit(pr
     second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
 
     metrics = runtime_context_mod.runtime_context_metrics_attrs()
-    assert first_cfg.ev_charger.policy.force_on is False
-    assert second_cfg.ev_charger.policy.force_on is True
+    assert first_cfg.device_by_id('EV_CHARGER').policy.force_on is False
+    assert second_cfg.device_by_id('EV_CHARGER').policy.force_on is True
     assert metrics['policy_engine_static_context_cache_hit'] is True
 
 
@@ -914,8 +915,8 @@ def test_dynamic_priority_value_updates_with_static_context_cache_hit(project_ro
     second_cfg, _entities = read_runtime_context(read_bool, read_float, read_int, read_str)
 
     metrics = runtime_context_mod.runtime_context_metrics_attrs()
-    assert first_cfg.ev_charger.policy.priority == 4
-    assert second_cfg.ev_charger.policy.priority == 9
+    assert first_cfg.device_by_id('EV_CHARGER').policy.priority == 4
+    assert second_cfg.device_by_id('EV_CHARGER').policy.priority == 9
     assert metrics['policy_engine_static_context_cache_hit'] is True
 
 
@@ -961,7 +962,7 @@ def test_dynamic_priority_value_updates_with_static_context_cache_hit(project_ro
         (
             {'switch.charger_control': False},
             lambda values: values.__setitem__('switch.charger_control', True),
-            lambda cfg: cfg.ev_charger.adapter.enabled,
+            lambda cfg: cfg.device_by_id('EV_CHARGER').adapter.enabled,
             False,
             True,
         ),
@@ -1005,13 +1006,13 @@ def test_ev_priority_change_does_not_mutate_battery_priority_on_cache_hit(projec
             ENT['devices']['EV_CHARGER']['priority']: 4,
         },
         lambda values: values.__setitem__(ENT['devices']['EV_CHARGER']['priority'], 9),
-        lambda cfg: cfg.ev_charger.policy.priority,
+        lambda cfg: cfg.device_by_id('EV_CHARGER').policy.priority,
     )
 
     assert first_cfg.home_battery.policy.priority == 3
     assert second_cfg.home_battery.policy.priority == 3
-    assert first_cfg.ev_charger.policy.priority == 4
-    assert second_cfg.ev_charger.policy.priority == 9
+    assert first_cfg.device_by_id('EV_CHARGER').policy.priority == 4
+    assert second_cfg.device_by_id('EV_CHARGER').policy.priority == 9
 
 
 @pytest.mark.unit
@@ -1198,10 +1199,12 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
     harness = QuarterScenarioHarness(project_root)
     snap = harness.step(
         {
-            ENT['grid_power_w']: -2600,
-            ENT['quarter_energy_balance']: -0.6,
-            ENT['rpnz_w']: 1800,
-            ENT['required_power_consumption_kw']: 1.8,
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=1800,
+                required_power_consumption_kw=1.8,
+                at_s=harness.now,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1225,7 +1228,7 @@ def test_grouped_config_source_runs_full_policy_dispatch_writer_chain(project_ro
 
 
 @pytest.mark.unit
-def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(project_root, tmp_path, monkeypatch):
+def test_grouped_config_two_ev_candidate_pool_uses_canonical_device_id_routing(project_root, tmp_path, monkeypatch):
     grouped_path, grouped_config = _write_grouped_config_with_second_ev(project_root, tmp_path)
     monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(grouped_path))
 
@@ -1237,11 +1240,13 @@ def test_grouped_config_two_ev_candidate_pool_keeps_compat_selected_ev_view(proj
     harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_path)
     harness.set_entities(
         {
-            ENT['adjustable_primary_load']: 'HOME_BATTERY',
-            ENT['grid_power_w']: -4000,
-            ENT['quarter_energy_balance']: -1.0,
-            ENT['rpnz_w']: 4000,
-            ENT['required_power_consumption_kw']: 4.0,
+            ENT['primary_device_id']: 'HOME_BATTERY',
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=4000,
+                required_power_consumption_kw=4.0,
+                at_s=harness.now,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1296,12 +1301,14 @@ def test_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, mo
     harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_path)
     harness.set_entities(
         {
-            ENT['adjustable_primary_load']: '',
-            ENT['grid_power_w']: -2400,
-            ENT['quarter_energy_balance']: -0.5,
-            ENT['rpnz_w']: 2400,
-            ENT['required_power_consumption_kw']: 2.4,
-            ENT['pv_power_kw']: 3.5,
+            ENT['primary_device_id']: '',
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=2400,
+                required_power_consumption_kw=2.4,
+                at_s=harness.now,
+                pv_power_kw=3.5,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1369,10 +1376,12 @@ def test_device_policies_sensor_uses_monotonic_version_and_only_advances_on_chan
 
     harness.set_entities(
         {
-            ENT['grid_power_w']: -2200,
-            ENT['quarter_energy_balance']: -0.4,
-            ENT['rpnz_w']: 2200,
-            ENT['required_power_consumption_kw']: 2.2,
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=2200,
+                required_power_consumption_kw=2.2,
+                at_s=harness.now,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1408,10 +1417,12 @@ def test_dispatch_command_sensor_uses_monotonic_version_and_carries_dispatch_att
 
     harness.set_entities(
         {
-            ENT['grid_power_w']: -2200,
-            ENT['quarter_energy_balance']: -0.4,
-            ENT['rpnz_w']: 2200,
-            ENT['required_power_consumption_kw']: 2.2,
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=2200,
+                required_power_consumption_kw=2.2,
+                at_s=harness.now,
+            ),
             ENT['soc']: 55,
             ENT['min_cell_voltage_v']: 3.2,
             ENT['haeo_battery_active_power_fresh_source']: 0,
@@ -1428,10 +1439,12 @@ def test_dispatch_command_sensor_uses_monotonic_version_and_carries_dispatch_att
 
     harness.set_entities(
         {
-            ENT['grid_power_w']: -3000,
-            ENT['quarter_energy_balance']: -0.7,
-            ENT['rpnz_w']: 3000,
-            ENT['required_power_consumption_kw']: 2.4,
+            **runtime_inputs_for_net_zero_intent(
+                harness.ent,
+                rpnz_w=3000,
+                required_power_consumption_kw=2.4,
+                at_s=harness.now,
+            ),
         }
     )
     harness._run_policy_loop()
