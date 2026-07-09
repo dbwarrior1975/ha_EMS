@@ -2,8 +2,6 @@ import pytest
 
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
-    build_policy_context_view,
-    compile_core_config_plan_from_grouped_config,
     load_grouped_ems_config,
 )
 from ems_core.domain.models import ControlProfile, ForecastProfile, GoalProfile, GuardProfile
@@ -295,74 +293,3 @@ def test_tie_keeps_previous_custom_ev_primary_device_id(project_root):
     assert plan.primary_load == 'EV_GARAGE'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
-
-
-@pytest.mark.unit
-def test_core_config_view_custom_selected_ev_haeo_plan_does_not_materialize_selected_ev(project_root, monkeypatch):
-    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    grouped['ems']['devices']['EV_GARAGE'] = {
-        'kind': 'EV_CHARGER',
-        'capabilities': {
-            'can_absorb_w': True,
-            'can_produce_w': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': False,
-            'uses_hard_off_lifecycle': True,
-            'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
-            'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
-            'step_w': 'input_number.ems_ev_garage_power_step_w',
-        },
-        'policy': {
-            'priority': 'input_number.ems_surplus_ev_garage_priority',
-            'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'surplus_dispatch_mode': 'max_absorb',
-            'force_on': 'input_boolean.ems_ev_garage_force_on',
-            'low_pv_threshold_w': 'input_number.ems_ev_garage_low_pv_threshold_w',
-            'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_low_pv_cycles',
-            'hard_off_release_cycles': 'input_number.ems_ev_garage_release_cycles',
-        },
-        'adapter': {
-            'enabled': 'switch.ev_garage_enabled',
-            'current_a': 'number.ev_garage_current_a',
-            'current_step_a': 'input_number.ems_ev_garage_current_step_a',
-            'phases': 'input_number.ems_ev_garage_phases',
-            'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-        },
-    }
-    plan = compile_core_config_plan_from_grouped_config(grouped)
-    values = {
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
-        'input_number.ems_ev_garage_min_power_w': 2300,
-        'input_number.ems_ev_garage_max_power_w': 6900,
-        'input_number.ems_ev_garage_power_step_w': 2300,
-        'input_number.ems_surplus_ev_garage_priority': 4,
-        'input_boolean.ems_ev_garage_surplus_allowed': True,
-        'input_boolean.ems_ev_garage_force_on': False,
-        'input_number.ems_ev_garage_low_pv_threshold_w': 1600,
-        'input_number.ems_ev_garage_low_pv_cycles': 2,
-        'input_number.ems_ev_garage_release_cycles': 2,
-        'input_number.ems_ev_garage_current_step_a': 10,
-        'input_number.ems_ev_garage_phases': 1,
-        'input_number.ems_ev_garage_voltage_v': 230,
-    }
-    call_counts = {}
-    real_build_ev = __import__('ems_adapter.config_loader', fromlist=['_build_view_ev_device'])._build_view_ev_device
-
-    def counting_build_ev(plan_arg, values_arg):
-        device_id = str(plan_arg.device_id)
-        call_counts[device_id] = int(call_counts.get(device_id, 0) or 0) + 1
-        return real_build_ev(plan_arg, values_arg)
-
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_ev_device', counting_build_ev)
-
-    cfg = build_policy_context_view(plan, lambda entity_id, default: values.get(entity_id, default))
-    plan_out = compute_haeo_net_zero_plan(
-        _haeo_profiles(),
-        cfg,
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=5.0),
-        now_ts=0.0,
-    )
-
-    assert plan_out.primary_device_id == 'EV_GARAGE'
-    assert plan_out.device_limits_w == {'HOME_BATTERY': 2000, 'EV_GARAGE': 5000}
-    assert call_counts == {}

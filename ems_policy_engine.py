@@ -198,7 +198,10 @@ def read_haeo(now_ts, profiles, cfg, entities):
     configured = configured_forecast(profiles.control, profiles.forecast)
     batt_age = age_seconds(entities.get('haeo_battery_active_power_fresh_source', ''), now_ts)
     ev_age = age_seconds(entities.get('haeo_ev_active_power_fresh_source', ''), now_ts)
-    fresh = batt_age < cfg.haeo_stale_timeout_s and ev_age < cfg.haeo_stale_timeout_s
+    fresh = (
+        batt_age < float(cfg.global_config.haeo_stale_timeout_s)
+        and ev_age < float(cfg.global_config.haeo_stale_timeout_s)
+    )
     eff = effective_forecast(configured, fresh)
     batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
     ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []

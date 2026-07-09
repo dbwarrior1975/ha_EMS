@@ -223,7 +223,6 @@ def make_cfg(**overrides):
             nz_battery_floor_ev_active_w=float(data['nz_battery_floor_ev_active_w']),
             primary_device_id=str(data['primary_device_id']),
         ),
-        home_battery=home_battery,
         runtime=CoreRuntimeConfig(
             grid_power_w='sensor.grid_power_w',
             quarter_energy_balance_kwh='sensor.hourly_energy_balance',

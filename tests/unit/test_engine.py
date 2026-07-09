@@ -11,8 +11,6 @@ from ems_core.net_zero.engine import (
 )
 from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
-    build_policy_context_view,
-    compile_core_config_plan_from_grouped_config,
     load_grouped_ems_config,
 )
 from tests.helpers import cfg_ev_min_a, ev_state, ev_w, make_profiles, make_cfg, make_m, make_haeo, make_nz
@@ -255,8 +253,7 @@ def _core_cfg_view_with_extra_devices(
         'input_number.ems_relay2_power_kw': 5000,
     }
     values.update(value_overrides or {})
-    plan = compile_core_config_plan_from_grouped_config(grouped)
-    return build_policy_context_view(plan, lambda entity_id, default: values.get(entity_id, default))
+    return build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
 
 def _garage_ev_device_config():

@@ -88,9 +88,8 @@ Tarkea rajaus:
 4. writer/applier entity registry tulee `sensor.ems_policy_config_runtime` -sensorin
    template-omisteisesta `entity_registry`-attribuutista; puuttuva mapping failaa
    suljetusti ilman ENT- tai hardcoded fallbackia
-5. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
-6. `read_config()` palauttaa `CoreConfig`-instanssin ilman erillista rinnakkaista
-   config-viewta aktiivisessa runtime-polussa
+5. tuotantoruntime cachettaa `StaticTopology`n ja lukee strict `direct_tick_frame_v3` -paketit `runtime_context`-kerroksen kautta
+6. policy config on canonical `RuntimePolicyConfig.global_config + devices[device_id]`; aktiivisessa runtime-polussa ei rakenneta `CoreConfigView`- tai synteettista `CompiledEMSPlan`-rinnakkaisnakymaa
 7. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
 8. device capability -booleanit ovat kovia runtime-rajoja:

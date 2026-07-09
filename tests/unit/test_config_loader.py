@@ -1,5 +1,4 @@
 import os
-import inspect
 import subprocess
 import sys
 
@@ -14,7 +13,6 @@ from ems_adapter.config_loader import (
     _parse_policy_engine_interval_seconds,
     build_core_config_from_grouped_config,
     build_core_config_from_grouped_reader,
-    build_policy_context_view,
     compile_core_config_plan_from_grouped_config,
     materialize_core_config_from_plan,
     load_grouped_ems_config,
@@ -104,13 +102,13 @@ def test_validate_requires_top_level_ems_mapping():
 
 
 @pytest.mark.unit
-def test_validate_requires_home_battery_device(project_root):
+def test_validate_requires_at_least_one_battery_device(project_root):
     config = _load_example(project_root)
     del config['ems']['devices']['HOME_BATTERY']
 
     result = validate_grouped_ems_config(config)
     assert result.ok is False
-    assert 'ems.devices.HOME_BATTERY' in _error_paths(result)
+    assert 'ems.devices' in _error_paths(result)
 
 
 @pytest.mark.unit
@@ -223,7 +221,7 @@ def test_validate_rejects_negative_step_numeric_constant(project_root):
 
 
 @pytest.mark.unit
-def test_validate_rejects_home_battery_with_both_directions_disabled(project_root):
+def test_validate_rejects_battery_with_both_directions_disabled(project_root):
     config = _load_example(project_root)
     config['ems']['devices']['HOME_BATTERY']['capabilities']['can_absorb_w'] = False
     config['ems']['devices']['HOME_BATTERY']['capabilities']['can_produce_w'] = False
@@ -693,12 +691,12 @@ def test_build_core_config_from_grouped_config_uses_canonical_grouped_values(pro
 
     cfg = build_core_config_from_grouped_config(config, entity_values)
 
-    assert cfg.deadband_w == 75
-    assert cfg.max_solar_charge_w == 3700
-    assert cfg.max_battery_discharge_w == 4600
+    assert cfg.global_config.deadband_w == 75
+    assert cfg.device_by_id('HOME_BATTERY').capabilities.max_absorb_w == 3700
+    assert cfg.device_by_id('HOME_BATTERY').capabilities.max_produce_w == 4600
     assert cfg.device_by_id('EV_CHARGER').policy.low_pv_threshold_w == 1.8
     assert not hasattr(cfg, 'adjustable_surplus_load')
-    assert cfg.primary_device_id == 'HOME_BATTERY'
+    assert cfg.global_config.primary_device_id == 'HOME_BATTERY'
 
 
 @pytest.mark.unit
@@ -714,211 +712,24 @@ def test_build_core_config_from_grouped_reader_builds_core_config(project_root):
         }.get(entity_id, default),
     )
 
-    assert cfg.deadband_w == 80
-    assert cfg.ramp_max_w == 900
+    assert cfg.global_config.deadband_w == 80
+    assert cfg.global_config.ramp_w == 900
 
 
-@pytest.mark.unit
-def test_core_config_view_uses_plain_methods_not_partial_callables(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-
-    assert inspect.ismethod(cfg.device_by_id)
-    assert inspect.ismethod(cfg.first_device_by_kind)
-    assert inspect.ismethod(cfg.devices_by_kind)
-    assert not hasattr(cfg.device_by_id, 'func')
-    assert not hasattr(cfg.first_device_by_kind, 'func')
-    assert not hasattr(cfg.devices_by_kind, 'func')
-    assert cfg.device_by_id('EV_CHARGER') == cfg.first_device_by_kind('EV_CHARGER')
-    assert not hasattr(cfg, 'ev_charger')
 
 
-@pytest.mark.unit
-def test_core_config_view_device_lookup_methods_return_plain_tuples(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-
-    relay_devices = cfg.devices_by_kind('RELAY')
-    ev_devices = cfg.devices_by_kind('EV_CHARGER')
-
-    assert type(relay_devices) is tuple
-    assert type(ev_devices) is tuple
-    assert relay_devices
-    assert ev_devices
-    assert cfg.device_by_id('RELAY1').device_id == 'RELAY1'
-    assert cfg.device_by_id('EV_CHARGER').device_id == 'EV_CHARGER'
 
 
-@pytest.mark.unit
-def test_core_config_view_builds_relay_devices_lazily(project_root, monkeypatch):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-    call_counts = {
-        'relay': 0,
-        'ev': 0,
-    }
-    real_build_relay = sys.modules['ems_adapter.config_loader']._build_view_relay_device
-    real_build_ev = sys.modules['ems_adapter.config_loader']._build_view_ev_device
-
-    def counting_build_relay(*args, **kwargs):
-        call_counts['relay'] += 1
-        return real_build_relay(*args, **kwargs)
-
-    def counting_build_ev(*args, **kwargs):
-        call_counts['ev'] += 1
-        return real_build_ev(*args, **kwargs)
-
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_relay_device', counting_build_relay)
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_ev_device', counting_build_ev)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-
-    assert call_counts['relay'] == 0
-    assert call_counts['ev'] == 0
-
-    _relay = cfg.device_by_id('RELAY1')
-    assert _relay.device_id == 'RELAY1'
-    assert call_counts['relay'] == 1
 
 
-@pytest.mark.unit
-def test_core_config_devices_view_values_items_do_not_return_coroutines(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-    values = cfg.devices.values()
-    items = cfg.devices.items()
-
-    assert type(values) is tuple
-    assert type(items) is tuple
-    assert values
-    assert items
-    for device in values:
-        assert inspect.isawaitable(device) is False
-        assert inspect.isawaitable(device.device_id) is False
-        assert isinstance(device.device_id, str)
-    for device_id, device in items:
-        assert inspect.isawaitable(device) is False
-        assert isinstance(device_id, str)
-        assert device.device_id == device_id
 
 
-@pytest.mark.unit
-def test_core_config_devices_view_materializes_each_device_at_most_once_per_view(project_root, monkeypatch):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-    call_counts = {}
-    config_loader_mod = sys.modules['ems_adapter.config_loader']
-    real_build_battery = config_loader_mod._build_view_battery_device
-    real_build_ev = config_loader_mod._build_view_ev_device
-    real_build_relay = config_loader_mod._build_view_relay_device
-
-    def _count(key):
-        call_counts[key] = int(call_counts.get(key, 0) or 0) + 1
-
-    def counting_build_battery(plan_arg, values_arg):
-        _count(str(plan_arg.device_id))
-        return real_build_battery(plan_arg, values_arg)
-
-    def counting_build_ev(plan_arg, values_arg):
-        _count(str(plan_arg.device_id))
-        return real_build_ev(plan_arg, values_arg)
-
-    def counting_build_relay(plan_arg, values_arg):
-        _count(str(plan_arg.device_id))
-        return real_build_relay(plan_arg, values_arg)
-
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_battery_device', counting_build_battery)
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_ev_device', counting_build_ev)
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_relay_device', counting_build_relay)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-
-    assert cfg.home_battery.device_id == 'HOME_BATTERY'
-    assert cfg.device_by_id('EV_CHARGER').device_id == 'EV_CHARGER'
-    assert cfg.device_by_id('RELAY1').device_id == 'RELAY1'
-    assert cfg.device_by_id('RELAY2').device_id == 'RELAY2'
-    assert cfg.devices['HOME_BATTERY'] is cfg.home_battery
-    assert cfg.devices['EV_CHARGER'] is cfg.device_by_id('EV_CHARGER')
-    assert cfg.devices['RELAY1'] is cfg.device_by_id('RELAY1')
-    assert cfg.devices['RELAY2'] is cfg.device_by_id('RELAY2')
-    assert len(cfg.devices.values()) == 4
-    assert len(cfg.devices.items()) == 4
-
-    assert call_counts['HOME_BATTERY'] == 1
-    assert call_counts['EV_CHARGER'] == 1
-    assert call_counts['RELAY1'] == 1
-    assert call_counts['RELAY2'] == 1
 
 
-@pytest.mark.unit
-def test_core_config_view_snapshot_keeps_only_dynamic_device_leaf_values(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-    config_loader_mod = sys.modules['ems_adapter.config_loader']
-
-    snapshot = config_loader_mod.build_core_config_view_snapshot(plan, lambda _entity_id, default: default)
-
-    assert 'can_absorb_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
-    assert 'can_produce_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
-    assert 'priority' in ((snapshot.device_values['EV_CHARGER'].get('policy') or {}))
-    assert 'enabled' in ((snapshot.device_values['EV_CHARGER'].get('adapter') or {}))
-    assert 'policy' in snapshot.home_battery_values
-    assert 'priority' in snapshot.home_battery_values['policy']
 
 
-@pytest.mark.unit
-def test_home_battery_access_paths_share_same_per_view_object(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    cfg = build_policy_context_view(plan, lambda _entity_id, default: default)
-    values_by_id = {device.device_id: device for device in cfg.devices.values()}
-    items_by_id = {device_id: device for device_id, device in cfg.devices.items()}
-
-    assert cfg.home_battery is cfg.device_by_id('HOME_BATTERY')
-    assert cfg.home_battery is cfg.devices['HOME_BATTERY']
-    assert cfg.home_battery is values_by_id['HOME_BATTERY']
-    assert cfg.home_battery is items_by_id['HOME_BATTERY']
 
 
-@pytest.mark.unit
-def test_device_view_memoization_is_per_view_not_cross_run(project_root):
-    config = _load_example(project_root)
-    plan = compile_core_config_plan_from_grouped_config(config)
-
-    first_cfg = build_policy_context_view(
-        plan,
-        _plan_reader_from_values(
-            {
-                'input_number.ems_surplus_ev_priority': 4,
-                'input_boolean.ems_ev_force_on': False,
-            }
-        ),
-    )
-    second_cfg = build_policy_context_view(
-        plan,
-        _plan_reader_from_values(
-            {
-                'input_number.ems_surplus_ev_priority': 9,
-                'input_boolean.ems_ev_force_on': True,
-            }
-        ),
-    )
-
-    assert first_cfg is not second_cfg
-    assert first_cfg.home_battery is not second_cfg.home_battery
-    assert first_cfg.device_by_id('EV_CHARGER') is not second_cfg.device_by_id('EV_CHARGER')
-    assert first_cfg.device_by_id('RELAY1') is not second_cfg.device_by_id('RELAY1')
-    assert first_cfg.device_by_id('EV_CHARGER').policy.priority == 4
-    assert second_cfg.device_by_id('EV_CHARGER').policy.priority == 9
-    assert first_cfg.device_by_id('EV_CHARGER').policy.force_on is False
-    assert second_cfg.device_by_id('EV_CHARGER').policy.force_on is True
 
 
 @pytest.mark.unit
@@ -1002,7 +813,7 @@ def test_battery_priority_does_not_inherit_ev_priority_when_battery_value_equals
         ),
     )
 
-    assert cfg.home_battery.policy.priority == 3
+    assert cfg.device_by_id('HOME_BATTERY').policy.priority == 3
     assert cfg.device_by_id('EV_CHARGER').policy.priority == 8
 
 
@@ -1020,7 +831,7 @@ def test_device_priorities_are_independent_of_removed_surplus_selector(project_r
         ),
     )
 
-    assert cfg.home_battery.policy.priority == 2
+    assert cfg.device_by_id('HOME_BATTERY').policy.priority == 2
     assert cfg.device_by_id('EV_CHARGER').policy.priority == 3
     assert not hasattr(cfg, 'adjustable_surplus_load')
 
@@ -1039,7 +850,7 @@ def test_dynamic_default_override_battery_priority_uses_explicit_ha_value_when_p
         ),
     )
 
-    assert cfg.home_battery.policy.priority == 11
+    assert cfg.device_by_id('HOME_BATTERY').policy.priority == 11
 
 
 @pytest.mark.unit
@@ -1050,7 +861,7 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
     first_cfg = materialize_core_config_from_plan(plan, reader)
 
     first_cfg.role_constraints.default['mutated'] = 123
-    first_cfg.devices['BROKEN'] = first_cfg.home_battery
+    first_cfg.devices['BROKEN'] = first_cfg.device_by_id('HOME_BATTERY')
 
     second_cfg = materialize_core_config_from_plan(plan, reader)
 
@@ -1099,3 +910,26 @@ def test_runtime_packet_config_rejects_static_global_config(project_root):
     assert any(issue.path == 'ems.global_config' for issue in result.errors)
 
 
+
+
+@pytest.mark.unit
+def test_runtime_packet_config_allows_multiple_generic_battery_devices(project_root):
+    config = load_grouped_ems_config(project_root / 'EMS_config.yaml')
+    devices = config['ems']['devices']
+    battery = devices.pop('HOME_BATTERY')
+    devices['BATTERY_30KWH'] = battery
+    devices['BATTERY_60KWH'] = {
+        'kind': 'BATTERY',
+        'capabilities': {
+            'can_absorb_w': True,
+            'can_produce_w': True,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': True,
+        },
+    }
+    config['ems']['role_constraints']['default']['primary'] = 'BATTERY_30KWH'
+
+    result = validate_grouped_ems_config(config)
+
+    assert result.ok is True
+    assert not _error_paths(result)

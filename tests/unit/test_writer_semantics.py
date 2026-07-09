@@ -181,7 +181,6 @@ def _install_core_capabilities(mod, **overrides):
                 deadband_w=float(state.get('input_number.ems_deadband_w', 100) or 100),
                 ramp_w=float(state.get('input_number.ems_ramp_max_w', 500) or 500),
             ),
-            home_battery=devices['HOME_BATTERY'],
             ev_charger=devices.get('EV_CHARGER'),
             relay1=devices.get('RELAY1'),
             relay2=devices.get('RELAY2'),
@@ -1103,3 +1102,63 @@ def test_writer_loop_fails_closed_when_runtime_context_is_invalid(project_root):
     assert trace['value'] == 'SUPPRESSED'
     assert trace['attrs']['actuator_writes_suppressed'] is True
     assert trace['attrs']['error_path'] == 'measurements.schema_version'
+
+
+@pytest.mark.unit
+def test_writer_routes_v3_battery_owner_by_generic_device_id(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    battery_id = 'BATTERY_30KWH'
+    battery_entity = 'number.battery_30kwh_target_w'
+
+    battery = SimpleNamespace(
+        device_id=battery_id,
+        kind='BATTERY',
+        capabilities=SimpleNamespace(
+            can_absorb_w=True,
+            can_produce_w=True,
+            min_absorb_w=0,
+            max_absorb_w=5000,
+            max_produce_w=5000,
+            step_w=50,
+        ),
+        policy=SimpleNamespace(priority=2),
+        adapter=SimpleNamespace(),
+    )
+    cfg = SimpleNamespace(
+        profiles=SimpleNamespace(control='AUTOMATIC'),
+        global_config=SimpleNamespace(deadband_w=1, ramp_w=5000),
+        devices={battery_id: battery},
+        device_by_id=lambda device_id: battery if device_id == battery_id else None,
+        device_ids_by_kind=lambda kind: (battery_id,) if kind == 'BATTERY' else (),
+        v3_battery_device_id=lambda: battery_id,
+    )
+    mod['read_core_config'] = lambda *args, **kwargs: cfg
+    mod['_load_core_config'] = lambda *args, **kwargs: cfg
+
+    devices = dict(ENT['devices'])
+    devices.pop('HOME_BATTERY', None)
+    devices[battery_id] = {
+        'device_id': battery_id,
+        'kind': 'BATTERY',
+        'target_w': battery_entity,
+    }
+    ENT['devices'] = devices
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': battery_id,
+                'target_w': 750,
+                'enabled': True,
+                'mode': 'power',
+            }
+        ],
+    )
+    state[battery_entity] = 0
+
+    result = mod['_write_battery_actuator']()
+
+    assert result['written'] is True
+    assert result['policy_target_w'] == 750
+    assert state[battery_entity] == 750

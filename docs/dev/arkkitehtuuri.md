@@ -37,7 +37,7 @@ vaan EMS:n kiinteita canonical output bus- ja diagnostics-pintoja.
 
 ```mermaid
 flowchart LR
-    HA[Home Assistant entityt] --> RC[runtime_context.py\nentity registry + CoreConfig]
+    HA[Home Assistant entityt] --> RC[runtime_context.py\nStaticTopology + direct v3 packets]
     RC --> P[ems_policy_engine.py]
     P --> DP[device_policies]
     P --> DC[dispatch_command]
@@ -60,8 +60,8 @@ Tiedosto: `ems_policy_engine.py`
 
 Vastuut:
 
-1. lukee `CoreConfig`-konfiguraation runtime_contextin kautta
-2. lukee profiilit ja mittaukset
+1. lukee `RuntimePolicyConfig`-konfiguraation ja `TickFrame`-mittaukset strict v3 -paketeista runtime_contextin kautta
+2. kayttaa canonical `global_config + devices[device_id]` -rakennetta
 3. arvioi guard-tilan
 4. laskee `NetZeroOutputs`-ulostulon
 5. julkaisee `device_policies`, `dispatch_command` ja `policy_state`
@@ -72,7 +72,7 @@ Ajastusmalli:
 1. Pyscript scheduler kutsuu policy-engine tickia kiinteasti `2s` valein
 2. `ems.policy_engine.interval_seconds` maarittaa minimi elapsed intervalin
 3. kevyt skip-polku ei lue configia, runtime-contextia tai entityja
-4. runtime-inputit luetaan oikean policy-ajon alussa grouped-configin entity-id:ista
+4. runtime-inputit luetaan oikean policy-ajon alussa `EMS_config.yaml`:n staattisen topologian nimeamista kolmesta v3-pakettisensorista
 5. config interval -muutos voi tulla voimaan seuraavassa oikeassa ajossa tai manual/reload-ajossa
 6. raw runtime entityt eivat ole enaa policy-enginen `@state_trigger`-sopimus
 

@@ -84,6 +84,19 @@ def _device_policy_target_w(policy, default=0):
     return float(policy.get('target_w') or 0)
 
 
+def _v3_battery_device_id(cfg):
+    if hasattr(cfg, 'v3_battery_device_id'):
+        return str(cfg.v3_battery_device_id() or '')
+    if hasattr(cfg, 'device_ids_by_kind'):
+        battery_ids = tuple(cfg.device_ids_by_kind('BATTERY') or ())
+        return str(battery_ids[0]) if battery_ids else ''
+    devices = getattr(cfg, 'devices', {}) or {}
+    for device_id, device in devices.items():
+        if str(getattr(device, 'kind', '') or '') == 'BATTERY':
+            return str(device_id)
+    return ''
+
+
 def _capability_device_config_for_id(device_id, cfg=None):
     cfg = cfg or _load_core_config()
     device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
@@ -105,22 +118,24 @@ def _capability_device_config_for_id(device_id, cfg=None):
     )
 
 
-def _write_battery_actuator(entities=None, cfg=None):
+def _write_battery_actuator(device_id=None, entities=None, cfg=None):
     if entities is None:
         entities = _load_runtime_entities()
     cfg = cfg or _load_core_config()
+    device_id = str(device_id or _v3_battery_device_id(cfg) or '')
     profiles = getattr(cfg, 'profiles', None)
     control = str(getattr(profiles, 'control', 'AUTOMATIC') or 'AUTOMATIC')
 
     if control == 'MANUAL':
         return {
             'target': 'victron',
+            'device_id': device_id,
             'action': 'skip',
             'reason': 'manual_skip',
             'written': False,
         }
 
-    device_policy = _device_policy_by_id('HOME_BATTERY', entities)
+    device_policy = _device_policy_by_id(device_id, entities) if device_id else None
     if device_policy is None:
         return {
             'target': 'victron',
@@ -142,7 +157,7 @@ def _write_battery_actuator(entities=None, cfg=None):
         }
 
     target_w = _device_policy_target_w(device_policy, default=0)
-    capability_cfg = _capability_device_config_for_id('HOME_BATTERY', cfg=cfg)
+    capability_cfg = _capability_device_config_for_id(device_id, cfg=cfg)
     if capability_cfg is None:
         return {
             'target': 'victron',
@@ -154,7 +169,7 @@ def _write_battery_actuator(entities=None, cfg=None):
     capability_reason = capability_block_reason(capability_cfg, target_w)
     target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
 
-    device_mapping = _device_adapter_entities('HOME_BATTERY', entities)
+    device_mapping = _device_adapter_entities(device_id, entities)
     battery_entity = device_mapping.get('target_w')
     if not battery_entity:
         return {
@@ -484,7 +499,7 @@ def ems_actuator_writers_loop():
             'error_code': 'RUNTIME_CONTEXT_INVALID',
             'error_path': getattr(exc, 'path', ''),
         }
-    victron = _write_battery_actuator(entities, cfg=cfg)
+    victron = _write_battery_actuator(entities=entities, cfg=cfg)
     device_traces = {}
     for device in getattr(cfg, 'devices', {}).values():
         device_id = str(device.device_id)

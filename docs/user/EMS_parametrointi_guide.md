@@ -5,19 +5,41 @@ n-device-konfiguraatiolle seka kahdelle yleiselle primary-asetelmalle.
 
 ## N-device konfiguraatio
 
-EMS:n tuotantoraja tassa releasessa on:
+EMS:n konfiguraatiomalli tassa releasessa on:
 
-1. yksi `HOME_BATTERY`
+1. `1-n` `kind: BATTERY` -laitetta
 2. `0-n` `kind: RELAY` -laitetta
 3. `0-n` `kind: EV_CHARGER` -laturia
 4. useampi EV voi olla samassa surplus-kandidaattipoolissa ja saada oman `DevicePolicy`-tuloksen
 5. proportional multi-EV power split ja EV-round-robin eivat kuulu tahan releaseen
 
+### Multi-BATTERY ja direct_tick_frame_v3
+
+L2:ssa device-id on geneerinen myos akuille. Esimerkiksi `BATTERY_30KWH` ja
+`BATTERY_60KWH` voivat molemmat olla staattisessa `ems.devices`-topologiassa,
+omilla capability-, policy-, priority- ja role-arvoillaan. `HOME_BATTERY` ei ole
+canonical singleton tai pakollinen device-id.
+
+Nykyinen `direct_tick_frame_v3` kantaa kuitenkin vain yhden scalar battery
+runtime-kanavan (`soc`, `min_cell_voltage_v`, heartbeat, current setpoint ja
+measured power). Siksi v3:ssa ensimmainen topologian `kind: BATTERY` on
+eksplisiittinen wire-channel owner. Muut BATTERY-laitteet saavat fail-closed
+`DevicePolicy`-tuloksen (`target_w: 0`, `enabled: false`,
+`reason: unsupported_v3_battery_channel`) eivatka kopioitua ownerin targetia.
+
+Strict v3 -sopimus sailyy: jokaiselle `EMS_config.yaml`-topologian laitteelle
+pitaa olla vastaava entry template-owned `policy_config.devices`-paketissa.
+Multi-BATTERY deployment on siis v3-aikana atominen YAML + template -muutos.
+Pelkkia puuttuvia packet-entryja ei syntetisoida staattisesta YAML:sta.
+Taysi per-device battery measurement/state/write -malli kuuluu L4:n
+device-native runtime-schemaan.
+
 ### Device-id ei kanna semantiikkaa
 
 `RELAY1`, `RELAY2` ja `EV_CHARGER` ovat edelleen valideja device-id:ita, mutta
-uusi tuotantologiikka perustuu `kind`, `capabilities`, `policy` ja `adapter`
--kenttiin. Custom device-id voi olla esimerkiksi `RELAY_SAUNA`,
+uusi tuotantologiikka perustuu device-ID:n lisaksi `kind`, `capabilities` ja
+`policy`-rakenteisiin. Fyysiset actuator-entityt eivat kuulu `EMS_config.yaml`:iin,
+vaan template-owned `policy_config.entity_registry` -sopimukseen. Custom device-id voi olla esimerkiksi `RELAY_SAUNA`,
 `RELAY_BOILER`, `EV_MAIN` tai `EV_GARAGE`.
 
 Kanoninen runtime-pinta on device-id-pohjainen:
@@ -52,8 +74,6 @@ ems:
         priority: input_number.ems_surplus_relay_sauna_priority
         surplus_allowed: input_boolean.ems_relay_sauna_enabled_import_zero
         force_on: input_boolean.ems_relay_sauna_force_on
-      adapter:
-        enabled: switch.relay_sauna_enabled
 ```
 
 Tarvittavat HA-helperit uudelle releelle:
@@ -63,7 +83,7 @@ Tarvittavat HA-helperit uudelle releelle:
 3. `input_number.ems_surplus_relay_sauna_priority`
 4. `input_boolean.ems_relay_sauna_enabled_import_zero`
 5. `input_boolean.ems_relay_sauna_force_on`
-6. `switch.relay_sauna_enabled`
+6. `switch.relay_sauna_enabled` template-owned `entity_registry.devices.RELAY_SAUNA.enabled` -mappingina
 
 ### Kaikkien releiden poistaminen
 
@@ -75,11 +95,11 @@ ems:
   devices:
     HOME_BATTERY:
       kind: BATTERY
-      # battery capabilities, policy, guard ja adapter
+      # static battery topology/capabilities
 
     EV_CHARGER:
       kind: EV_CHARGER
-      # EV capabilities, policy ja adapter
+      # static EV topology/capabilities
 ```
 
 Testattu referenssi: `tests/e2e_entity/net_zero_no_relays_ev_only/EMS_config.yaml`.
@@ -97,11 +117,11 @@ ems:
   devices:
     HOME_BATTERY:
       kind: BATTERY
-      # battery capabilities, policy, guard ja adapter
+      # static battery topology/capabilities
 
     RELAY1:
       kind: RELAY
-      # relay capabilities, policy ja adapter
+      # static relay topology/capabilities
 ```
 
 Testattu referenssi: `tests/e2e_entity/net_zero_no_ev_relays_only/EMS_config.yaml`.
@@ -120,8 +140,6 @@ ems:
         priority: input_number.ems_surplus_relay1_priority
         surplus_allowed: input_boolean.ems_relay1_enabled_import_zero
         force_on: input_boolean.ems_relay1_force_on
-      adapter:
-        enabled: switch.relay_1_2
 
     RELAY2:
       kind: RELAY
@@ -129,8 +147,6 @@ ems:
         priority: input_number.ems_surplus_relay2_priority
         surplus_allowed: input_boolean.ems_relay2_enabled_import_zero
         force_on: input_boolean.ems_relay2_force_on
-      adapter:
-        enabled: switch.relay_2_2
 
     RELAY3:
       kind: RELAY
@@ -138,12 +154,11 @@ ems:
         priority: input_number.ems_surplus_relay3_priority
         surplus_allowed: input_boolean.ems_relay3_enabled_import_zero
         force_on: input_boolean.ems_relay3_force_on
-      adapter:
-        enabled: switch.relay_3_2
 ```
 
 Jokaiselle releelle tarvitaan omat `max_absorb_w`, `step_w`, `priority`,
-`surplus_allowed`, `force_on` ja `adapter.enabled` -entityt. Testattu
+`surplus_allowed` ja `force_on` -entityt. Fyysinen `enabled`-actuator mapping
+annetaan template-owned `entity_registry.devices.<device_id>.enabled` -rakenteessa. Testattu
 referenssi: `tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_config.yaml`.
 
 ### 2 EV, yksi yhteinen surplus-kandidaattipooli
@@ -169,9 +184,6 @@ ems:
         priority: input_number.ems_surplus_ev_main_priority
         surplus_allowed: input_boolean.ems_ev_main_surplus_allowed
         surplus_dispatch_mode: max_absorb
-      adapter:
-        enabled: switch.ev_main_enabled
-        current_a: number.ev_main_current_a
 
     EV_GARAGE:
       kind: EV_CHARGER
@@ -182,9 +194,6 @@ ems:
         priority: input_number.ems_surplus_ev_garage_priority
         surplus_allowed: input_boolean.ems_ev_garage_surplus_allowed
         surplus_dispatch_mode: max_absorb
-      adapter:
-        enabled: switch.ev_garage_enabled
-        current_a: number.ev_garage_current_a
 ```
 
 Tarvittavat HA-helperit uudelle EV-laturille ovat tyypillisesti:
@@ -196,9 +205,9 @@ Tarvittavat HA-helperit uudelle EV-laturille ovat tyypillisesti:
 5. `input_boolean.*_surplus_allowed`
 6. `surplus_dispatch_mode` YAML-policyssa (`max_absorb` tai `fixed`)
 7. lifecycle-/hard-off-parametrit tarvittaessa
-8. `switch.*_enabled`
-9. `number.*_current_a`
-10. EV-adapterin virta-, vaihe- ja janniteparametrit
+8. `switch.*_enabled` template-owned `entity_registry`-mappingina
+9. `number.*_current_a` template-owned `entity_registry`-mappingina
+10. EV:n virta-, vaihe- ja janniteparametrit policy-config-paketissa
 
 Erillista `*_activation_threshold_w`-helperia ei tarvita.
 

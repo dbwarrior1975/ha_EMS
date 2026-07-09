@@ -8,13 +8,11 @@ except NameError:
         return func
 
 
-from ems_adapter.config_loader import (
-    compile_core_config_plan_from_grouped_config,
-    load_and_validate_grouped_ems_config,
-)
+from ems_adapter.config_loader import load_and_validate_grouped_ems_config
 from ems_adapter.direct_runtime import (
     RUNTIME_SCHEMA_VERSION,
     RuntimePacketSchemaError,
+    build_static_topology,
     parse_policy_config_cached,
     parse_tick_frame_v3,
     reset_direct_runtime_cache,
@@ -71,7 +69,8 @@ _RUNTIME_CONTEXT_CONFIG_CACHE = {
     'size': None,
     'config': None,
     'validation': None,
-    'core_config_plan': None,
+    'static_topology': None,
+    'policy_engine_config': None,
     'hits': 0,
     'misses': 0,
 }
@@ -104,8 +103,9 @@ def _reset_runtime_context_config_cache():
             'size': None,
             'config': None,
             'validation': None,
-                    'core_config_plan': None,
-                'hits': 0,
+            'static_topology': None,
+            'policy_engine_config': None,
+            'hits': 0,
             'misses': 0,
         }
     )
@@ -142,6 +142,16 @@ def _grouped_config_file_signature(path):
     return stat_result.st_mtime_ns, stat_result.st_size
 
 
+def _policy_engine_config_from_grouped_config(grouped_config):
+    ems = grouped_config.get('ems', {}) if isinstance(grouped_config, dict) else {}
+    values = ems.get('policy_engine', {}) if isinstance(ems, dict) else {}
+    values = values if isinstance(values, dict) else {}
+    return CorePolicyEngineConfig(
+        interval_seconds=float(values.get('interval_seconds', 5.0) or 5.0),
+        diagnostics_interval_seconds=float(values.get('diagnostics_interval_seconds', 30.0) or 30.0),
+    )
+
+
 def _load_grouped_config_cached(path):
     mtime_ns, size = _grouped_config_file_signature(path)
     if (
@@ -150,22 +160,28 @@ def _load_grouped_config_cached(path):
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('size') == size
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('config') is not None
         and _RUNTIME_CONTEXT_CONFIG_CACHE.get('validation') is not None
-        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('core_config_plan') is not None
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('static_topology') is not None
+        and _RUNTIME_CONTEXT_CONFIG_CACHE.get('policy_engine_config') is not None
     ):
         _RUNTIME_CONTEXT_CONFIG_CACHE['hits'] = int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('hits', 0) or 0) + 1
         return (
             _RUNTIME_CONTEXT_CONFIG_CACHE['config'],
             _RUNTIME_CONTEXT_CONFIG_CACHE['validation'],
-            _RUNTIME_CONTEXT_CONFIG_CACHE['core_config_plan'],
+            _RUNTIME_CONTEXT_CONFIG_CACHE['static_topology'],
+            _RUNTIME_CONTEXT_CONFIG_CACHE['policy_engine_config'],
             True,
             0,
         )
 
     build_started_ts = time.time()
     grouped_config, validation = load_and_validate_grouped_ems_config(path)
-    core_config_plan = None
+    static_topology = None
+    policy_engine_config = None
     if validation.ok:
-        core_config_plan = compile_core_config_plan_from_grouped_config(grouped_config)
+        ems = grouped_config.get('ems', {}) if isinstance(grouped_config, dict) else {}
+        if isinstance(ems, dict) and isinstance(ems.get('runtime_sources'), dict):
+            static_topology = build_static_topology(grouped_config)
+        policy_engine_config = _policy_engine_config_from_grouped_config(grouped_config)
     static_context_build_ms = _elapsed_ms(build_started_ts, time.time())
     _RUNTIME_CONTEXT_CONFIG_CACHE['misses'] = int(_RUNTIME_CONTEXT_CONFIG_CACHE.get('misses', 0) or 0) + 1
     _RUNTIME_CONTEXT_CONFIG_CACHE.update(
@@ -175,13 +191,15 @@ def _load_grouped_config_cached(path):
             'size': size,
             'config': grouped_config,
             'validation': validation,
-            'core_config_plan': core_config_plan,
+            'static_topology': static_topology,
+            'policy_engine_config': policy_engine_config,
         }
     )
     return (
         grouped_config,
         validation,
-        core_config_plan,
+        static_topology,
+        policy_engine_config,
         False,
         static_context_build_ms,
     )
@@ -300,7 +318,8 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
         (
             grouped_config,
             validation,
-            core_config_plan,
+            static_topology,
+            policy_engine_cfg,
             cache_hit,
             static_context_build_ms,
         ) = _load_grouped_config_cached(path)
@@ -349,7 +368,6 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
         detail_text = '; '.join(issue_details) if issue_details else 'unknown validation error'
         raise ValueError(f'Grouped EMS config validation failed: {detail_text}')
 
-    static_topology = getattr(core_config_plan, 'static_topology', None)
     if static_topology is None:
         _set_grouped_config_status(
             {
@@ -373,12 +391,6 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
         static_topology,
     )
     runtime_entity_registry_ms = _elapsed_ms(registry_started_ts, time.time())
-
-    policy_engine_values = getattr(core_config_plan, 'policy_engine', {}) or {}
-    policy_engine_cfg = CorePolicyEngineConfig(
-        interval_seconds=float(policy_engine_values.get('interval_seconds', 5.0) or 5.0),
-        diagnostics_interval_seconds=float(policy_engine_values.get('diagnostics_interval_seconds', 30.0) or 30.0),
-    )
 
     config_parse_started_ts = _runtime_context_profile_started_ts()
     runtime_cfg, config_cache_hit = parse_policy_config_cached(
@@ -528,11 +540,10 @@ def read_runtime_entities(read_bool=None, read_float=None, read_int=None, read_s
     del read_bool, read_float, read_int, read_str
     read_attrs = read_attrs or _get_attrs
     path = os.environ.get('EMS_GROUPED_CONFIG_PATH', '').strip() or _DEFAULT_GROUPED_CONFIG_PATH
-    grouped_config, validation, core_config_plan, _cache_hit, _build_ms = _load_grouped_config_cached(path)
+    _grouped_config, validation, static_topology, _policy_engine_cfg, _cache_hit, _build_ms = _load_grouped_config_cached(path)
     if not validation.ok:
         detail_text = '; '.join(_format_validation_issues(validation.errors)) or 'unknown validation error'
         raise ValueError(f'Grouped EMS config validation failed: {detail_text}')
-    static_topology = getattr(core_config_plan, 'static_topology', None)
     if static_topology is None:
         raise ValueError('Direct runtime packet configuration required for runtime entity registry.')
     packet = _read_runtime_packet_attrs(

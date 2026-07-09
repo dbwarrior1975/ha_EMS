@@ -284,7 +284,7 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
     assert third_hit is False
     assert third is not first
     assert third.revision == 18
-    assert third.deadband_w == 125
+    assert third.global_config.deadband_w == 125
 
 
 @pytest.mark.unit
@@ -473,7 +473,7 @@ def test_direct_parser_primary_role_is_independent_of_removed_surplus_alias(proj
     cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cache_hit is False
-    assert cfg.primary_device_id == 'HOME_BATTERY'
+    assert cfg.global_config.primary_device_id == 'HOME_BATTERY'
     assert not hasattr(cfg, 'adjustable_surplus_load')
     assert cfg.device_capabilities_by_id['HOME_BATTERY']['supports_primary_regulation'] is True
 
@@ -483,7 +483,7 @@ def test_direct_parser_preserves_float_measurement_signed_discharge_and_runtime_
     _top, cfg, frame, _cache_hit = _parse(project_root)
 
     assert frame.quarter_energy_balance_kwh == 0.014
-    assert cfg.max_battery_discharge_w == -4000.0
+    assert cfg.v3_battery_capability('max_produce_w') == -4000.0
     assert cfg.direct_policy_maps['device_adapter_by_id']['EV_CHARGER']['current_step_a'] == 2
     assert cfg.device_policy_by_id['EV_CHARGER']['priority'] == 4
     assert frame.ev_states['EV_CHARGER']['current_a'] == 6
@@ -1012,3 +1012,145 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
     assert out.attrs['primary_device_id'] == 'HOME_BATTERY'
     assert 'surplus_adjustable_device_id' not in out.attrs
     assert out.attrs['surplus_candidate_device_ids'] == ('HOME_BATTERY', 'RELAY1')
+
+
+def _multi_battery_topology_and_policy(project_root):
+    config = load_grouped_ems_config(project_root / 'EMS_config.yaml')
+    devices = config['ems']['devices']
+    first_battery = devices.pop('HOME_BATTERY')
+    ordered_devices = {
+        'BATTERY_30KWH': first_battery,
+        'BATTERY_60KWH': {
+            'kind': 'BATTERY',
+            'capabilities': {
+                'can_absorb_w': True,
+                'can_produce_w': True,
+                'supports_primary_regulation': True,
+                'supports_residual_regulation': True,
+            },
+        },
+    }
+    ordered_devices.update(devices)
+    config['ems']['devices'] = ordered_devices
+    config['ems']['role_constraints']['default']['primary'] = 'BATTERY_30KWH'
+    topology = build_static_topology(config)
+
+    policy = _policy_packet(revision=91)
+    first_policy = policy['devices'].pop('HOME_BATTERY')
+    policy['devices'] = {
+        'BATTERY_30KWH': first_policy,
+        'BATTERY_60KWH': {
+        'capabilities': {
+            'min_absorb_w': 0,
+            'max_absorb_w': 7200,
+            'max_produce_w': -7600,
+            'step_w': 100,
+            'uses_hard_off_lifecycle': False,
+            'supports_primary_regulation': True,
+            'supports_residual_regulation': True,
+        },
+        'policy': {
+            'priority': 2,
+            'surplus_allowed': True,
+            'surplus_dispatch_mode': 'max_absorb',
+            'default_min_absorb_w': 0,
+        },
+            'guard': {
+                'protect_soc': 5,
+                'protect_soc_recovery_margin': 2,
+                'protect_min_cell_voltage_v': 3.05,
+                'protect_min_absorb_w': 200,
+            },
+        },
+        **policy['devices'],
+    }
+    policy['config']['primary_device_id'] = 'BATTERY_30KWH'
+    return topology, policy
+
+
+@pytest.mark.unit
+def test_direct_v3_multi_battery_requires_policy_config_entry_for_every_static_device(project_root):
+    reset_direct_runtime_cache()
+    topology, policy = _multi_battery_topology_and_policy(project_root)
+    del policy['devices']['BATTERY_60KWH']
+
+    with pytest.raises(RuntimePacketSchemaError) as exc:
+        parse_policy_config_cached(topology, policy)
+
+    assert exc.value.path == 'policy_config.devices.BATTERY_60KWH'
+    assert exc.value.message == 'missing'
+
+
+@pytest.mark.unit
+def test_direct_v3_multi_battery_config_exposes_explicit_single_channel_owner(project_root):
+    reset_direct_runtime_cache()
+    topology, policy = _multi_battery_topology_and_policy(project_root)
+
+    cfg, cache_hit = parse_policy_config_cached(topology, policy)
+
+    assert cache_hit is False
+    assert cfg.device_ids_by_kind('BATTERY') == ('BATTERY_30KWH', 'BATTERY_60KWH')
+    assert cfg.v3_battery_device_id() == 'BATTERY_30KWH'
+    assert cfg.unsupported_v3_battery_device_ids() == ('BATTERY_60KWH',)
+    assert cfg.device_by_id('BATTERY_60KWH').capabilities.max_absorb_w == 7200
+    assert cfg.device_by_id('BATTERY_60KWH').policy.priority == 2
+
+
+@pytest.mark.unit
+def test_direct_v3_multi_battery_policy_fails_closed_for_unwired_battery(project_root):
+    reset_direct_runtime_cache()
+    topology, policy = _multi_battery_topology_and_policy(project_root)
+    cfg, _cache_hit = parse_policy_config_cached(topology, policy)
+    frame = parse_tick_frame_v3(
+        topology,
+        cfg,
+        _measurements_packet(),
+        _state_packet(),
+        NOW_TS,
+    )
+    guard = evaluate_guard(cfg.profiles.guard, frame, cfg)
+    profiles = Profiles(cfg.profiles.control, cfg.profiles.goal, cfg.profiles.forecast, guard.guard)
+    haeo = frame.haeo_targets(profiles, cfg)
+    derived = derive_net_zero_inputs(
+        quarter_energy_balance_kwh=frame.quarter_energy_balance_kwh,
+        grid_power_w=frame.grid_power_w,
+        now_ts=NOW_TS,
+    )
+    nz = NetZeroState(
+        rpnz_w=derived.rpnz_w,
+        required_power_consumption_kw=derived.required_power_consumption_kw,
+    )
+    haeo_plan = compute_haeo_net_zero_plan(
+        profiles,
+        cfg,
+        haeo,
+        NOW_TS,
+        previous_quarter_key=frame.previous_quarter_key,
+        previous_primary_load='',
+        previous_primary_device_id=frame.previous_primary_device_id,
+    )
+
+    outputs = compute_net_zero_engine_outputs(
+        profiles,
+        cfg,
+        frame,
+        haeo,
+        nz,
+        NOW_TS,
+        freeze_until_ts=frame.surplus_freeze_until_ts,
+        pv_power_kw=frame.pv_power_w / 1000.0,
+        relay_device_states=frame.relay_states,
+        previous_device_states=frame.previous_device_states,
+        previous_force_on_device_ids=frame.previous_force_on_device_ids,
+        haeo_nz_plan=haeo_plan,
+    )
+    policies = {policy.device_id: policy for policy in outputs.device_policies}
+
+    owner = policies['BATTERY_30KWH']
+    unwired = policies['BATTERY_60KWH']
+    assert owner.reason == 'battery_policy'
+    assert unwired.target_w == 0
+    assert unwired.enabled is False
+    assert unwired.reason == 'unsupported_v3_battery_channel'
+    assert outputs.attrs['v3_battery_device_id'] == 'BATTERY_30KWH'
+    assert outputs.attrs['v3_unsupported_battery_device_ids'] == ('BATTERY_60KWH',)

@@ -1,8 +1,7 @@
 import pytest
 
 from ems_adapter.config_loader import (
-    build_policy_context_view,
-    compile_core_config_plan_from_grouped_config,
+    build_core_config_from_grouped_reader,
     load_grouped_ems_config,
 )
 from ems_core.net_zero.engine import _generic_surplus_candidate_contexts
@@ -96,7 +95,7 @@ def test_generic_builder_accepts_neutral_absorb_candidate_without_kind_contract(
 
 
 @pytest.mark.unit
-def test_core_config_view_second_ev_enters_generic_candidate_context_without_materializing_ev(project_root, monkeypatch):
+def test_core_config_second_ev_enters_generic_candidate_context(project_root):
     grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     grouped['ems']['devices']['EV_GARAGE'] = {
         'kind': 'EV_CHARGER',
@@ -127,7 +126,6 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
             'voltage_v': 'input_number.ems_ev_garage_voltage_v',
         },
     }
-    plan = compile_core_config_plan_from_grouped_config(grouped)
     values = {
         'input_number.ems_ev_garage_min_power_w': 1380,
         'input_number.ems_ev_garage_max_power_w': 3680,
@@ -142,23 +140,13 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
         'input_number.ems_ev_garage_phases': 1,
         'input_number.ems_ev_garage_voltage_v': 230,
     }
-    call_counts = {}
-    real_build_ev = __import__('ems_adapter.config_loader', fromlist=['_build_view_ev_device'])._build_view_ev_device
-
-    def counting_build_ev(plan_arg, values_arg):
-        device_id = str(plan_arg.device_id)
-        call_counts[device_id] = int(call_counts.get(device_id, 0) or 0) + 1
-        return real_build_ev(plan_arg, values_arg)
-
-    monkeypatch.setattr('ems_adapter.config_loader._build_view_ev_device', counting_build_ev)
-    cfg = build_policy_context_view(plan, lambda entity_id, default: values.get(entity_id, default))
+    cfg = build_core_config_from_grouped_reader(grouped, lambda entity_id, default: values.get(entity_id, default))
 
     contexts = _generic_surplus_candidate_contexts(
         cfg,
         active_device_ids=(),
         lifecycle_transitions_by_id={},
         primary_device_id='HOME_BATTERY',
-        facts=cfg.policy_runtime_facts(),
     )
     by_id = {item['device_id']: item for item in contexts}
 
@@ -167,4 +155,3 @@ def test_core_config_view_second_ev_enters_generic_candidate_context_without_mat
     assert by_id['EV_GARAGE']['threshold_w'] == 3680
     assert by_id['EV_GARAGE']['threshold_source'] == 'device_capabilities.max_absorb_w'
     assert by_id['EV_GARAGE']['surplus_dispatch_mode'] == 'max_absorb'
-    assert call_counts == {}

@@ -6,16 +6,12 @@ from ems_core.domain.ev_power import (
     ev_power_step_w,
 )
 
-_BATTERY_ID = 'HOME_BATTERY'
-_EV_ID = 'EV_CHARGER'
-_RELAY1_ID = 'RELAY1'
-_RELAY2_ID = 'RELAY2'
 
 
 def _response_kind_for_device(device_id, kind):
-    if device_id == _BATTERY_ID or str(kind) == 'BATTERY':
+    if str(kind) == 'BATTERY':
         return 'continuous'
-    if device_id == _EV_ID or str(kind) == 'EV_CHARGER':
+    if str(kind) == 'EV_CHARGER':
         return 'selector'
     return 'relay'
 
@@ -62,7 +58,20 @@ def build_device_configs(cfg: CoreConfig) -> tuple[EmsDeviceConfig, ...]:
 
 
 def _battery_heartbeat_timeout_s(cfg):
-    return float(cfg.battery_heartbeat_timeout_s)
+    global_config = getattr(cfg, 'global_config', None)
+    return float(getattr(global_config, 'battery_heartbeat_timeout_s', 360.0))
+
+
+def _v3_battery_device_id(cfg):
+    if hasattr(cfg, 'v3_battery_device_id'):
+        return str(cfg.v3_battery_device_id() or '')
+    if hasattr(cfg, 'device_ids_by_kind'):
+        battery_ids = tuple(cfg.device_ids_by_kind('BATTERY') or ())
+        return str(battery_ids[0]) if battery_ids else ''
+    if hasattr(cfg, 'devices_by_kind'):
+        batteries = tuple(cfg.devices_by_kind('BATTERY') or ())
+        return str(batteries[0].device_id) if batteries else ''
+    return ''
 
 
 def _ev_adapter_int(value, default):
@@ -106,8 +115,12 @@ def build_device_measured_power_w_by_id(cfg: CoreConfig, m: RuntimeMeasurements)
     for device in devices.values():
         device_id = str(device.device_id)
         kind = str(device.kind)
-        if device_id == _BATTERY_ID or kind == 'BATTERY':
-            measured[device_id] = float(m.current_battery_setpoint_w)
+        if kind == 'BATTERY':
+            measured[device_id] = (
+                float(m.current_battery_setpoint_w)
+                if device_id == _v3_battery_device_id(cfg)
+                else 0.0
+            )
             continue
         if kind == 'EV_CHARGER':
             ev_runtime = _ev_runtime_state(m, device_id)
@@ -138,18 +151,24 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
     )
 
     states = []
+    v3_battery_device_id = _v3_battery_device_id(cfg)
     for device in cfg.devices.values():
         device_id = str(device.device_id)
         kind = str(device.kind)
-        if device_id == _BATTERY_ID or kind == 'BATTERY':
+        if kind == 'BATTERY':
+            owns_v3_channel = device_id == v3_battery_device_id
             states.append(
                 EmsDeviceState(
                     device_id=device_id,
-                    available=battery_available,
-                    active=battery_target_w != 0,
-                    measured_power_w=battery_target_w,
-                    current_target_w=battery_target_w,
-                    guard_state='OK' if battery_available else 'STALE',
+                    available=bool(battery_available and owns_v3_channel),
+                    active=bool(owns_v3_channel and battery_target_w != 0),
+                    measured_power_w=battery_target_w if owns_v3_channel else 0,
+                    current_target_w=battery_target_w if owns_v3_channel else 0,
+                    guard_state=(
+                        ('OK' if battery_available else 'STALE')
+                        if owns_v3_channel
+                        else 'UNWIRED'
+                    ),
                 )
             )
             continue

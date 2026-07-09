@@ -56,11 +56,6 @@ def _write_scenario_config_without_ev(project_root, tmp_path):
         for device_id, device in config['ems']['devices'].items()
         if device.get('kind') != 'EV_CHARGER'
     }
-    role_constraints = config['ems'].get('role_constraints', {})
-    if isinstance(role_constraints, dict):
-        home_battery_primary = role_constraints.get('HOME_BATTERY_PRIMARY')
-        if isinstance(home_battery_primary, dict):
-            home_battery_primary.pop('EV_CHARGER', None)
     config['ems']['global_config']['primary_device_id'] = 'input_select.ems_adjustable_primary_load'
     path = tmp_path / 'scenario_no_ev.yaml'
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')

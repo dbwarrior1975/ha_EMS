@@ -1,3 +1,4 @@
+import copy
 import pytest
 
 from ems_adapter.config_loader import (
@@ -112,11 +113,12 @@ def test_build_core_config_from_grouped_config_maps_devices_with_kind_specific_f
 
     core = build_core_config_from_grouped_config(config, _core_entity_values())
 
-    assert core.home_battery.device_id == 'HOME_BATTERY'
-    assert core.home_battery.kind == 'BATTERY'
-    assert core.home_battery.capabilities.max_produce_w == 4600
-    assert core.home_battery.guard.protect_min_absorb_w == 0
-    assert core.home_battery.adapter.target_w == 100
+    battery = core.device_by_id('HOME_BATTERY')
+    assert battery.device_id == 'HOME_BATTERY'
+    assert battery.kind == 'BATTERY'
+    assert battery.capabilities.max_produce_w == 4600
+    assert battery.guard.protect_min_absorb_w == 0
+    assert battery.adapter.target_w == 100
 
     ev_device = core.device_by_id('EV_CHARGER')
     relay1 = core.device_by_id('RELAY1')
@@ -245,3 +247,26 @@ def test_validate_grouped_config_rejects_output_sections_as_user_config(project_
     assert result.ok is False
     assert 'ems.policy_outputs' in paths
     assert 'ems.diagnostics_outputs' in paths
+
+
+@pytest.mark.unit
+def test_core_config_materializes_multiple_generic_batteries_without_singleton_view(project_root):
+    config = _load_example(project_root)
+    devices = config['ems']['devices']
+    first_battery = devices.pop('HOME_BATTERY')
+    second_battery = copy.deepcopy(first_battery)
+    second_battery['policy']['priority'] = 7
+    devices['BATTERY_30KWH'] = first_battery
+    devices['BATTERY_60KWH'] = second_battery
+
+    ev_primary = config['ems']['role_constraints']['EV_PRIMARY']
+    ev_primary['BATTERY_30KWH'] = ev_primary.pop('HOME_BATTERY')
+
+    core = build_core_config_from_grouped_config(config, _core_entity_values())
+    battery_ids = tuple(device.device_id for device in core.devices_by_kind('BATTERY'))
+
+    assert battery_ids == ('BATTERY_30KWH', 'BATTERY_60KWH')
+    assert core.device_by_id('BATTERY_30KWH').kind == 'BATTERY'
+    assert core.device_by_id('BATTERY_60KWH').kind == 'BATTERY'
+    assert core.device_by_id('BATTERY_60KWH').policy.priority == 7
+    assert not hasattr(core, 'home_battery')

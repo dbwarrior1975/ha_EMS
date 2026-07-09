@@ -59,6 +59,19 @@ def _device_policy_value(cfg, device_id, field, default=None):
         return default
     return getattr(policy, field, default)
 
+def _device_ids_by_kind(cfg, kind):
+    ids = []
+    if hasattr(cfg, 'device_ids_by_kind'):
+        for device_id in (cfg.device_ids_by_kind(kind) or ()):
+            ids.append(str(device_id))
+        return tuple(ids)
+    if hasattr(cfg, 'devices_by_kind'):
+        for device in (cfg.devices_by_kind(kind) or ()):
+            ids.append(str(device.device_id))
+        return tuple(ids)
+    return ()
+
+
 def _ev_device_ids(cfg):
     if hasattr(cfg, 'device_ids_by_kind'):
         ids = []
@@ -92,8 +105,20 @@ def _is_ev_device_id(cfg, device_id):
     return str(device_id or '') == 'EV_CHARGER'
 
 
+def _global_config_value(cfg, field_name, default=None):
+    global_config = getattr(cfg, 'global_config', None)
+    return getattr(global_config, field_name, default) if global_config is not None else default
+
+
+def _v3_battery_device_id(cfg):
+    if hasattr(cfg, 'v3_battery_device_id'):
+        return str(cfg.v3_battery_device_id() or '')
+    battery_ids = _device_ids_by_kind(cfg, 'BATTERY')
+    return str(battery_ids[0]) if battery_ids else ''
+
+
 def _selected_ev_device_id(cfg):
-    primary_device_id = str(getattr(cfg, 'primary_device_id', '') or '')
+    primary_device_id = str(_global_config_value(cfg, 'primary_device_id', '') or '')
     if _is_ev_device_id(cfg, primary_device_id):
         return primary_device_id
 
@@ -149,7 +174,11 @@ def compute_haeo_net_zero_plan(
     if haeo.effective_forecast != ForecastProfile.HAEO or not haeo.fresh:
         return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='forecast_not_effective')
 
-    battery_limit_w = min(_positive_w(haeo.battery_target_kw), int(round(float(cfg.max_solar_charge_w))))
+    v3_battery_device_id = _v3_battery_device_id(cfg)
+    battery_limit_w = min(
+        _positive_w(haeo.battery_target_kw),
+        int(round(float(_device_capability(cfg, v3_battery_device_id, 'max_absorb_w', 0) or 0))),
+    )
 
     ev_params = _ev_plan_params(cfg, selected_ev_device_id)
     ev_limit_w = min(_positive_w(haeo.ev_target_kw), int(ev_params['ev_limit_w_cap']))
@@ -160,21 +189,21 @@ def compute_haeo_net_zero_plan(
     previous_primary = previous_primary_device_id or previous_primary_load
 
     if battery_limit_w > ev_limit_w:
-        primary_device_id = 'HOME_BATTERY'
+        primary_device_id = v3_battery_device_id
         reason = 'battery_forecast_larger'
     elif ev_limit_w > battery_limit_w:
         primary_device_id = selected_ev_device_id
         reason = 'ev_forecast_larger'
-    elif previous_primary == 'HOME_BATTERY' or _is_ev_device_id(cfg, previous_primary):
+    elif previous_primary == v3_battery_device_id or _is_ev_device_id(cfg, previous_primary):
         primary_device_id = previous_primary
         reason = 'tie_keep_previous'
     else:
-        primary_device_id = 'HOME_BATTERY'
-        reason = 'tie_default_home_battery'
+        primary_device_id = v3_battery_device_id
+        reason = 'tie_default_v3_battery'
 
-    preferred_surplus_device_id = selected_ev_device_id if primary_device_id == 'HOME_BATTERY' else 'HOME_BATTERY'
+    preferred_surplus_device_id = selected_ev_device_id if primary_device_id == v3_battery_device_id else v3_battery_device_id
     device_limits_w = {
-        'HOME_BATTERY': int(battery_limit_w),
+        v3_battery_device_id: int(battery_limit_w),
         selected_ev_device_id: int(ev_limit_w),
     }
     changed = (

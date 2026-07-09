@@ -264,7 +264,6 @@ class CoreConfig:
     profiles: CoreProfilesConfig
     policy_engine: Optional[CorePolicyEngineConfig]
     global_config: CoreGlobalConfig
-    home_battery: CoreBatteryDeviceConfig
     runtime: CoreRuntimeConfig
     state: CoreStateConfig
     policy_outputs: CorePolicyOutputsConfig
@@ -272,22 +271,6 @@ class CoreConfig:
     haeo: Optional[CoreHaeoConfig] = None
     role_constraints: Optional[CoreRoleConstraintsConfig] = None
     devices: Optional[dict[str, CoreDeviceConfig]] = None
-    deadband_w: Optional[ScalarRef] = None
-    ramp_max_w: Optional[ScalarRef] = None
-    strict_limits_max_w: Optional[ScalarRef] = None
-    default_sp_w: Optional[ScalarRef] = None
-    battery_heartbeat_timeout_s: Optional[ScalarRef] = None
-    haeo_stale_timeout_s: Optional[ScalarRef] = None
-    max_solar_charge_w: Optional[ScalarRef] = None
-    max_battery_discharge_w: Optional[ScalarRef] = None
-    battery_protect_soc: Optional[ScalarRef] = None
-    battery_protect_soc_recovery_margin: Optional[ScalarRef] = None
-    battery_protect_min_cell_voltage_v: Optional[ScalarRef] = None
-    battery_protect_charge_floor_w: Optional[ScalarRef] = None
-    nz_battery_floor_default_w: Optional[ScalarRef] = None
-    nz_battery_floor_ev_active_w: Optional[ScalarRef] = None
-    primary_device_id: Optional[EntityRef] = None
-    surplus_freeze_s: Optional[ScalarRef] = None
 
     def __post_init__(self):
         if self.policy_engine is None:
@@ -296,73 +279,31 @@ class CoreConfig:
             self.role_constraints = CoreRoleConstraintsConfig()
         if self.devices is None:
             self.devices = {}
-        if 'HOME_BATTERY' not in self.devices:
-            self.devices['HOME_BATTERY'] = self.home_battery
-        self.home_battery = self._resolve_home_battery_device()
-        if self.deadband_w is None:
-            self.deadband_w = self.global_config.deadband_w
-        if self.ramp_max_w is None:
-            self.ramp_max_w = self.global_config.ramp_w
-        if self.strict_limits_max_w is None:
-            self.strict_limits_max_w = self.global_config.strict_limit_w
-        if self.default_sp_w is None:
-            self.default_sp_w = self.global_config.default_sp_w
-        if self.battery_heartbeat_timeout_s is None:
-            self.battery_heartbeat_timeout_s = self.global_config.battery_heartbeat_timeout_s
-        if self.haeo_stale_timeout_s is None:
-            self.haeo_stale_timeout_s = self.global_config.haeo_stale_timeout_s
-        if self.max_solar_charge_w is None:
-            self.max_solar_charge_w = self.home_battery.capabilities.max_absorb_w
-        if self.max_battery_discharge_w is None:
-            self.max_battery_discharge_w = self.home_battery.capabilities.max_produce_w
-        if self.battery_protect_soc is None:
-            self.battery_protect_soc = self.home_battery.guard.protect_soc
-        if self.battery_protect_soc_recovery_margin is None:
-            self.battery_protect_soc_recovery_margin = self.home_battery.guard.protect_soc_recovery_margin
-        if self.battery_protect_min_cell_voltage_v is None:
-            self.battery_protect_min_cell_voltage_v = self.home_battery.guard.protect_min_cell_voltage_v
-        if self.battery_protect_charge_floor_w is None:
-            self.battery_protect_charge_floor_w = self.home_battery.guard.protect_min_absorb_w
-        if self.nz_battery_floor_default_w is None:
-            self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
-        if self.nz_battery_floor_ev_active_w is None:
-            self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        if self.primary_device_id is None:
-            self.primary_device_id = self.global_config.primary_device_id
-        if self.surplus_freeze_s is None:
-            self.surplus_freeze_s = self.global_config.surplus_freeze_s
+
     def device_by_id(self, device_id: str) -> Optional[CoreDeviceConfig]:
         if self.devices is None:
             return None
-        return self.devices.get(device_id)
+        return self.devices.get(str(device_id))
 
-    def _resolve_home_battery_device(self) -> CoreBatteryDeviceConfig:
-        device = self.device_by_id('HOME_BATTERY')
-        if device is not None and str(device.kind) == 'BATTERY':
-            return device
-        return self.home_battery
-
-    def first_device_by_kind(self, kind: str) -> Optional[CoreDeviceConfig]:
-        devices = self.devices_by_kind(kind)
-        if not devices:
-            return None
-        return devices[0]
-
-    def nth_device_by_kind(self, kind: str, index: int) -> Optional[CoreDeviceConfig]:
-        devices = self.devices_by_kind(kind)
-        if index < 0 or index >= len(devices):
-            return None
-        return devices[index]
+    def device_ids_by_kind(self, kind: str) -> tuple[str, ...]:
+        ids = []
+        kind_text = str(kind)
+        if self.devices is None:
+            return ()
+        for device_id, device in self.devices.items():
+            if str(device.kind) == kind_text:
+                ids.append(str(device_id))
+        return tuple(ids)
 
     def devices_by_kind(self, kind: str) -> tuple[CoreDeviceConfig, ...]:
         if self.devices is None:
             return ()
         items = []
+        kind_text = str(kind)
         for device in self.devices.values():
-            if str(device.kind) == str(kind):
+            if str(device.kind) == kind_text:
                 items.append(device)
         return tuple(items)
-
 
 
 @dataclass

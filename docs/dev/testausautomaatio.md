@@ -320,6 +320,7 @@ Refaktoroinnin pakollinen regressiopinta kattaa seuraavat sopimukset:
 8. neutral synthetic absorb-candidate todistaa builderin kind-agnostisuuden ilman
    uuden production-adapterin lisaamista
 9. EV-primary stepped regulation, HOME_BATTERY primary/residual, relays ja writer
+10. A1a multi-BATTERY v3 boundary: every static device must exist in `policy_config.devices`; only the explicit v3 battery-channel owner may receive the scalar battery target and other BATTERY devices fail closed
    sailyvat regressiotesteissa
 
 Kanoninen multi-EV E2E on

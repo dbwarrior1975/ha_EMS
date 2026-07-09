@@ -175,14 +175,56 @@ def _note_policy_runtime_facts_metrics(facts):
         adapter_count += len(values or {})
     _note_net_zero_metric('policy_engine_net_zero_facts_adapter_fields', adapter_count)
 
-def _cfg_scalar_value(cfg, field_name, default=None):
+def _global_config_value(cfg, field_name, default=None):
+    global_config = getattr(cfg, 'global_config', None)
+    if global_config is None:
+        return default
     if not NET_ZERO_DETAILED_METRICS_ENABLED:
-        return getattr(cfg, field_name, default)
+        return getattr(global_config, field_name, default)
     started_ts = time.time()
-    _note_net_zero_metric('policy_engine_net_zero_cfg_scalar_reads')
-    value = getattr(cfg, field_name, default)
-    _note_net_zero_duration_ms('policy_engine_net_zero_cfg_scalar_read_ms', started_ts)
+    _note_net_zero_metric('policy_engine_net_zero_cfg_global_reads')
+    value = getattr(global_config, field_name, default)
+    _note_net_zero_duration_ms('policy_engine_net_zero_cfg_global_read_ms', started_ts)
     return value
+
+
+def _v3_battery_device_id(cfg):
+    if hasattr(cfg, 'v3_battery_device_id'):
+        return str(cfg.v3_battery_device_id() or '')
+    if hasattr(cfg, 'device_ids_by_kind'):
+        battery_ids = tuple(cfg.device_ids_by_kind('BATTERY') or ())
+        return str(battery_ids[0]) if battery_ids else ''
+    if hasattr(cfg, 'devices_by_kind'):
+        batteries = tuple(cfg.devices_by_kind('BATTERY') or ())
+        return str(batteries[0].device_id) if batteries else ''
+    return ''
+
+
+def _v3_unsupported_battery_device_ids(cfg, facts=None):
+    owner = _v3_battery_device_id(cfg)
+    unsupported = []
+    for device_id in _ordered_device_ids(cfg, facts=facts):
+        if _device_kind(cfg, device_id, facts=facts) != 'BATTERY':
+            continue
+        if str(device_id) != str(owner):
+            unsupported.append(str(device_id))
+    return tuple(unsupported)
+
+
+def _v3_battery_capability(cfg, field_name, default=None, facts=None):
+    battery_id = _v3_battery_device_id(cfg)
+    if not battery_id:
+        return default
+    return _device_capability(cfg, battery_id, field_name, default, facts=facts)
+
+
+def _v3_battery_guard_value(cfg, field_name, default=None):
+    if hasattr(cfg, 'v3_battery_guard_value'):
+        return cfg.v3_battery_guard_value(field_name, default)
+    battery_id = _v3_battery_device_id(cfg)
+    device = _device_by_id(cfg, battery_id) if battery_id else None
+    guard = getattr(device, 'guard', None) if device is not None else None
+    return getattr(guard, field_name, default) if guard is not None else default
 
 
 def _cfg_accessor_call(count_key, fn, *args):
@@ -491,12 +533,10 @@ def _resolved_device_id(cfg, raw_value, default='', facts=None):
 
 
 def _normalized_primary_device_id(cfg, facts=None):
-    raw_value = _cfg_scalar_value(cfg, 'primary_device_id', '')
+    raw_value = _global_config_value(cfg, 'primary_device_id', '')
     raw = str(raw_value or '').strip().lower()
     if raw in ('ev_charger', 'ev', 'charger_current'):
         return _default_ev_device_id(cfg, facts=facts)
-    if raw in ('home_battery', 'battery', 'actuator_battery_setpoint_w'):
-        return 'HOME_BATTERY'
     resolved = _resolved_device_id(cfg, raw_value, '', facts=facts)
     if resolved:
         return resolved
@@ -1030,8 +1070,8 @@ def _ev_runtime_current_a(m, device_id):
 
 
 def _normalized_discharge_limit_w(cfg):
-    strict_limits_max_w = _cfg_scalar_value(cfg, 'strict_limits_max_w', 0)
-    configured = float(_cfg_scalar_value(cfg, 'max_battery_discharge_w', strict_limits_max_w))
+    strict_limits_max_w = _global_config_value(cfg, 'strict_limit_w', 0)
+    configured = float(_v3_battery_capability(cfg, 'max_produce_w', strict_limits_max_w))
     # Canonical config is negative (export/discharge domain), but keep
     # legacy positive magnitude values backward-compatible.
     if configured < 0.0:
@@ -1047,7 +1087,7 @@ def _normal_limits_discharge_cap(raw, cfg):
 
 
 def _battery_protect_charge_floor_w(cfg):
-    return int(round(max(float(_cfg_scalar_value(cfg, 'battery_protect_charge_floor_w', 0.0)), 0.0)))
+    return int(round(max(float(_v3_battery_guard_value(cfg, 'protect_min_absorb_w', 0.0)), 0.0)))
 
 
 def _haeo_plan_primary_device_id(plan):
@@ -1431,7 +1471,7 @@ def _enforce_device_policy_capabilities(cfg, device_policies, facts=None):
         reason = policy.reason
         if block_reason:
             blocked.append(policy.device_id + ':' + block_reason)
-            if policy.device_id == 'HOME_BATTERY':
+            if policy.device_id == _v3_battery_device_id(cfg):
                 enabled = True
                 mode = 'power'
             elif str(device_cfg.kind) == 'EV_CHARGER':
@@ -1482,13 +1522,15 @@ def _build_device_policies(
     for device_id in ordered_device_ids:
         kind = _device_kind(cfg, device_id, facts=facts)
         if kind == 'BATTERY':
+            v3_battery_device_id = _v3_battery_device_id(cfg)
+            owns_v3_channel = str(device_id) == str(v3_battery_device_id)
             policies.append(
                 DevicePolicy(
                     device_id=device_id,
-                    target_w=int(round(float(battery_target_w))),
-                    enabled=bool(battery_write_enabled),
+                    target_w=int(round(float(battery_target_w))) if owns_v3_channel else 0,
+                    enabled=bool(battery_write_enabled) if owns_v3_channel else False,
                     mode='power',
-                    reason='battery_policy',
+                    reason='battery_policy' if owns_v3_channel else 'unsupported_v3_battery_channel',
                 )
             )
             continue
@@ -1563,14 +1605,14 @@ def _battery_target_and_authority(
             return max(current, battery_protect_floor), True, battery_min_floor_w, battery_min_floor_reason, False
 
         if profiles.guard == GuardProfile.STRICT_LIMITS:
-            limit = int(cfg.strict_limits_max_w)
+            limit = int(_global_config_value(cfg, 'strict_limit_w', 0))
             return min(max(current, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
 
         return current, False, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.goal == GoalProfile.NET_ZERO:
         effective_rpnz_w = nz.rpnz_w
-        min_charge_floor_w = float(cfg.nz_battery_floor_default_w)
+        min_charge_floor_w = float(_global_config_value(cfg, 'nz_battery_floor_default_w', 100.0))
         battery_surplus_active = bool(
             battery_surplus_target is not None and getattr(battery_surplus_target, 'active', False)
         )
@@ -1589,7 +1631,7 @@ def _battery_target_and_authority(
 
         if separate_primary_regulation:
             # EV primary path does not use legacy battery default floor.
-            min_charge_floor_w = float(cfg.nz_battery_floor_ev_active_w)
+            min_charge_floor_w = float(_global_config_value(cfg, 'nz_battery_floor_ev_active_w', 0.0))
             battery_min_floor_reason = 'ev_active_floor_override'
 
             battery_min_floor_w = float(min_charge_floor_w)
@@ -1608,7 +1650,7 @@ def _battery_target_and_authority(
                 if profiles.guard == GuardProfile.BATTERY_PROTECT:
                     return max(raw, 0), True, battery_min_floor_w, battery_min_floor_reason, False
                 if profiles.guard == GuardProfile.STRICT_LIMITS:
-                    limit = int(cfg.strict_limits_max_w)
+                    limit = int(_global_config_value(cfg, 'strict_limit_w', 0))
                     return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
                 if profiles.guard == GuardProfile.NORMAL_LIMITS:
                     raw = _normal_limits_discharge_cap(raw, cfg)
@@ -1634,9 +1676,9 @@ def _battery_target_and_authority(
                     rpnz_w=effective_rpnz_w,
                     grid_actual_w=m.grid_power_w,
                     current_sp_w=m.current_battery_setpoint_w,
-                    deadband_w=cfg.deadband_w,
-                    ramp_w=cfg.ramp_max_w,
-                    max_sp_w=cfg.max_solar_charge_w,
+                    deadband_w=_global_config_value(cfg, 'deadband_w', 50.0),
+                    ramp_w=_global_config_value(cfg, 'ramp_w', 1000.0),
+                    max_sp_w=_v3_battery_capability(cfg, 'max_absorb_w', 0.0, facts=facts),
                     min_charge_floor_w=min_charge_floor_w,
                 )
 
@@ -1646,7 +1688,7 @@ def _battery_target_and_authority(
             and battery_surplus_active
             and float(nz.rpnz_w) >= 0.0
         ):
-            activation_clamped_w = min(max(configured_activation_w, 0.0), float(cfg.max_solar_charge_w))
+            activation_clamped_w = min(max(configured_activation_w, 0.0), float(_v3_battery_capability(cfg, 'max_absorb_w', 0.0, facts=facts)))
             raw = int(round(activation_clamped_w))
 
         activation_gate_active = (
@@ -1666,9 +1708,9 @@ def _battery_target_and_authority(
         if (
             haeo_nz_plan is not None
             and bool(getattr(haeo_nz_plan, 'active', False))
-            and raw > _haeo_plan_device_limit_w(haeo_nz_plan, 'HOME_BATTERY')
+            and raw > _haeo_plan_device_limit_w(haeo_nz_plan, _v3_battery_device_id(cfg))
         ):
-            raw = _haeo_plan_device_limit_w(haeo_nz_plan, 'HOME_BATTERY')
+            raw = _haeo_plan_device_limit_w(haeo_nz_plan, _v3_battery_device_id(cfg))
     elif haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal in (GoalProfile.MAX_EXPORT, GoalProfile.CHEAP_GRID_CHARGE):
         raw = int(round(haeo.battery_target_kw * 1000.0))
     elif profiles.goal == GoalProfile.MAX_EXPORT:
@@ -1676,7 +1718,7 @@ def _battery_target_and_authority(
     elif profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
         raw = 100
     else:
-        raw = int(round(cfg.default_sp_w))
+        raw = int(round(_global_config_value(cfg, 'default_sp_w', 100.0)))
 
     if profiles.guard == GuardProfile.DEGRADED:
         return 0, True, battery_min_floor_w, battery_min_floor_reason, False
@@ -1685,7 +1727,7 @@ def _battery_target_and_authority(
         return max(raw, _battery_protect_charge_floor_w(cfg)), True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.STRICT_LIMITS:
-        limit = int(cfg.strict_limits_max_w)
+        limit = int(_global_config_value(cfg, 'strict_limit_w', 0))
         return min(max(raw, -limit), limit), True, battery_min_floor_w, battery_min_floor_reason, False
 
     if profiles.guard == GuardProfile.NORMAL_LIMITS:
@@ -1895,8 +1937,8 @@ def _primary_device_power_envelope_w(cfg, device_context, m, nz):
         rpnz_w=float(nz.rpnz_w),
         grid_actual_w=float(m.grid_power_w),
         current_sp_w=float(device_context.current_measured_power_w),
-        deadband_w=float(cfg.deadband_w),
-        ramp_w=float(cfg.ramp_max_w),
+        deadband_w=float(_global_config_value(cfg, 'deadband_w', 50.0)),
+        ramp_w=float(_global_config_value(cfg, 'ramp_w', 1000.0)),
         max_sp_w=float(device_context.max_absorb_w),
         min_charge_floor_w=0.0,
     )
@@ -2013,7 +2055,10 @@ def compute_net_zero_engine_outputs(
         for configured_device_id in _ordered_device_ids(cfg, facts=policy_runtime_facts):
             if str(configured_device_id) in current_power_by_id:
                 continue
-            if _device_kind(cfg, configured_device_id, facts=policy_runtime_facts) == 'BATTERY':
+            if (
+                _device_kind(cfg, configured_device_id, facts=policy_runtime_facts) == 'BATTERY'
+                and str(configured_device_id) == str(_v3_battery_device_id(cfg))
+            ):
                 current_power_by_id[str(configured_device_id)] = float(
                     getattr(m, 'current_battery_setpoint_w', 0.0) or 0.0
                 )
@@ -2202,7 +2247,7 @@ def compute_net_zero_engine_outputs(
 
         surplus_active = net_zero_surplus_policy_active(profiles, eff_fc, haeo_nz_plan_active=haeo_nz_plan_active)
 
-        surplus_freeze_s = _cfg_scalar_value(cfg, 'surplus_freeze_s', 0)
+        surplus_freeze_s = _global_config_value(cfg, 'surplus_freeze_s', 0)
         effective_freeze_until_ts, current_force_on_device_ids = _apply_force_rising_edge_freeze_for_devices(
             now_ts=now_ts,
             freeze_until_ts=freeze_until_ts,
@@ -2445,12 +2490,12 @@ def compute_net_zero_engine_outputs(
             normalized_haeo,
             nz,
             primary_active=ev_burn_active_for_battery,
-            battery_surplus_release_pending=(str(surplus_device_decision.release or '') == 'HOME_BATTERY'),
+            battery_surplus_release_pending=(str(surplus_device_decision.release or '') == str(_v3_battery_device_id(cfg))),
             primary_target_w=primary_device_target_w,
             selected_ev_surplus_active=selected_ev_surplus_active_current,
             separate_primary_regulation=(primary_device_id != residual_regulator_device_id),
             haeo_nz_plan=haeo_nz_plan,
-            battery_surplus_target=surplus_target_by_id.get('HOME_BATTERY'),
+            battery_surplus_target=surplus_target_by_id.get(_v3_battery_device_id(cfg)),
             facts=policy_runtime_facts,
         )
         _note_net_zero_duration_ms('policy_engine_net_zero_battery_policy_ms', battery_policy_started_ts)
@@ -2522,8 +2567,9 @@ def compute_net_zero_engine_outputs(
             facts=policy_runtime_facts,
         )
         battery_policy = None
+        v3_battery_device_id = _v3_battery_device_id(cfg)
         for policy in device_policies:
-            if policy.device_id == 'HOME_BATTERY':
+            if str(policy.device_id) == str(v3_battery_device_id):
                 battery_policy = policy
                 break
         if battery_policy is not None:
@@ -2581,6 +2627,8 @@ def compute_net_zero_engine_outputs(
             'surplus_dispatch_contract': 'device_id_primary',
             'relay_device_ids': _relay_device_ids_payload(cfg, facts=policy_runtime_facts),
             'ev_device_ids': _ev_device_ids_payload(cfg, facts=policy_runtime_facts),
+            'v3_battery_device_id': _v3_battery_device_id(cfg),
+            'v3_unsupported_battery_device_ids': _v3_unsupported_battery_device_ids(cfg, facts=policy_runtime_facts),
             'device_policies': _device_policy_payloads(device_policies),
             'capability_blocked_devices': capability_blocked_devices,
             'surplus_freeze_until_ts': _canonical_surplus_freeze_until_ts_for_output(

@@ -51,35 +51,18 @@ class RuntimePolicyConfig:
     device_policy_by_id: dict[str, dict]
     device_adapter_config_by_id: dict[str, dict]
 
-    def initialize_derived_fields(self):
-        global_cfg = self.global_config
-        self.deadband_w = float(global_cfg.deadband_w)
-        self.ramp_max_w = float(global_cfg.ramp_w)
-        self.strict_limits_max_w = float(global_cfg.strict_limit_w)
-        self.default_sp_w = float(global_cfg.default_sp_w)
-        self.surplus_freeze_s = float(global_cfg.surplus_freeze_s)
-        self.battery_heartbeat_timeout_s = float(global_cfg.battery_heartbeat_timeout_s)
-        self.haeo_stale_timeout_s = float(global_cfg.haeo_stale_timeout_s)
-        self.nz_battery_floor_default_w = float(global_cfg.nz_battery_floor_default_w)
-        self.nz_battery_floor_ev_active_w = float(global_cfg.nz_battery_floor_ev_active_w)
-        self.primary_device_id = str(global_cfg.primary_device_id)
+    def initialize_device_views(self):
+        """Build cached device namespaces without scalar compatibility mirrors.
 
-        battery_id = self.device_ids_by_kind_map.get('BATTERY', ('HOME_BATTERY',))[0]
-        battery_caps = self.device_capabilities_by_id[battery_id]
-        battery_policy = self.device_policy_by_id[battery_id]
-        battery_guard = battery_policy['_guard']
-        self.max_solar_charge_w = float(battery_caps['max_absorb_w'])
-        # Preserve the signed target-domain contract. Canonical discharge is negative.
-        self.max_battery_discharge_w = float(battery_caps['max_produce_w'])
-        self.battery_protect_soc = float(battery_guard['protect_soc'])
-        self.battery_protect_soc_recovery_margin = float(battery_guard['protect_soc_recovery_margin'])
-        self.battery_protect_min_cell_voltage_v = float(battery_guard['protect_min_cell_voltage_v'])
-        self.battery_protect_charge_floor_w = float(battery_guard['protect_min_absorb_w'])
-
+        Global configuration remains authoritative at ``global_config`` and
+        device configuration remains authoritative in the per-device maps.
+        The v3 runtime packet still carries one scalar battery measurement
+        channel; its explicit first-BATTERY ownership is isolated behind
+        ``v3_battery_device_id`` until the planned L4 schema migration.
+        """
         self.devices = {}
         for device_id in self.device_kind_by_id:
             self.devices[device_id] = self._device_namespace(device_id)
-        self.home_battery = self.devices.get(battery_id)
 
         # Internal immutable-by-convention maps cached with this config revision.
         # The NET_ZERO engine consumes them directly; no per-tick PolicyRuntimeFacts
@@ -92,6 +75,37 @@ class RuntimePolicyConfig:
             'device_adapter_by_id': self.device_adapter_config_by_id,
             'selected_ev_context_by_id': {},
         }
+
+    def v3_battery_device_id(self):
+        """Return the BATTERY device owning direct_tick_frame_v3 battery scalars.
+
+        This first-BATTERY rule is a deliberate, visible wire-contract limitation
+        retained for L4. It is not a domain singleton and must not be used to infer
+        general battery roles.
+        """
+        battery_ids = self.device_ids_by_kind('BATTERY')
+        return str(battery_ids[0]) if battery_ids else ''
+
+    def unsupported_v3_battery_device_ids(self):
+        owner = self.v3_battery_device_id()
+        unsupported = []
+        for device_id in self.device_ids_by_kind('BATTERY'):
+            if str(device_id) != str(owner):
+                unsupported.append(str(device_id))
+        return tuple(unsupported)
+
+    def v3_battery_guard_value(self, field: str, default=None):
+        battery_id = self.v3_battery_device_id()
+        if not battery_id:
+            return default
+        guard = self.device_policy_by_id.get(battery_id, {}).get('_guard', {}) or {}
+        return guard.get(str(field), default)
+
+    def v3_battery_capability(self, field: str, default=None):
+        battery_id = self.v3_battery_device_id()
+        if not battery_id:
+            return default
+        return self.device_capability(battery_id, field, default)
 
     def _device_namespace(self, device_id: str):
         kind = self.device_kind_by_id.get(device_id, '')
@@ -123,11 +137,6 @@ class RuntimePolicyConfig:
             items.append(self.devices[device_id])
         return tuple(items)
 
-    def first_device_by_kind(self, kind: str):
-        ids = self.device_ids_by_kind(kind)
-        return self.devices.get(ids[0]) if ids else None
-
-
     def device_capability(self, device_id: str, field: str, default=None):
         return self.device_capabilities_by_id.get(str(device_id), {}).get(str(field), default)
 
@@ -137,12 +146,6 @@ class RuntimePolicyConfig:
     def device_adapter_value(self, device_id: str, field: str, default=None):
         return self.device_adapter_config_by_id.get(str(device_id), {}).get(str(field), default)
 
-    def home_battery_guard_value(self, field: str, default=None):
-        battery_ids = self.device_ids_by_kind('BATTERY')
-        if not battery_ids:
-            return default
-        guard = self.device_policy_by_id.get(battery_ids[0], {}).get('_guard', {}) or {}
-        return guard.get(str(field), default)
 
 @dataclass
 class TickFrame:
@@ -175,8 +178,8 @@ class TickFrame:
 
         configured = configured_forecast(profiles.control, profiles.forecast)
         fresh = bool(
-            self.haeo_battery_age_s < runtime_config.haeo_stale_timeout_s
-            and self.haeo_ev_age_s < runtime_config.haeo_stale_timeout_s
+            self.haeo_battery_age_s < float(runtime_config.global_config.haeo_stale_timeout_s)
+            and self.haeo_ev_age_s < float(runtime_config.global_config.haeo_stale_timeout_s)
         )
         return HaeoTargets(
             effective_forecast=effective_forecast(configured, fresh),
@@ -574,7 +577,7 @@ def _parse_policy_config_v2(
     )
     # Call from interpreted code instead of relying on dataclass __init__ to
     # invoke a Pyscript-interpreted __post_init__ coroutine wrapper.
-    parsed.initialize_derived_fields()
+    parsed.initialize_device_views()
     return parsed
 
 

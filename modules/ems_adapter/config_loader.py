@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType
 from typing import Callable, Literal, Optional, Union
 
 from ems_core.domain.models import (
@@ -56,27 +56,6 @@ from ems_core.domain.ev_power import (
 )
 
 
-# Production default: no per-run policy-runtime-facts detailed timings.
-# Flip to True temporarily together with engine.NET_ZERO_DETAILED_METRICS_ENABLED
-# when profiling facts construction.
-POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED = True
-
-
-def set_policy_runtime_facts_detailed_metrics_enabled(enabled):
-    global POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED
-    POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED = bool(enabled)
-
-
-def policy_runtime_facts_detailed_metrics_enabled():
-    return bool(POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED)
-
-
-def _policy_runtime_facts_profile_started_ts():
-    if not POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED:
-        return 0.0
-    return time.time()
-
-
 SEVERITY_ERROR = 'ERROR'
 SEVERITY_WARNING = 'WARNING'
 
@@ -104,16 +83,11 @@ SUPPORTED_DEVICE_KINDS = {
     'EV_CHARGER',
     'RELAY',
 }
-REQUIRED_DEVICE_IDS = (
-    'HOME_BATTERY',
-)
-EXPECTED_DEVICE_KINDS = {
-    'HOME_BATTERY': 'BATTERY',
-}
+REQUIRED_DEVICE_IDS = ()
+EXPECTED_DEVICE_KINDS = {}
 ALLOWED_ROLE_KEYS = {
     'default',
     'EV_PRIMARY',
-    'HOME_BATTERY_PRIMARY',
 }
 ALLOWED_EMS_SECTION_KEYS = frozenset(REQUIRED_TOP_LEVEL_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS)
 ALLOWED_POLICY_ENGINE_KEYS = frozenset(('interval_seconds', 'diagnostics_interval_seconds'))
@@ -354,265 +328,18 @@ class CompiledEMSPlan:
     runtime: dict
     state: dict
     devices: dict[str, StaticDevicePlan]
-    home_battery: StaticDevicePlan
     haeo: Optional[dict]
     role_constraints: dict
     grouped_config_plan: dict
-    policy_runtime_facts_plan: Optional[dict] = None
     static_topology: Optional[StaticTopology] = None
 
 
-CompiledCoreConfigPlan = CompiledEMSPlan
 
 
-@dataclass
-class DynamicRuntimeSnapshot:
-    profiles: dict
-    global_config: dict
-    runtime: dict
-    state: dict
-    device_values: dict[str, dict]
-    home_battery_values: dict
-    haeo_values: Optional[dict]
-    role_constraint_values: dict
-
-
-@dataclass
-class PolicyContext:
-    plan: CompiledEMSPlan
-    snapshot: DynamicRuntimeSnapshot
 
 
 _MATERIALIZE_CACHE_MISS = object()
 _NO_DYNAMIC_SNAPSHOT_VALUE = object()
-
-
-class CoreConfigDevicesView:
-    def __init__(self, cfg_view):
-        self._cfg_view = cfg_view
-        keys = []
-        for device_id in cfg_view._device_order:
-            keys.append(str(device_id))
-        self._keys = tuple(keys)
-
-    def __iter__(self):
-        return iter(self._keys)
-
-    def __len__(self):
-        return len(self._keys)
-
-    def __contains__(self, device_id):
-        return str(device_id) in self._keys
-
-    def __getitem__(self, device_id):
-        device = self._cfg_view._materialize_device(str(device_id))
-        if device is None:
-            raise KeyError(device_id)
-        return device
-
-    def get(self, device_id, default=None):
-        device = self._cfg_view._materialize_device(str(device_id))
-        if device is None:
-            return default
-        return device
-
-    def keys(self):
-        return tuple(self._keys)
-
-    def values(self):
-        values = []
-        for device_id in self._keys:
-            # Pyscript compatibility: avoid routing through __getitem__ here.
-            # In Pyscript, dunder dispatch can surface coroutine objects to
-            # policy code that expects concrete device objects.
-            device = self._cfg_view._materialize_device(str(device_id))
-            if device is not None:
-                values.append(device)
-        return tuple(values)
-
-    def items(self):
-        items = []
-        for device_id in self._keys:
-            # Pyscript compatibility: avoid self[device_id] / __getitem__.
-            device = self._cfg_view._materialize_device(str(device_id))
-            if device is not None:
-                items.append((device_id, device))
-        return tuple(items)
-
-
-class CoreConfigView:
-    def __init__(self, context: PolicyContext):
-        self._context = context
-        self._device_cache = {}
-        self._policy_runtime_facts_cache = None
-        self._device_order = tuple(context.plan.devices.keys()) + ('HOME_BATTERY',)
-        self.profiles = _build_view_profiles(context.snapshot.profiles)
-        self.policy_engine = _build_view_policy_engine(context.plan.policy_engine)
-        self.global_config = _build_view_global_config(context.snapshot.global_config)
-        self.runtime = _build_view_runtime(context.snapshot.runtime)
-        self.state = _build_view_state(context.snapshot.state)
-        self.haeo = _build_view_haeo(context.snapshot.haeo_values)
-        self.role_constraints = _build_view_role_constraints(context.snapshot.role_constraint_values)
-        self.policy_outputs = CorePolicyOutputsConfig(
-            device_policies=CANONICAL_POLICY_OUTPUTS['device_policies'],
-            dispatch_command=CANONICAL_POLICY_OUTPUTS['dispatch_command'],
-            policy_state=CANONICAL_POLICY_OUTPUTS['policy_state'],
-        )
-        self.diagnostics_outputs = CoreDiagnosticsOutputsConfig(
-            policy_diagnostics=CANONICAL_DIAGNOSTICS_OUTPUTS['policy_diagnostics'],
-            actuator_writer_trace=CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace'],
-            dispatch_state_applier_trace=CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace'],
-        )
-        self.devices = CoreConfigDevicesView(self)
-        self.deadband_w = self.global_config.deadband_w
-        self.ramp_max_w = self.global_config.ramp_w
-        self.strict_limits_max_w = self.global_config.strict_limit_w
-        self.default_sp_w = self.global_config.default_sp_w
-        self.battery_heartbeat_timeout_s = self.global_config.battery_heartbeat_timeout_s
-        self.haeo_stale_timeout_s = self.global_config.haeo_stale_timeout_s
-        self.max_solar_charge_w = self.home_battery_capability('max_absorb_w')
-        self.max_battery_discharge_w = self.home_battery_capability('max_produce_w')
-        self.battery_protect_soc = self.home_battery_guard_value('protect_soc')
-        self.battery_protect_soc_recovery_margin = self.home_battery_guard_value('protect_soc_recovery_margin')
-        self.battery_protect_min_cell_voltage_v = self.home_battery_guard_value('protect_min_cell_voltage_v')
-        self.battery_protect_charge_floor_w = self.home_battery_guard_value('protect_min_absorb_w')
-        self.nz_battery_floor_default_w = self.global_config.nz_battery_floor_default_w
-        self.nz_battery_floor_ev_active_w = self.global_config.nz_battery_floor_ev_active_w
-        self.primary_device_id = self.global_config.primary_device_id
-        self.surplus_freeze_s = self.global_config.surplus_freeze_s
-
-    def __getattr__(self, name: str):
-        if name == 'home_battery':
-            return self._materialize_device('HOME_BATTERY')
-        raise AttributeError(name)
-
-    def device_by_id(self, device_id: str):
-        return self._materialize_device(str(device_id))
-
-    def device_ids_by_kind(self, kind: str) -> tuple[str, ...]:
-        matched = []
-        kind_text = str(kind)
-        for device_id in self._device_order:
-            if self.device_kind(device_id) == kind_text:
-                matched.append(str(device_id))
-        return tuple(matched)
-
-    def device_kind(self, device_id: str) -> str:
-        device_plan = self._device_plan(device_id)
-        if device_plan is None:
-            return ''
-        return str(device_plan.kind)
-
-    def device_priority(self, device_id: str):
-        return self.device_policy_value(device_id, 'priority')
-
-    def device_surplus_allowed(self, device_id: str):
-        return self.device_policy_value(device_id, 'surplus_allowed')
-
-    def device_force_on(self, device_id: str):
-        return self.device_policy_value(device_id, 'force_on')
-
-    def device_enabled(self, device_id: str):
-        return self.device_adapter_value(device_id, 'enabled')
-
-    def device_capability(self, device_id: str, field: str, default=None):
-        return self._device_section_value(device_id, 'capabilities', field, default)
-
-    def device_adapter_value(self, device_id: str, field: str, default=None):
-        return self._device_section_value(device_id, 'adapter', field, default)
-
-    def device_policy_value(self, device_id: str, field: str, default=None):
-        return self._device_section_value(device_id, 'policy', field, default)
-
-    def home_battery_guard_value(self, field: str, default=None):
-        return self._device_section_value('HOME_BATTERY', 'guard', field, default)
-
-    def home_battery_capability(self, field: str, default=None):
-        return self.device_capability('HOME_BATTERY', field, default)
-
-    def ev_adapter_value(self, device_id: str, field: str, default=None):
-        if self.device_kind(device_id) != 'EV_CHARGER':
-            return default
-        return self.device_adapter_value(device_id, field, default)
-
-    def policy_runtime_facts(self) -> dict:
-        cached = self._policy_runtime_facts_cache
-        if cached is not None:
-            return cached
-        facts = build_policy_runtime_facts_from_context(
-            self._context.plan,
-            self._context.snapshot,
-            policy_runtime_facts_plan=self._context.plan.policy_runtime_facts_plan,
-        )
-        self._policy_runtime_facts_cache = facts
-        return facts
-
-    def first_device_by_kind(self, kind: str):
-        kind_text = str(kind)
-        if kind_text == 'BATTERY':
-            return self.home_battery
-        for device_id, device_plan in self._context.plan.devices.items():
-            if str(device_plan.kind) != kind_text:
-                continue
-            return self._materialize_device(str(device_id))
-        return None
-
-    def devices_by_kind(self, kind: str) -> tuple[object, ...]:
-        matched = []
-        kind_text = str(kind)
-        if kind_text == 'BATTERY':
-            matched.append(self.home_battery)
-        for device_id, device_plan in self._context.plan.devices.items():
-            if str(device_plan.kind) != kind_text:
-                continue
-            device = self._materialize_device(str(device_id))
-            if device is not None:
-                matched.append(device)
-        return tuple(matched)
-
-    def _device_plan(self, device_id: str) -> Optional[StaticDevicePlan]:
-        device_id = str(device_id)
-        if device_id == 'HOME_BATTERY':
-            return self._context.plan.home_battery
-        return self._context.plan.devices.get(device_id)
-
-    def _device_values(self, device_id: str) -> Optional[dict]:
-        device_id = str(device_id)
-        if device_id == 'HOME_BATTERY':
-            return self._context.snapshot.home_battery_values
-        return self._context.snapshot.device_values.get(device_id)
-
-    def _device_section_value(self, device_id: str, section: str, field: str, default=None):
-        device_plan = self._device_plan(device_id)
-        if device_plan is None:
-            return default
-        values = self._device_values(device_id)
-        return _resolve_snapshot_backed_section_value(
-            device_plan,
-            values,
-            str(section),
-            str(field),
-            default,
-        )
-
-    def _materialize_device(self, device_id: str):
-        if device_id in self._device_cache:
-            return self._device_cache[device_id]
-        device_plan = self._device_plan(device_id)
-        values = self._device_values(device_id)
-        if device_plan is None or values is None:
-            return None
-        kind = str(device_plan.kind)
-        if kind == 'EV_CHARGER':
-            device = _build_view_ev_device(device_plan, values)
-        elif kind == 'RELAY':
-            device = _build_view_relay_device(device_plan, values)
-        elif kind == 'BATTERY':
-            device = _build_view_battery_device(device_plan, values)
-        else:
-            return None
-        self._device_cache[device_id] = device
-        return device
 
 
 @pyscript_executor
@@ -1287,7 +1014,7 @@ def _build_static_device_plan(compiled_device: dict[str, object]) -> StaticDevic
     )
 
 
-def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreConfigPlan:
+def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledEMSPlan:
     static_topology = build_static_topology(config) if _config_uses_runtime_packets(config) else None
     config_for_compile = _normalize_runtime_packet_config_for_compile(config)
     ems = config_for_compile.get('ems', {})
@@ -1337,11 +1064,8 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
         }
     }
     compiled_devices = _compile_core_devices_plan(devices)
-    home_battery_plan = _build_static_device_plan(_require_mapping_value(compiled_devices, 'HOME_BATTERY'))
     static_devices = {}
     for device_id, device_plan in compiled_devices.items():
-        if str(device_id) == 'HOME_BATTERY':
-            continue
         static_devices[str(device_id)] = _build_static_device_plan(device_plan)
     compiled_plan = CompiledEMSPlan(
         profiles=dict(_require_mapping_value(compiled['ems'], 'profiles')),
@@ -1350,19 +1074,16 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledCoreCo
         runtime=dict(_require_mapping_value(compiled['ems'], 'runtime')),
         state=dict(_require_mapping_value(compiled['ems'], 'state')),
         devices=static_devices,
-        home_battery=home_battery_plan,
         haeo=dict(compiled['ems']['haeo']) if isinstance(compiled['ems'].get('haeo'), dict) else None,
         role_constraints=dict(_require_mapping_value(compiled['ems'], 'role_constraints')),
         grouped_config_plan=compiled,
         static_topology=static_topology,
     )
-    if static_topology is None:
-        compiled_plan.policy_runtime_facts_plan = compile_policy_runtime_facts_plan(compiled_plan)
     return compiled_plan
 
 
 def materialize_core_config_from_plan(
-    plan: CompiledCoreConfigPlan,
+    plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
     metrics: Optional[dict[str, int]] = None,
 ) -> CoreConfig:
@@ -1526,639 +1247,36 @@ def _materialize_runtime_dynamic_mapping(
     return _NO_DYNAMIC_SNAPSHOT_VALUE
 
 
-def _snapshot_dynamic_section_values(
-    section_value: object,
-    read_entity: Callable[[str, object], object],
-    *,
-    resolved_dynamic_values: Optional[dict[tuple[object, ...], object]] = None,
-    stats: Optional[dict[str, int]] = None,
-) -> Optional[dict]:
-    resolved = _materialize_runtime_dynamic_mapping(
-        section_value,
-        read_entity,
-        resolved_dynamic_values=resolved_dynamic_values,
-        stats=stats,
-    )
-    if resolved is _NO_DYNAMIC_SNAPSHOT_VALUE or not isinstance(resolved, dict):
-        return None
-    return resolved
-
-
-def _materialize_device_snapshot_values(
-    device_plan: StaticDevicePlan,
-    read_entity: Callable[[str, object], object],
-    *,
-    resolved_dynamic_values: Optional[dict[tuple[object, ...], object]] = None,
-    stats: Optional[dict[str, int]] = None,
-) -> dict:
-    materialized = {}
-    capabilities = _snapshot_dynamic_section_values(
-        device_plan.static_capabilities,
-        read_entity,
-        resolved_dynamic_values=resolved_dynamic_values,
-        stats=stats,
-    )
-    if capabilities is not None:
-        materialized['capabilities'] = capabilities
-    adapter = _snapshot_dynamic_section_values(
-        device_plan.static_adapter,
-        read_entity,
-        resolved_dynamic_values=resolved_dynamic_values,
-        stats=stats,
-    )
-    if adapter is not None:
-        materialized['adapter'] = adapter
-    policy = _snapshot_dynamic_section_values(
-        device_plan.static_policy,
-        read_entity,
-        resolved_dynamic_values=resolved_dynamic_values,
-        stats=stats,
-    )
-    if policy is not None:
-        materialized['policy'] = policy
-    if device_plan.static_guard is not None:
-        guard = _snapshot_dynamic_section_values(
-            device_plan.static_guard,
-            read_entity,
-            resolved_dynamic_values=resolved_dynamic_values,
-            stats=stats,
-        )
-        if guard is not None:
-            materialized['guard'] = guard
-    return materialized
-
-
-def _resolve_snapshot_backed_value(
-    static_value: object,
-    dynamic_values: Optional[dict],
-    field: str,
-    default=None,
-):
-    if isinstance(dynamic_values, dict) and str(field) in dynamic_values:
-        return dynamic_values[str(field)]
-    if isinstance(static_value, DynamicConfigRef):
-        return static_value.default
-    if static_value is None:
-        return default
-    return static_value
-
-
-def _resolve_snapshot_backed_section_value(
-    device_plan: StaticDevicePlan,
-    dynamic_values: Optional[dict],
-    section: str,
-    field: str,
-    default=None,
-):
-    section_name = str(section)
-    if section_name == 'capabilities':
-        static_section = device_plan.static_capabilities
-    elif section_name == 'adapter':
-        static_section = device_plan.static_adapter
-    elif section_name == 'policy':
-        static_section = device_plan.static_policy
-    elif section_name == 'guard':
-        static_section = device_plan.static_guard
-    else:
-        return default
-    if not hasattr(static_section, 'get'):
-        return default
-    static_value = static_section.get(str(field))
-    section_dynamic_values = dynamic_values.get(section_name) if isinstance(dynamic_values, dict) else None
-    return _resolve_snapshot_backed_value(static_value, section_dynamic_values, str(field), default)
-
-
-def _policy_runtime_static_section(device_plan: StaticDevicePlan, section: str):
-    section_name = str(section)
-    if section_name == 'capabilities':
-        return device_plan.static_capabilities
-    if section_name == 'adapter':
-        return device_plan.static_adapter
-    if section_name == 'policy':
-        return device_plan.static_policy
-    if section_name == 'guard':
-        return device_plan.static_guard
-    return None
-
-
-def _policy_runtime_static_fact_value(device_plan: StaticDevicePlan, section: str, field: str, default=None):
-    static_section = _policy_runtime_static_section(device_plan, section)
-    if not hasattr(static_section, 'get'):
-        return default, False
-    static_value = static_section.get(str(field))
-    if isinstance(static_value, DynamicConfigRef):
-        return static_value.default, True
-    if static_value is None:
-        return default, False
-    return static_value, False
 
 
 
-def _policy_runtime_positive_float(value, default):
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return float(default)
-    return parsed if parsed > 0 else float(default)
-
-
-def _policy_runtime_non_negative_float(value, default=0.0):
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return float(default)
-    return parsed if parsed >= 0 else float(default)
-
-
-def _policy_runtime_int_or_default(value, default=0):
-    try:
-        return int(round(float(value)))
-    except (TypeError, ValueError):
-        return int(default)
-
-
-def _policy_runtime_ev_context_from_facts(facts: dict, device_id: str):
-    device_id = str(device_id or '')
-    kind = str((facts.get('device_kind_by_id', {}) or {}).get(device_id, '') or '')
-    if kind != 'EV_CHARGER':
-        return SimpleNamespace(
-            device_id='',
-            device=None,
-            adapter=None,
-            capabilities=None,
-            policy=None,
-            current_step_a=1,
-            phases=1,
-            voltage_v=230.0,
-            min_absorb_w=0.0,
-            max_absorb_w=0.0,
-            power_step_w=0.0,
-            force_on=False,
-            hard_off_pv_threshold_kw=0.0,
-            hard_off_low_pv_cycles=0,
-            hard_off_release_cycles=0,
-            priority=0,
-        )
-
-    capabilities = (facts.get('device_capabilities_by_id', {}) or {}).get(device_id, {}) or {}
-    policy = (facts.get('device_policy_by_id', {}) or {}).get(device_id, {}) or {}
-    adapter = (facts.get('device_adapter_by_id', {}) or {}).get(device_id, {}) or {}
-
-    current_step_a = _policy_runtime_positive_float(adapter.get('current_step_a'), 1.0)
-    phases = _policy_runtime_positive_float(adapter.get('phases'), 1.0)
-    voltage_v = _policy_runtime_positive_float(adapter.get('voltage_v'), 230.0)
-
-    raw_force_on = policy.get('force_on', False)
-    if isinstance(raw_force_on, str):
-        text = raw_force_on.strip().lower()
-        if text in ('true', 'on', '1', 'yes'):
-            force_on = True
-        elif text in ('false', 'off', '0', 'no', '', 'unknown', 'unavailable', 'none'):
-            force_on = False
-        else:
-            force_on = False
-    else:
-        force_on = bool(raw_force_on)
-
-    low_pv_threshold = _policy_runtime_non_negative_float(policy.get('low_pv_threshold_w', 0), 0.0)
-    hard_off_pv_threshold_kw = low_pv_threshold / 1000.0 if low_pv_threshold > 50.0 else low_pv_threshold
-    min_absorb_w = _policy_runtime_non_negative_float(capabilities.get('min_absorb_w', None), 0.0)
-    max_absorb_w = _policy_runtime_non_negative_float(capabilities.get('max_absorb_w', None), 0.0)
-    configured_step_w = _policy_runtime_non_negative_float(capabilities.get('step_w', 0), 0.0)
-    power_step_w = configured_step_w if configured_step_w > 0 else float(
-        ev_current_a_to_power_w(current_step_a, phases, voltage_v)
-    )
-
-    return SimpleNamespace(
-        device_id=device_id,
-        device=None,
-        adapter=None,
-        capabilities=None,
-        policy=None,
-        current_step_a=int(round(current_step_a)),
-        phases=int(round(phases)),
-        voltage_v=float(voltage_v),
-        min_absorb_w=min_absorb_w,
-        max_absorb_w=max_absorb_w,
-        power_step_w=float(power_step_w),
-        force_on=force_on,
-        hard_off_pv_threshold_kw=hard_off_pv_threshold_kw,
-        hard_off_low_pv_cycles=_policy_runtime_int_or_default(policy.get('hard_off_low_pv_cycles', 0), 0),
-        hard_off_release_cycles=_policy_runtime_int_or_default(policy.get('hard_off_release_cycles', 0), 0),
-        priority=_policy_runtime_int_or_default(policy.get('priority', 0), 0),
-    )
-
-
-def _policy_runtime_selected_ev_contexts(facts: dict) -> dict:
-    selected_ev_context_by_id = {}
-    device_ids_by_kind = facts.get('device_ids_by_kind', {}) or {}
-    for device_id in tuple(device_ids_by_kind.get('EV_CHARGER', ()) or ()):
-        selected_ev_context_by_id[str(device_id)] = _policy_runtime_ev_context_from_facts(facts, str(device_id))
-    return selected_ev_context_by_id
-
-def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[str, object]:
-    battery_device_ids = ['HOME_BATTERY']
-    device_ids_by_kind = {
-        'BATTERY': (),
-        'EV_CHARGER': (),
-        'RELAY': (),
-    }
-    ev_device_ids = []
-    relay_device_ids = []
-    devices = {}
-    static_device_kind_by_id = {}
-    static_capabilities_by_id = {}
-    static_policy_by_id = {}
-    static_adapter_by_id = {}
-    dynamic_fact_bindings = []
-    dynamic_fact_binding_groups = {}
-
-    def add_dynamic_fact_binding(target_map_name, device_id_text, target_field, section_name, source_field):
-        binding = (str(target_map_name), str(device_id_text), str(target_field), str(section_name), str(source_field))
-        dynamic_fact_bindings.append(binding)
-        group_key = (binding[0], binding[1], binding[3])
-        field_pairs = dynamic_fact_binding_groups.get(group_key)
-        if field_pairs is None:
-            field_pairs = []
-            dynamic_fact_binding_groups[group_key] = field_pairs
-        field_pairs.append((binding[2], binding[4]))
-
-    def add_device(device_id_text, device_plan, kind):
-        capabilities_fields = (
-            'min_absorb_w',
-            'max_absorb_w',
-            'max_produce_w',
-            'step_w',
-            'can_absorb_w',
-            'can_produce_w',
-            'uses_hard_off_lifecycle',
-            'supports_primary_regulation',
-            'supports_residual_regulation',
-        )
-        policy_fields = (
-            'priority',
-            'surplus_allowed',
-                'surplus_dispatch_mode',
-            'default_min_absorb_w',
-        ) if kind == 'BATTERY' else ('priority',)
-        adapter_fields = ()
-        if kind == 'EV_CHARGER':
-            policy_fields = (
-                'priority',
-                'surplus_allowed',
-                        'surplus_dispatch_mode',
-                'force_on',
-                'low_pv_threshold_w',
-                'hard_off_low_pv_cycles',
-                'hard_off_release_cycles',
-            )
-            adapter_fields = (
-                'enabled',
-                'current_a',
-                'current_step_a',
-                'phases',
-                'voltage_v',
-            )
-        elif kind == 'RELAY':
-            policy_fields = (
-                'priority',
-                'surplus_allowed',
-                        'surplus_dispatch_mode',
-                'force_on',
-            )
-            adapter_fields = (
-                'enabled',
-            )
-
-        devices[device_id_text] = {
-            'kind': kind,
-            'capabilities_fields': capabilities_fields,
-            'policy_fields': policy_fields,
-            'adapter_fields': adapter_fields,
-        }
-        static_device_kind_by_id[device_id_text] = kind
-
-        capability_values = {}
-        for field_name in capabilities_fields:
-            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle', 'supports_primary_regulation', 'supports_residual_regulation') else 0
-            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'capabilities', str(field_name), default)
-            capability_values[str(field_name)] = value
-            if is_dynamic:
-                add_dynamic_fact_binding('device_capabilities_by_id', device_id_text, str(field_name), 'capabilities', str(field_name))
-        static_capabilities_by_id[device_id_text] = capability_values
-
-        policy_values = {}
-        for field_name in policy_fields:
-            default = 0 if str(field_name) == 'priority' else False
-            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'policy', str(field_name), default)
-            policy_values[str(field_name)] = value
-            if is_dynamic:
-                add_dynamic_fact_binding('device_policy_by_id', device_id_text, str(field_name), 'policy', str(field_name))
-        static_policy_by_id[device_id_text] = policy_values
-
-        adapter_values = {}
-        for field_name in adapter_fields:
-            value, is_dynamic = _policy_runtime_static_fact_value(device_plan, 'adapter', str(field_name), None)
-            adapter_values[str(field_name)] = value
-            if is_dynamic:
-                add_dynamic_fact_binding('device_adapter_by_id', device_id_text, str(field_name), 'adapter', str(field_name))
-        if adapter_values:
-            static_adapter_by_id[device_id_text] = adapter_values
-
-    add_device('HOME_BATTERY', compiled_plan.home_battery, 'BATTERY')
-
-    for device_id, device_plan in compiled_plan.devices.items():
-        kind = str(device_plan.kind)
-        device_id_text = str(device_id)
-        if kind == 'EV_CHARGER':
-            ev_device_ids.append(device_id_text)
-        elif kind == 'RELAY':
-            relay_device_ids.append(device_id_text)
-        elif kind == 'BATTERY':
-            battery_device_ids.append(device_id_text)
-        add_device(device_id_text, device_plan, kind)
-
-    device_ids_by_kind['BATTERY'] = tuple(battery_device_ids)
-    device_ids_by_kind['EV_CHARGER'] = tuple(ev_device_ids)
-    device_ids_by_kind['RELAY'] = tuple(relay_device_ids)
-    static_base = {
-        'device_ids_by_kind': device_ids_by_kind,
-        'device_kind_by_id': static_device_kind_by_id,
-        'device_capabilities_by_id': static_capabilities_by_id,
-        'device_policy_by_id': static_policy_by_id,
-        'device_adapter_by_id': static_adapter_by_id,
-    }
-    dynamic_fact_binding_group_entries = []
-    for group_key, field_pairs in dynamic_fact_binding_groups.items():
-        dynamic_fact_binding_group_entries.append(
-            (
-                str(group_key[0]),
-                str(group_key[1]),
-                str(group_key[2]),
-                tuple(field_pairs),
-            )
-        )
-    facts_plan_metrics = {
-        'device_count': int(len(static_device_kind_by_id)),
-        'capability_fields': 0,
-        'policy_fields': 0,
-        'adapter_fields': 0,
-        'dynamic_bindings': int(len(dynamic_fact_bindings)),
-        'dynamic_binding_groups': int(len(dynamic_fact_binding_group_entries)),
-    }
-    for descriptor in devices.values():
-        facts_plan_metrics['capability_fields'] += len(tuple(descriptor.get('capabilities_fields', ()) or ()))
-        facts_plan_metrics['policy_fields'] += len(tuple(descriptor.get('policy_fields', ()) or ()))
-        facts_plan_metrics['adapter_fields'] += len(tuple(descriptor.get('adapter_fields', ()) or ()))
-    return {
-        'device_ids_by_kind': device_ids_by_kind,
-        'devices': devices,
-        'static_base': static_base,
-        'dynamic_fact_bindings': tuple(dynamic_fact_bindings),
-        'dynamic_fact_binding_groups': tuple(dynamic_fact_binding_group_entries),
-        'facts_plan_metrics': facts_plan_metrics,
-    }
-
-
-def _policy_runtime_device_plan(compiled_plan: CompiledEMSPlan, device_id: str) -> Optional[StaticDevicePlan]:
-    device_id = str(device_id)
-    if device_id == 'HOME_BATTERY':
-        return compiled_plan.home_battery
-    return compiled_plan.devices.get(device_id)
 
 
 
-def _policy_runtime_device_values(snapshot: DynamicRuntimeSnapshot, device_id: str) -> dict:
-    device_id = str(device_id)
-    if device_id == 'HOME_BATTERY':
-        return snapshot.home_battery_values or {}
-    return snapshot.device_values.get(device_id, {}) or {}
 
 
 
-def build_policy_runtime_facts_from_context(
-    compiled_plan: CompiledEMSPlan,
-    snapshot: DynamicRuntimeSnapshot,
-    *,
-    policy_runtime_facts_plan: Optional[dict[str, object]] = None,
-) -> dict[str, object]:
-    facts_started_ts = _policy_runtime_facts_profile_started_ts()
-    fact_dict_copies = 0
-    fact_device_count = 0
-    fact_capability_fields = 0
-    fact_policy_fields = 0
-    fact_adapter_fields = 0
 
-    facts_plan = policy_runtime_facts_plan or compiled_plan.policy_runtime_facts_plan or compile_policy_runtime_facts_plan(compiled_plan)
-    static_base = facts_plan.get('static_base') if isinstance(facts_plan, dict) else None
-    if isinstance(static_base, dict):
-        device_ids_by_kind = static_base.get('device_ids_by_kind', {}) or {}
-        device_kind_by_id = static_base.get('device_kind_by_id', {}) or {}
-        base_capabilities_by_id = static_base.get('device_capabilities_by_id', {}) or {}
-        base_policy_by_id = static_base.get('device_policy_by_id', {}) or {}
-        base_adapter_by_id = static_base.get('device_adapter_by_id', {}) or {}
-        device_capabilities_by_id = base_capabilities_by_id
-        device_policy_by_id = base_policy_by_id
-        device_adapter_by_id = base_adapter_by_id
-        copied_capability_devices = {}
-        copied_policy_devices = {}
-        copied_adapter_devices = {}
 
-        dynamic_fact_bindings = tuple(facts_plan.get('dynamic_fact_bindings', ()) or ())
-        dynamic_fact_binding_groups = tuple(facts_plan.get('dynamic_fact_binding_groups', ()) or ())
-        if not dynamic_fact_binding_groups and dynamic_fact_bindings:
-            grouped = {}
-            for binding in dynamic_fact_bindings:
-                if len(tuple(binding)) < 5:
-                    continue
-                group_key = (str(binding[0]), str(binding[1]), str(binding[3]))
-                field_pairs = grouped.get(group_key)
-                if field_pairs is None:
-                    field_pairs = []
-                    grouped[group_key] = field_pairs
-                field_pairs.append((str(binding[2]), str(binding[4])))
-            group_entries = []
-            for group_key, field_pairs in grouped.items():
-                group_entries.append((str(group_key[0]), str(group_key[1]), str(group_key[2]), tuple(field_pairs)))
-            dynamic_fact_binding_groups = tuple(group_entries)
 
-        dynamic_values_by_device = {}
-        for group in dynamic_fact_binding_groups:
-            if len(tuple(group)) < 4:
-                continue
-            target_map_name = str(group[0])
-            device_id = str(group[1])
-            section_name = str(group[2])
-            field_pairs = tuple(group[3] or ())
-            dynamic_values = dynamic_values_by_device.get(device_id)
-            if dynamic_values is None:
-                dynamic_values = _policy_runtime_device_values(snapshot, device_id)
-                dynamic_values_by_device[device_id] = dynamic_values
-            section_dynamic_values = dynamic_values.get(section_name) if isinstance(dynamic_values, dict) else None
-            if not isinstance(section_dynamic_values, dict):
-                continue
-            has_override = False
-            for target_field, source_field in field_pairs:
-                if str(source_field) in section_dynamic_values:
-                    has_override = True
-                    break
-            if not has_override:
-                continue
 
-            if target_map_name == 'device_capabilities_by_id':
-                if not isinstance(device_capabilities_by_id, dict) or device_capabilities_by_id is base_capabilities_by_id:
-                    device_capabilities_by_id = dict(base_capabilities_by_id)
-                    fact_dict_copies += 1
-                section_values_map = copied_capability_devices.get(device_id)
-                if section_values_map is None:
-                    section_values_map = dict(device_capabilities_by_id.get(device_id, {}) or {})
-                    copied_capability_devices[device_id] = section_values_map
-                    device_capabilities_by_id[device_id] = section_values_map
-                    fact_dict_copies += 1
-            elif target_map_name == 'device_policy_by_id':
-                if not isinstance(device_policy_by_id, dict) or device_policy_by_id is base_policy_by_id:
-                    device_policy_by_id = dict(base_policy_by_id)
-                    fact_dict_copies += 1
-                section_values_map = copied_policy_devices.get(device_id)
-                if section_values_map is None:
-                    section_values_map = dict(device_policy_by_id.get(device_id, {}) or {})
-                    copied_policy_devices[device_id] = section_values_map
-                    device_policy_by_id[device_id] = section_values_map
-                    fact_dict_copies += 1
-            elif target_map_name == 'device_adapter_by_id':
-                if not isinstance(device_adapter_by_id, dict) or device_adapter_by_id is base_adapter_by_id:
-                    device_adapter_by_id = dict(base_adapter_by_id)
-                    fact_dict_copies += 1
-                section_values_map = copied_adapter_devices.get(device_id)
-                if section_values_map is None:
-                    section_values_map = dict(device_adapter_by_id.get(device_id, {}) or {})
-                    copied_adapter_devices[device_id] = section_values_map
-                    device_adapter_by_id[device_id] = section_values_map
-                    fact_dict_copies += 1
-            else:
-                continue
 
-            for target_field, source_field in field_pairs:
-                source_field = str(source_field)
-                if source_field in section_dynamic_values:
-                    section_values_map[str(target_field)] = section_dynamic_values[source_field]
 
-        facts_plan_metrics = facts_plan.get('facts_plan_metrics', {}) or {}
-        fact_device_count = int(facts_plan_metrics.get('device_count', len(device_kind_by_id) if hasattr(device_kind_by_id, '__len__') else 0) or 0)
-        fact_capability_fields = int(facts_plan_metrics.get('capability_fields', 0) or 0)
-        fact_policy_fields = int(facts_plan_metrics.get('policy_fields', 0) or 0)
-        fact_adapter_fields = int(facts_plan_metrics.get('adapter_fields', 0) or 0)
 
-        facts_without_metrics = {
-            'device_ids_by_kind': device_ids_by_kind,
-            'device_kind_by_id': device_kind_by_id,
-            'device_capabilities_by_id': device_capabilities_by_id,
-            'device_policy_by_id': device_policy_by_id,
-            'device_adapter_by_id': device_adapter_by_id,
-        }
-        selected_ev_context_by_id = _policy_runtime_selected_ev_contexts(facts_without_metrics)
 
-        facts_without_metrics['selected_ev_context_by_id'] = selected_ev_context_by_id
-        if POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED:
-            metrics = {
-                'policy_runtime_facts_context_build_ms': int(round(max(0.0, time.time() - facts_started_ts) * 1000.0)),
-                'policy_runtime_facts_device_count': int(fact_device_count),
-                'policy_runtime_facts_capability_fields': int(fact_capability_fields),
-                'policy_runtime_facts_policy_fields': int(fact_policy_fields),
-                'policy_runtime_facts_adapter_fields': int(fact_adapter_fields),
-                'policy_runtime_fact_dict_copies': int(fact_dict_copies),
-                'policy_runtime_facts_dynamic_bindings': int(len(dynamic_fact_bindings)),
-                'policy_runtime_facts_dynamic_binding_groups': int(len(dynamic_fact_binding_groups)),
-                'policy_runtime_selected_ev_contexts': int(len(selected_ev_context_by_id)),
-            }
-            facts_without_metrics['_metrics'] = metrics
-        return facts_without_metrics
 
-    device_ids_by_kind = dict(facts_plan.get('device_ids_by_kind', {}) or {})
-    device_descriptors = dict(facts_plan.get('devices', {}) or {})
-    fact_dict_copies += 2
-    device_kind_by_id = {}
-    device_capabilities_by_id = {}
-    device_policy_by_id = {}
-    device_adapter_by_id = {}
-    fact_dict_copies += 4
 
-    for device_id, descriptor in device_descriptors.items():
-        device_plan = _policy_runtime_device_plan(compiled_plan, str(device_id))
-        if device_plan is None:
-            continue
-        fact_device_count += 1
-        dynamic_values = _policy_runtime_device_values(snapshot, str(device_id))
-        kind = str(descriptor.get('kind', '') or '')
-        device_kind_by_id[str(device_id)] = kind
 
-        capability_values = {}
-        fact_dict_copies += 1
-        for field_name in tuple(descriptor.get('capabilities_fields', ()) or ()):
-            fact_capability_fields += 1
-            default = False if str(field_name) in ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle', 'supports_primary_regulation', 'supports_residual_regulation') else 0
-            capability_values[str(field_name)] = _resolve_snapshot_backed_section_value(
-                device_plan,
-                dynamic_values,
-                'capabilities',
-                str(field_name),
-                default,
-            )
-        device_capabilities_by_id[str(device_id)] = capability_values
 
-        policy_values = {}
-        fact_dict_copies += 1
-        for field_name in tuple(descriptor.get('policy_fields', ()) or ()):
-            fact_policy_fields += 1
-            policy_values[str(field_name)] = _resolve_snapshot_backed_section_value(
-                device_plan,
-                dynamic_values,
-                'policy',
-                str(field_name),
-                0 if str(field_name) == 'priority' else False,
-            )
-        device_policy_by_id[str(device_id)] = policy_values
 
-        adapter_values = {}
-        fact_dict_copies += 1
-        for field_name in tuple(descriptor.get('adapter_fields', ()) or ()):
-            fact_adapter_fields += 1
-            adapter_values[str(field_name)] = _resolve_snapshot_backed_section_value(
-                device_plan,
-                dynamic_values,
-                'adapter',
-                str(field_name),
-                None,
-            )
-        if adapter_values:
-            device_adapter_by_id[str(device_id)] = adapter_values
 
-    normalized_ids_by_kind = {}
-    fact_dict_copies += 1
-    for kind, ids in device_ids_by_kind.items():
-        normalized_ids = []
-        for device_id in tuple(ids or ()):
-            normalized_ids.append(str(device_id))
-        normalized_ids_by_kind[str(kind)] = tuple(normalized_ids)
 
-    facts = {
-        'device_ids_by_kind': normalized_ids_by_kind,
-        'device_kind_by_id': device_kind_by_id,
-        'device_capabilities_by_id': device_capabilities_by_id,
-        'device_policy_by_id': device_policy_by_id,
-        'device_adapter_by_id': device_adapter_by_id,
-    }
-    if POLICY_RUNTIME_FACTS_DETAILED_METRICS_ENABLED:
-        metrics = {
-            'policy_runtime_facts_context_build_ms': int(round(max(0.0, time.time() - facts_started_ts) * 1000.0)),
-            'policy_runtime_facts_device_count': int(fact_device_count),
-            'policy_runtime_facts_capability_fields': int(fact_capability_fields),
-            'policy_runtime_facts_policy_fields': int(fact_policy_fields),
-            'policy_runtime_facts_adapter_fields': int(fact_adapter_fields),
-            'policy_runtime_fact_dict_copies': int(fact_dict_copies),
-        }
-        facts['_metrics'] = metrics
-    return facts
+
+
+
+
+
+
 
 
 def _static_snapshot_value(value: object) -> object:
@@ -2211,99 +1329,8 @@ def _coerce_packet_value(value: object, default: object) -> object:
     return value
 
 
-def build_core_config_view_snapshot(
-    compiled_plan: CompiledEMSPlan,
-    read_entity: Callable[[str, object], object],
-    metrics: Optional[dict[str, int]] = None,
-) -> DynamicRuntimeSnapshot:
-    """Materialize a CoreConfigView snapshot without a parallel runtime read plan.
-
-    This helper remains for CoreConfigView consumers scheduled for L2 cleanup; the
-    production runtime does not call it. Repeated HA refs are deduplicated within
-    one snapshot through resolved_dynamic_values.
-    """
-    materialize_started_ts = time.time()
-    resolved_dynamic_values = {}
-    snapshot_stats = {
-        'dict_nodes': 0,
-        'tuple_nodes': 0,
-        'dynamic_refs_seen': 0,
-        'dynamic_refs_unique': 0,
-        'dynamic_ref_cache_hits': 0,
-    }
-
-    profiles = _materialize_runtime_mapping(
-        compiled_plan.profiles, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-    global_config = _materialize_runtime_mapping(
-        compiled_plan.global_config, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-    runtime = _materialize_runtime_mapping(
-        compiled_plan.runtime, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-    state = _materialize_runtime_mapping(
-        compiled_plan.state, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-
-    device_values = {}
-    for device_id, device_plan in compiled_plan.devices.items():
-        device_values[str(device_id)] = _materialize_device_snapshot_values(
-            device_plan, read_entity,
-            resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-        )
-    home_battery_values = _materialize_device_snapshot_values(
-        compiled_plan.home_battery, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-
-    haeo_values = None
-    if compiled_plan.haeo is not None:
-        haeo_values = _materialize_runtime_mapping(
-            compiled_plan.haeo, read_entity,
-            resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-        )
-    role_constraint_values = _materialize_runtime_mapping(
-        compiled_plan.role_constraints, read_entity,
-        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
-    )
-
-    if metrics is not None:
-        metrics['policy_engine_core_config_materialize_total_ms'] = int(
-            round(max(0.0, time.time() - materialize_started_ts) * 1000.0)
-        )
-
-    return DynamicRuntimeSnapshot(
-        profiles=profiles,
-        global_config=global_config,
-        runtime=runtime,
-        state=state,
-        device_values=device_values,
-        home_battery_values=home_battery_values,
-        haeo_values=haeo_values,
-        role_constraint_values=role_constraint_values,
-    )
-
-
-def build_policy_context_view(
-    compiled_plan: CompiledEMSPlan,
-    read_entity: Callable[[str, object], object],
-    metrics: Optional[dict[str, int]] = None,
-) -> CoreConfigView:
-    snapshot_started_ts = time.time()
-    snapshot = build_core_config_view_snapshot(compiled_plan, read_entity, metrics=metrics)
-    _record_core_config_metric(metrics, 'policy_engine_core_config_view_snapshot_ms', snapshot_started_ts)
-    view_started_ts = time.time()
-    cfg_view = CoreConfigView(PolicyContext(plan=compiled_plan, snapshot=snapshot))
-    _record_core_config_metric(metrics, 'policy_engine_policy_context_view_ms', view_started_ts)
-    return cfg_view
-
-
 def _materialize_core_config_via_resolved_config_for_tests(
-    plan: CompiledCoreConfigPlan,
+    plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
 ) -> CoreConfig:
     resolved_config = _materialize_dynamic_value(plan.grouped_config_plan, read_entity)
@@ -2311,7 +1338,7 @@ def _materialize_core_config_via_resolved_config_for_tests(
 
 
 def _materialize_core_config_direct(
-    plan: CompiledCoreConfigPlan,
+    plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
     metrics: Optional[dict[str, int]] = None,
 ) -> CoreConfig:
@@ -2332,11 +1359,6 @@ def _materialize_core_config_direct(
     core_devices = _materialize_core_devices_from_plan(ems_plan, read_entity)
     _record_core_config_metric(metrics, 'policy_engine_core_config_devices_ms', devices_started_ts)
 
-    home_battery_started_ts = time.time()
-    home_battery = _materialize_home_battery_from_plan(ems_plan, core_devices, read_entity)
-    core_devices['HOME_BATTERY'] = home_battery
-    _record_core_config_metric(metrics, 'policy_engine_core_config_home_battery_ms', home_battery_started_ts)
-
     haeo_started_ts = time.time()
     haeo = _materialize_core_haeo_from_plan(ems_plan, read_entity)
     _record_core_config_metric(metrics, 'policy_engine_core_config_haeo_ms', haeo_started_ts)
@@ -2349,7 +1371,6 @@ def _materialize_core_config_direct(
         profiles=profiles,
         policy_engine=_materialize_core_policy_engine_from_plan(ems_plan),
         global_config=global_config,
-        home_battery=home_battery,
         runtime=runtime,
         state=state,
         policy_outputs=CorePolicyOutputsConfig(
@@ -2366,215 +1387,14 @@ def _materialize_core_config_direct(
         role_constraints=role_constraints,
         devices=core_devices,
     )
-    derived_fields_started_ts = time.time()
-    materialized_core_config = _populate_core_config_derived_fields(core_config)
-    _record_core_config_metric(metrics, 'policy_engine_core_config_derived_fields_ms', derived_fields_started_ts)
     _record_core_config_metric(metrics, 'policy_engine_core_config_materialize_total_ms', materialize_started_ts)
-    return materialized_core_config
+    return core_config
 
 
 def _record_core_config_metric(metrics: Optional[dict[str, int]], key: str, started_ts: float) -> None:
     if metrics is None:
         return
     metrics[key] = max(0, int(round((time.time() - started_ts) * 1000.0)))
-
-
-def _build_view_profiles(values: dict) -> CoreProfilesConfig:
-    return CoreProfilesConfig(
-        control=values['control'],
-        goal=values['goal'],
-        forecast=values['forecast'],
-        guard=values['guard'],
-    )
-
-
-def _build_view_policy_engine(values: dict) -> CorePolicyEngineConfig:
-    return CorePolicyEngineConfig(
-        interval_seconds=_parse_policy_engine_interval_seconds(values.get('interval_seconds', 5.0)),
-        diagnostics_interval_seconds=_parse_policy_engine_diagnostics_interval_seconds(
-            values.get('diagnostics_interval_seconds', 30.0)
-        ),
-    )
-
-
-def _build_view_global_config(values: dict) -> CoreGlobalConfig:
-    return CoreGlobalConfig(
-        deadband_w=values['deadband_w'],
-        ramp_w=values['ramp_w'],
-        strict_limit_w=values['strict_limit_w'],
-        default_sp_w=values['default_sp_w'],
-        surplus_freeze_s=values['surplus_freeze_s'],
-        battery_heartbeat_timeout_s=values['battery_heartbeat_timeout_s'],
-        haeo_stale_timeout_s=values['haeo_stale_timeout_s'],
-        nz_battery_floor_default_w=values['nz_battery_floor_default_w'],
-        nz_battery_floor_ev_active_w=values['nz_battery_floor_ev_active_w'],
-        primary_device_id=values['primary_device_id'],
-    )
-
-
-def _build_view_runtime(values: dict) -> CoreRuntimeConfig:
-    return CoreRuntimeConfig(
-        grid_power_w=values['grid_power_w'],
-        quarter_energy_balance_kwh=values['quarter_energy_balance_kwh'],
-        pv_power_w=values['pv_power_w'],
-    )
-
-
-def _build_view_state(values: dict) -> CoreStateConfig:
-    return CoreStateConfig(
-        surplus_freeze_until=values['surplus_freeze_until'],
-        active_surplus_devices=values['active_surplus_devices'],
-    )
-
-
-def _build_view_haeo(values: Optional[dict]) -> Optional[CoreHaeoConfig]:
-    if values is None:
-        return None
-    return CoreHaeoConfig(
-        battery_power_active=values['battery_power_active'],
-        ev_power_active=values['ev_power_active'],
-        battery_fresh_source=values['battery_fresh_source'],
-        ev_fresh_source=values['ev_fresh_source'],
-    )
-
-
-def _build_view_role_constraints(values: dict) -> CoreRoleConstraintsConfig:
-    by_role = {}
-    for role_key, role_devices in (values or {}).items():
-        if role_key == 'default' or not isinstance(role_devices, dict):
-            continue
-        copied_role_devices = {}
-        for device_id, device_fields in role_devices.items():
-            copied_role_devices[str(device_id)] = dict(device_fields)
-        by_role[str(role_key)] = copied_role_devices
-    return CoreRoleConstraintsConfig(
-        default=dict((values or {}).get('default', {})),
-        by_role=by_role,
-    )
-
-
-def _build_view_capabilities(values: dict) -> CoreDeviceCapabilitiesConfig:
-    caps = values['capabilities']
-    return CoreDeviceCapabilitiesConfig(
-        can_absorb_w=bool(caps['can_absorb_w']),
-        can_produce_w=bool(caps['can_produce_w']),
-        supports_primary_regulation=bool(caps['supports_primary_regulation']),
-        supports_residual_regulation=bool(caps['supports_residual_regulation']),
-        min_absorb_w=caps['min_absorb_w'],
-        max_absorb_w=caps['max_absorb_w'],
-        step_w=caps['step_w'],
-        max_produce_w=caps.get('max_produce_w'),
-        uses_hard_off_lifecycle=bool(caps.get('uses_hard_off_lifecycle', False)),
-    )
-
-
-def _build_view_battery_device(plan: StaticDevicePlan, values: dict) -> CoreBatteryDeviceConfig:
-    capabilities = {
-        'capabilities': {
-            'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
-            'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
-            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
-            'supports_primary_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_primary_regulation', False),
-            'supports_residual_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_residual_regulation', False),
-            'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
-            'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
-            'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
-            'max_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_produce_w'),
-        }
-    }
-    return CoreBatteryDeviceConfig(
-        device_id=plan.device_id,
-        kind=str(plan.kind),
-        capabilities=_build_view_capabilities(capabilities),
-        policy=CoreBatteryPolicyConfig(
-            priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
-            surplus_allowed=bool(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', False)),
-            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
-            default_min_absorb_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'default_min_absorb_w'),
-        ),
-        guard=CoreBatteryGuardConfig(
-            soc=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'soc', ''),
-            min_cell_voltage_v=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'min_cell_voltage_v', ''),
-            heartbeat=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'heartbeat', ''),
-            protect_soc=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'protect_soc', 2),
-            protect_soc_recovery_margin=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'protect_soc_recovery_margin', 1),
-            protect_min_cell_voltage_v=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'protect_min_cell_voltage_v', 3.030),
-            protect_min_absorb_w=_resolve_snapshot_backed_section_value(plan, values, 'guard', 'protect_min_absorb_w', 0),
-        ),
-        adapter=CoreBatteryAdapterConfig(
-            target_w=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'target_w', ''),
-            measured_power_w=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'measured_power_w', ''),
-        ),
-    )
-
-
-def _build_view_ev_device(plan: StaticDevicePlan, values: dict) -> CoreEvChargerDeviceConfig:
-    capabilities = {
-        'capabilities': {
-            'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
-            'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
-            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
-            'supports_primary_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_primary_regulation', False),
-            'supports_residual_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_residual_regulation', False),
-            'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
-            'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
-            'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
-            'max_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_produce_w'),
-        }
-    }
-    return CoreEvChargerDeviceConfig(
-        device_id=plan.device_id,
-        kind=str(plan.kind),
-        capabilities=_build_view_capabilities(capabilities),
-        policy=CoreEvPolicyConfig(
-            priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 3),
-            surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
-            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'max_absorb')),
-            force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
-            low_pv_threshold_w=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'low_pv_threshold_w', 1.6),
-            hard_off_low_pv_cycles=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'hard_off_low_pv_cycles', 2),
-            hard_off_release_cycles=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'hard_off_release_cycles', 2),
-        ),
-        adapter=CoreEvAdapterConfig(
-            enabled=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'enabled', False),
-            current_a=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'current_a', 0),
-            current_step_a=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'current_step_a', 4),
-            phases=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'phases', 1),
-            voltage_v=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'voltage_v', 230),
-        ),
-    )
-
-
-def _build_view_relay_device(plan: StaticDevicePlan, values: dict) -> CoreRelayDeviceConfig:
-    capabilities = {
-        'capabilities': {
-            'can_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_absorb_w', False),
-            'can_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'can_produce_w', False),
-            'uses_hard_off_lifecycle': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'uses_hard_off_lifecycle', False),
-            'supports_primary_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_primary_regulation', False),
-            'supports_residual_regulation': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'supports_residual_regulation', False),
-            'min_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'min_absorb_w', 0),
-            'max_absorb_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_absorb_w', 0),
-            'step_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'step_w', 1),
-            'max_produce_w': _resolve_snapshot_backed_section_value(plan, values, 'capabilities', 'max_produce_w'),
-        }
-    }
-    return CoreRelayDeviceConfig(
-        device_id=plan.device_id,
-        kind=str(plan.kind),
-        capabilities=_build_view_capabilities(capabilities),
-        policy=CoreRelayPolicyConfig(
-            priority=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'priority', 0),
-            surplus_allowed=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_allowed', ''),
-            surplus_dispatch_mode=str(_resolve_snapshot_backed_section_value(plan, values, 'policy', 'surplus_dispatch_mode', 'fixed')),
-            force_on=_resolve_snapshot_backed_section_value(plan, values, 'policy', 'force_on', ''),
-        ),
-        adapter=CoreRelayAdapterConfig(
-            enabled=_resolve_snapshot_backed_section_value(plan, values, 'adapter', 'enabled', '')
-        ),
-    )
-
-
 
 
 def _materialize_core_profiles_from_plan(
@@ -2668,7 +1488,7 @@ def _materialize_core_devices_from_plan(
 
     materialized = {}
     for device_id, device in devices.items():
-        if str(device_id) == 'HOME_BATTERY' or not isinstance(device, dict):
+        if not isinstance(device, dict):
             continue
         kind = str(_resolve_core_config_value(device.get('kind'), read_entity, ''))
         if kind == 'BATTERY':
@@ -2678,64 +1498,6 @@ def _materialize_core_devices_from_plan(
         elif kind == 'RELAY':
             materialized[str(device_id)] = _build_core_relay_device(str(device_id), device, read_entity)
     return materialized
-
-
-def _resolve_home_battery_priority_from_plan(
-    battery_device_plan: object,
-    core_devices: dict[str, object],
-    read_entity: Callable[[str, object], object],
-) -> object:
-    policy = _require_mapping_value(_require_mapping_value(battery_device_plan, 'policy'), 'priority')
-    return _resolve_core_config_value(policy, read_entity, 3)
-
-
-def _materialize_home_battery_from_plan(
-    ems_plan: dict,
-    core_devices: dict[str, object],
-    read_entity: Callable[[str, object], object],
-) -> CoreBatteryDeviceConfig:
-    devices = _require_mapping_value(ems_plan, 'devices')
-    device = _require_mapping_value(devices, 'HOME_BATTERY')
-    policy = _require_mapping_value(device, 'policy')
-    guard = _require_mapping_value(device, 'guard')
-    adapter = _require_mapping_value(device, 'adapter')
-    return CoreBatteryDeviceConfig(
-        device_id='HOME_BATTERY',
-        kind=str(_resolve_core_config_value(_require_mapping_value(device, 'kind'), read_entity, 'BATTERY')),
-        capabilities=_build_core_capabilities(
-            device,
-            read_entity,
-            default_min_absorb_w=0,
-            default_max_absorb_w=3700,
-            default_step_w=50,
-            default_max_produce_w=4600,
-        ),
-        policy=CoreBatteryPolicyConfig(
-            priority=_resolve_home_battery_priority_from_plan(device, core_devices, read_entity),
-            surplus_allowed=bool(
-                _resolve_core_config_value(policy.get('surplus_allowed', False), read_entity, False)
-            ),
-            surplus_dispatch_mode=str(
-                _resolve_core_config_value(policy.get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')
-            ),
-            default_min_absorb_w=_resolve_core_config_value(_require_mapping_value(policy, 'default_min_absorb_w'), read_entity, 0.0)
-            if 'default_min_absorb_w' in policy
-            else None,
-        ),
-        guard=CoreBatteryGuardConfig(
-            soc=_resolve_core_config_value(_require_mapping_value(guard, 'soc'), read_entity, ''),
-            min_cell_voltage_v=_resolve_core_config_value(_require_mapping_value(guard, 'min_cell_voltage_v'), read_entity, ''),
-            heartbeat=_resolve_core_config_value(_require_mapping_value(guard, 'heartbeat'), read_entity, ''),
-            protect_soc=_resolve_core_config_value(_require_mapping_value(guard, 'protect_soc'), read_entity, 2),
-            protect_soc_recovery_margin=_resolve_core_config_value(_require_mapping_value(guard, 'protect_soc_recovery_margin'), read_entity, 1),
-            protect_min_cell_voltage_v=_resolve_core_config_value(_require_mapping_value(guard, 'protect_min_cell_voltage_v'), read_entity, 3.030),
-            protect_min_absorb_w=_resolve_core_config_value(_require_mapping_value(guard, 'protect_min_absorb_w'), read_entity, 0),
-        ),
-        adapter=CoreBatteryAdapterConfig(
-            target_w=_resolve_core_config_value(_require_mapping_value(adapter, 'target_w'), read_entity, ''),
-            measured_power_w=_resolve_core_config_value(_require_mapping_value(adapter, 'measured_power_w'), read_entity, ''),
-        ),
-    )
 
 
 def _build_core_devices_map(
@@ -2776,13 +1538,6 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
     policy_engine = ems.get('policy_engine', {})
     read_entity = None
     core_devices = _build_core_devices_map(devices, read_entity)
-    home_battery = _build_core_battery_device(
-        'HOME_BATTERY',
-        devices.get('HOME_BATTERY'),
-        read_entity,
-        default_priority=3,
-    )
-    core_devices['HOME_BATTERY'] = home_battery
     core_config = CoreConfig(
         profiles=CoreProfilesConfig(
             control=_resolve_core_config_value(_require_mapping_value(ems.get('profiles'), 'control'), read_entity, ''),
@@ -2810,7 +1565,6 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
             nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
             primary_device_id=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'primary_device_id'), read_entity, ''),
         ),
-        home_battery=home_battery,
         runtime=CoreRuntimeConfig(
             grid_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), read_entity, 0),
             quarter_energy_balance_kwh=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'quarter_energy_balance_kwh'), read_entity, 0),
@@ -2834,46 +1588,7 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
         role_constraints=_build_core_role_constraints(role_constraints, read_entity),
         devices=core_devices,
     )
-    return _populate_core_config_derived_fields(core_config)
-
-
-def _populate_core_config_derived_fields(core_config: CoreConfig) -> CoreConfig:
-    if core_config.role_constraints is None:
-        core_config.role_constraints = CoreRoleConstraintsConfig()
-    if core_config.deadband_w is None:
-        core_config.deadband_w = core_config.global_config.deadband_w
-    if core_config.ramp_max_w is None:
-        core_config.ramp_max_w = core_config.global_config.ramp_w
-    if core_config.strict_limits_max_w is None:
-        core_config.strict_limits_max_w = core_config.global_config.strict_limit_w
-    if core_config.default_sp_w is None:
-        core_config.default_sp_w = core_config.global_config.default_sp_w
-    if core_config.battery_heartbeat_timeout_s is None:
-        core_config.battery_heartbeat_timeout_s = core_config.global_config.battery_heartbeat_timeout_s
-    if core_config.haeo_stale_timeout_s is None:
-        core_config.haeo_stale_timeout_s = core_config.global_config.haeo_stale_timeout_s
-    if core_config.max_solar_charge_w is None:
-        core_config.max_solar_charge_w = core_config.home_battery.capabilities.max_absorb_w
-    if core_config.max_battery_discharge_w is None:
-        core_config.max_battery_discharge_w = core_config.home_battery.capabilities.max_produce_w
-    if core_config.battery_protect_soc is None:
-        core_config.battery_protect_soc = core_config.home_battery.guard.protect_soc
-    if core_config.battery_protect_soc_recovery_margin is None:
-        core_config.battery_protect_soc_recovery_margin = core_config.home_battery.guard.protect_soc_recovery_margin
-    if core_config.battery_protect_min_cell_voltage_v is None:
-        core_config.battery_protect_min_cell_voltage_v = core_config.home_battery.guard.protect_min_cell_voltage_v
-    if core_config.battery_protect_charge_floor_w is None:
-        core_config.battery_protect_charge_floor_w = core_config.home_battery.guard.protect_min_absorb_w
-    if core_config.nz_battery_floor_default_w is None:
-        core_config.nz_battery_floor_default_w = core_config.global_config.nz_battery_floor_default_w
-    if core_config.nz_battery_floor_ev_active_w is None:
-        core_config.nz_battery_floor_ev_active_w = core_config.global_config.nz_battery_floor_ev_active_w
-    if core_config.primary_device_id is None:
-        core_config.primary_device_id = core_config.global_config.primary_device_id
-    if core_config.surplus_freeze_s is None:
-        core_config.surplus_freeze_s = core_config.global_config.surplus_freeze_s
     return core_config
-
 
 
 def _parse_policy_engine_interval_seconds(raw_value):
@@ -2903,9 +1618,6 @@ def _parse_policy_engine_diagnostics_interval_seconds(raw_value):
 
 
 def _validate_devices(devices: dict, issues: list[ConfigValidationIssue], runtime_packet_mode: bool = False) -> None:
-    for device_id in REQUIRED_DEVICE_IDS:
-        if device_id not in devices:
-            issues.append(_issue(f'ems.devices.{device_id}', SEVERITY_ERROR, 'missing required device'))
     battery_ids = []
     for device_id, device in devices.items():
         if not isinstance(device, dict):
@@ -2914,11 +1626,10 @@ def _validate_devices(devices: dict, issues: list[ConfigValidationIssue], runtim
         kind = device.get('kind')
         if kind == 'BATTERY':
             battery_ids.append(str(device_id))
-        expected_kind = EXPECTED_DEVICE_KINDS.get(device_id)
-        _validate_device(device_id, device, expected_kind, issues, runtime_packet_mode=runtime_packet_mode)
+        _validate_device(device_id, device, None, issues, runtime_packet_mode=runtime_packet_mode)
 
-    if len(battery_ids) != 1 or battery_ids[0] != 'HOME_BATTERY':
-        issues.append(_issue('ems.devices', SEVERITY_ERROR, 'phase-1 flexible loader supports exactly one battery device id: HOME_BATTERY'))
+    if not battery_ids:
+        issues.append(_issue('ems.devices', SEVERITY_ERROR, 'at least one BATTERY device is required by direct_tick_frame_v3'))
 
 
 def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue], runtime_packet_mode: bool = False) -> None:
@@ -2942,7 +1653,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         required_sections = ['capabilities']
     else:
         required_sections = ['capabilities', 'policy', 'adapter']
-        if device_id == 'HOME_BATTERY':
+        if kind == 'BATTERY':
             required_sections.append('guard')
     for section in required_sections:
         if section not in device:
@@ -2979,7 +1690,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                     issues.append(_issue(f'{device_path}.capabilities.can_absorb_w', SEVERITY_ERROR, 'relay must define can_absorb_w=true'))
         return
 
-    if device_id == 'HOME_BATTERY' and isinstance(device.get('guard'), dict):
+    if kind == 'BATTERY' and isinstance(device.get('guard'), dict):
         _validate_unknown_fields(
             device['guard'],
             f'{device_path}.guard',
@@ -2993,7 +1704,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             issues,
         )
 
-    if device_id == 'HOME_BATTERY' and isinstance(device.get('policy'), dict):
+    if kind == 'BATTERY' and isinstance(device.get('policy'), dict):
         _validate_unknown_fields(
             device['policy'],
             f'{device_path}.policy',
@@ -3006,7 +1717,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             if device['policy'].get('surplus_dispatch_mode') not in ('max_absorb', 'fixed'):
                 issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
 
-    if device_id == 'HOME_BATTERY' and isinstance(device.get('adapter'), dict):
+    if kind == 'BATTERY' and isinstance(device.get('adapter'), dict):
         _validate_unknown_fields(
             device['adapter'],
             f'{device_path}.adapter',
@@ -3205,16 +1916,17 @@ def _validate_ev_watt_limits_match_adapter_resolution(
 
 
 def _validate_device_capability_semantics(ems: dict, devices: dict, issues: list[ConfigValidationIssue]) -> None:
-    battery = devices.get('HOME_BATTERY')
-    if isinstance(battery, dict):
+    for device_id, battery in devices.items():
+        if not isinstance(battery, dict) or str(battery.get('kind') or '') != 'BATTERY':
+            continue
         battery_caps = battery.get('capabilities')
         if isinstance(battery_caps, dict):
             if battery_caps.get('can_absorb_w') is False and battery_caps.get('can_produce_w') is False:
                 issues.append(
                     _issue(
-                        'ems.devices.HOME_BATTERY.capabilities',
+                        f'ems.devices.{device_id}.capabilities',
                         SEVERITY_ERROR,
-                        'HOME_BATTERY must define at least one enabled direction: can_absorb_w=true or can_produce_w=true',
+                        f'{device_id} must define at least one enabled direction: can_absorb_w=true or can_produce_w=true',
                     )
                 )
 
