@@ -53,8 +53,6 @@ _LAST_NET_ZERO_COMPUTE_METRICS = {
     'policy_engine_net_zero_cfg_device_adapter_value_calls': 0,
     'policy_engine_net_zero_cfg_device_policy_value_calls': 0,
     'policy_engine_net_zero_cfg_device_accessor_ms': 0,
-    'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 0,
-    'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 0,
     'policy_engine_net_zero_state_parse_ms': 0,
     'policy_engine_net_zero_facts_provider_ms': 0,
     'policy_engine_net_zero_facts_context_build_ms': 0,
@@ -102,9 +100,7 @@ def _reset_net_zero_compute_metrics():
             'policy_engine_net_zero_cfg_device_adapter_value_calls': 0,
             'policy_engine_net_zero_cfg_device_policy_value_calls': 0,
             'policy_engine_net_zero_cfg_device_accessor_ms': 0,
-            'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 0,
-            'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 0,
-            'policy_engine_net_zero_state_parse_ms': 0,
+                            'policy_engine_net_zero_state_parse_ms': 0,
             'policy_engine_net_zero_facts_provider_ms': 0,
             'policy_engine_net_zero_facts_context_build_ms': 0,
             'policy_engine_net_zero_facts_copy_ms': 0,
@@ -1069,24 +1065,13 @@ def _haeo_plan_device_limit_w(plan, device_id):
     return 0
 
 
-def _decision_text_from_dispatch(surplus_decision, combo_change_requires_clear):
+def _dispatch_action_and_device_id(surplus_decision, combo_change_requires_clear):
     if combo_change_requires_clear or surplus_decision.clear_all:
-        return 'CLEAR_ALL'
-    if surplus_decision.activate:
-        return 'ACTIVATE_' + str(surplus_decision.activate)
-    if surplus_decision.release:
-        return 'RELEASE_' + str(surplus_decision.release)
-    return 'NOOP'
-
-
-def _dispatch_action_and_device_id(decision_text):
-    text = str(decision_text or 'NOOP')
-    if text == 'CLEAR_ALL':
         return 'CLEAR_ALL', ''
-    if text.startswith('ACTIVATE_'):
-        return 'ACTIVATE', text[len('ACTIVATE_'):]
-    if text.startswith('RELEASE_'):
-        return 'RELEASE', text[len('RELEASE_'):]
+    if surplus_decision.activate:
+        return 'ACTIVATE', str(surplus_decision.activate)
+    if surplus_decision.release:
+        return 'RELEASE', str(surplus_decision.release)
     return 'NOOP', ''
 
 
@@ -1946,7 +1931,6 @@ def _apply_force_rising_edge_freeze_for_devices(
 
 def _canonical_surplus_freeze_until_ts_for_output(
     dispatch_action,
-    dispatch_decision,
     combo_change_freeze_until_ts,
     decision_freeze_until_ts,
     effective_freeze_until_ts,
@@ -1954,8 +1938,7 @@ def _canonical_surplus_freeze_until_ts_for_output(
     if combo_change_freeze_until_ts is not None:
         return combo_change_freeze_until_ts
     action = str(dispatch_action or '')
-    decision = str(dispatch_decision or '')
-    if action == 'CLEAR_ALL' and decision == 'CLEAR_ALL':
+    if action == 'CLEAR_ALL':
         return None
     if action == 'NOOP':
         return effective_freeze_until_ts
@@ -2260,12 +2243,9 @@ def compute_net_zero_engine_outputs(
             else None
         )
         surplus_state_clear_reason = 'HAEO_COMBO_CHANGED' if combo_change_requires_clear else ''
-        surplus_dispatch_decision = _decision_text_from_dispatch(
+        surplus_dispatch_action, surplus_dispatch_device_id = _dispatch_action_and_device_id(
             surplus_device_decision,
             combo_change_requires_clear,
-        )
-        surplus_dispatch_action, surplus_dispatch_device_id = _dispatch_action_and_device_id(
-            surplus_dispatch_decision
         )
         surplus_next_device_id = surplus_device_next.device_id if surplus_device_next else ''
         surplus_release_device_id = surplus_device_release.device_id if surplus_device_release else ''
@@ -2583,7 +2563,6 @@ def compute_net_zero_engine_outputs(
         battery_write_enabled=battery_write_enabled,
         surplus_policy_active=surplus_active,
         surplus_next_threshold_kw=round(float(surplus_device_next.threshold_w) / 1000.0, 3) if surplus_device_next else 0,
-        surplus_dispatch_decision=surplus_dispatch_decision,
         surplus_explanation=surplus_device_decision.explanation,
         effective_forecast=eff_fc,
         dominant_limitation=dominant_limitation(profiles, conf_fc, eff_fc),
@@ -2597,7 +2576,6 @@ def compute_net_zero_engine_outputs(
             'surplus_active_device_ids': tuple(surplus_active_device_ids_payload),
             'surplus_next_device_id': surplus_next_device_id,
             'surplus_release_device_id': surplus_release_device_id,
-            'surplus_dispatch_decision': surplus_dispatch_decision,
             'surplus_dispatch_action': surplus_dispatch_action,
             'surplus_dispatch_device_id': surplus_dispatch_device_id,
             'surplus_dispatch_contract': 'device_id_primary',
@@ -2607,7 +2585,6 @@ def compute_net_zero_engine_outputs(
             'capability_blocked_devices': capability_blocked_devices,
             'surplus_freeze_until_ts': _canonical_surplus_freeze_until_ts_for_output(
                 surplus_dispatch_action,
-                surplus_dispatch_decision,
                 combo_change_freeze_until_ts,
                 surplus_device_decision.freeze_until_ts,
                 effective_freeze_until_ts,

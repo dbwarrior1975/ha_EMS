@@ -77,16 +77,23 @@ Oletuspolku tulee suoraan runtime-koodista:
 `EMS_GROUPED_CONFIG_PATH` voi edelleen overrideata polun, mutta normaalissa
 tuotantokaytossa sita ei tarvita.
 
-Tarkeä rajaus:
+Tarkea rajaus:
 
-1. grouped `EMS_config.yaml` on nykyinen kanoninen konfiguraatio
-2. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
-3. `read_config()` palauttaa `CoreConfig`-instanssin ilman erillista
-   rinnakkaista config-viewta aktiivisessa runtime-polussa
-4. vanha flat entity-map -tiedosto ei kuulu enaa aktiiviseen tuotanto- tai testipintaan
-5. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
+1. `EMS_config.yaml` omistaa vain staattisen topologian, fyysiset suuntakyvykkyydet,
+   role constraintit ja policy-engine cadencen
+2. `EMS_config.yaml`:iin ei kuulu runtime-state-entityita eika device-kohtaisia
+   actuator `adapter` -entity-mappingeja
+3. slow policy config, mittaukset ja policy state tulevat kolmesta strict v3
+   runtime-paketista template-rakenteen kautta
+4. writer/applier entity registry tulee `sensor.ems_policy_config_runtime` -sensorin
+   template-omisteisesta `entity_registry`-attribuutista; puuttuva mapping failaa
+   suljetusti ilman ENT- tai hardcoded fallbackia
+5. tuotantoruntime rakentaa `CoreConfig`-mallin `runtime_context`-kerroksen kautta
+6. `read_config()` palauttaa `CoreConfig`-instanssin ilman erillista rinnakkaista
+   config-viewta aktiivisessa runtime-polussa
+7. `EMS_config.yaml` on pakollinen; puuttuva tai virheellinen tiedosto on kova
    kaynnistys-/runtime-virhe eika fallbackaa vanhoihin defaultteihin
-6. device capability -booleanit ovat kovia runtime-rajoja:
+8. device capability -booleanit ovat kovia runtime-rajoja:
    `can_absorb_w=false` estaa positiivisen `target_w`:n ja `can_produce_w=false`
    estaa negatiivisen `target_w`:n
 

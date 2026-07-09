@@ -14,7 +14,7 @@ from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_befor
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, get_attrs, parse_input_datetime_ts, publish_sensor
-from ems_adapter.runtime_context import _GROUPED_CONFIG_DUAL_READ_STATUS, config_trace_attrs, read_runtime_context, runtime_context_metrics_attrs
+from ems_adapter.runtime_context import _GROUPED_CONFIG_STATUS, config_trace_attrs, read_runtime_context, runtime_context_metrics_attrs
 try:
     get_attrs
 except NameError:
@@ -49,13 +49,6 @@ def _enum(allowed_cls, value, default):
         if key.isupper():
             allowed.add(enum_value)
     return value if value in allowed else default
-
-
-def _policy_output_contract_attrs():
-    return {
-        'policy_engine_build': _POLICY_ENGINE_BUILD,
-        'policy_output_contract': 'device_policy_primary',
-    }
 
 
 def _stable_key(value):
@@ -325,10 +318,9 @@ def _device_policies_key(attrs):
 
 def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
     action = str(attrs.get('surplus_dispatch_action') or '')
-    decision = str(attrs.get('surplus_dispatch_decision') or '')
     clear_reason = str(attrs.get('surplus_state_clear_reason') or '')
     freeze_until_ts = attrs.get('surplus_freeze_until_ts')
-    if action == 'CLEAR_ALL' and decision == 'CLEAR_ALL' and clear_reason != 'HAEO_COMBO_CHANGED':
+    if action == 'CLEAR_ALL' and clear_reason != 'HAEO_COMBO_CHANGED':
         return None
     return freeze_until_ts
 
@@ -336,7 +328,6 @@ def _canonical_surplus_freeze_until_ts_for_dispatch(attrs):
 def _dispatch_command_key(attrs):
     return (
         str(attrs.get('surplus_dispatch_action', '') or ''),
-        str(attrs.get('surplus_dispatch_decision', '') or ''),
         str(attrs.get('surplus_dispatch_device_id', '') or ''),
         _canonical_surplus_freeze_until_ts_for_dispatch(attrs),
         str(attrs.get('surplus_state_clear_reason', '') or ''),
@@ -349,7 +340,6 @@ def _dispatch_command_attrs(attrs, version=0):
         'dispatch_command_state_kind': 'monotonic_version',
         'dispatch_command_version': int(version),
         'surplus_dispatch_action': attrs.get('surplus_dispatch_action', ''),
-        'surplus_dispatch_decision': attrs.get('surplus_dispatch_decision', ''),
         'surplus_dispatch_device_id': attrs.get('surplus_dispatch_device_id', ''),
         'surplus_dispatch_contract': attrs.get('surplus_dispatch_contract', 'device_id_primary'),
         'surplus_freeze_until_ts': freeze_until_ts,
@@ -611,7 +601,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     phase_started_ts = time.time()
     attrs = net_zero_attrs(outputs, profiles, guard_decision)
     attrs.update(config_trace_attrs())
-    attrs.update(_policy_output_contract_attrs())
     attrs.update(
         {
             'runtime_input_contract': 'direct_tick_frame_v3' if direct_frame is not None else 'raw_measurements_only',

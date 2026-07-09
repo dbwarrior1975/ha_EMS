@@ -32,7 +32,7 @@ def test_02_release_relay2_then_adjustable(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=450, required_power_consumption_kw=6.0, at_s=76),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=450, required_power_consumption_kw=6.0, at_s=76),
             'expect_policy': {
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_release_device_id': 'RELAY2',
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'No eligible next surplus target',
@@ -59,7 +59,8 @@ def test_02_release_relay2_then_adjustable(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=90),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=90),
             'expect_policy': {
-                'surplus_dispatch_decision': 'RELEASE_RELAY2',
+                'surplus_dispatch_action': 'RELEASE',
+                'surplus_dispatch_device_id': 'RELAY2',
                 'surplus_release_device_id': 'RELAY2',
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
@@ -83,7 +84,8 @@ def test_02_release_relay2_then_adjustable(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=91),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=91),
             'expect_policy': {
-                'surplus_dispatch_decision': 'RELEASE_EV_CHARGER',
+                'surplus_dispatch_action': 'RELEASE',
+                'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_release_device_id': 'EV_CHARGER',
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },
@@ -108,7 +110,8 @@ def test_02_release_relay2_then_adjustable(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=92),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=92),
             'expect_policy': {
-                'surplus_dispatch_decision': 'RELEASE_RELAY1',
+                'surplus_dispatch_action': 'RELEASE',
+                'surplus_dispatch_device_id': 'RELAY1',
                 'surplus_release_device_id': 'RELAY1',
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
             },

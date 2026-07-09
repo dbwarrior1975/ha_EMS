@@ -11,7 +11,6 @@ def test_policy_diagnostics_exposes_core_fields_and_battery_authority():
         battery_write_enabled=False,
         surplus_policy_active=True,
         surplus_next_threshold_kw=2.5,
-        surplus_dispatch_decision='NOOP',
         surplus_explanation='testing',
         effective_forecast='NONE',
         dominant_limitation='USER_MANUAL_OVERRIDE',

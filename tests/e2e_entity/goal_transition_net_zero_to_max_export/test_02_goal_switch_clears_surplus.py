@@ -32,7 +32,7 @@ def test_goal_switch_to_max_export_clears_surplus(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=6.0, at_s=90),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_device_id': '',
                 'surplus_dispatch_contract': 'device_id_primary',

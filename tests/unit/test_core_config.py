@@ -138,7 +138,6 @@ def test_build_core_config_from_grouped_config_maps_devices_with_kind_specific_f
     assert relay2.adapter.enabled is False
     assert set(core.devices) == {'HOME_BATTERY', 'EV_CHARGER', 'RELAY1', 'RELAY2'}
     assert len(core.devices_by_kind('RELAY')) == 2
-    assert {device.device_id for device in core.surplus_capable_devices()} == {'EV_CHARGER', 'RELAY1', 'RELAY2'}
 
 
 @pytest.mark.unit

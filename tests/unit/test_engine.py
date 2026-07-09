@@ -643,7 +643,8 @@ def test_engine_ev_surplus_allowed_false_excludes_only_that_device():
     assert 'EV_CHARGER' not in candidate_ids
     assert 'HOME_BATTERY' in candidate_ids
     assert out.attrs['surplus_next_device_id'] == 'HOME_BATTERY'
-    assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
+    assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'HOME_BATTERY'
 
 
 @pytest.mark.unit
@@ -773,8 +774,8 @@ def test_engine_surplus_device_trace_uses_max_absorb_as_activation_threshold():
         **_relay_runtime_args(surplus_allowed=False),
     )
 
-    assert out.surplus_dispatch_decision == 'ACTIVATE_EV_CHARGER'
-    assert out.attrs['surplus_dispatch_decision'] == 'ACTIVATE_EV_CHARGER'
+    assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
     assert out.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert out.attrs['surplus_dispatch_contract'] == 'device_id_primary'
@@ -929,7 +930,8 @@ def test_engine_excludes_ev_when_ev_cannot_absorb_and_keeps_battery_candidate(pr
         **_relay_runtime_args(surplus_allowed=False),
     )
 
-    assert out.surplus_dispatch_decision == 'ACTIVATE_HOME_BATTERY'
+    assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'HOME_BATTERY'
     candidate_ids = {item['device_id'] for item in out.attrs['surplus_candidates']}
     assert 'EV_CHARGER' not in candidate_ids
     assert 'HOME_BATTERY' in candidate_ids
@@ -948,7 +950,8 @@ def test_engine_force_rising_edge_sets_freeze_and_blocks_immediate_activation():
     )
 
     assert out.attrs['surplus_freeze_until_ts'] == 130.0
-    assert out.surplus_dispatch_decision == 'NOOP'
+    assert out.attrs['surplus_dispatch_action'] == 'NOOP'
+    assert out.attrs['surplus_dispatch_device_id'] == ''
 
 
 @pytest.mark.unit
@@ -968,7 +971,8 @@ def test_engine_force_without_rising_edge_allows_activation_without_new_freeze()
     )
 
     assert out.attrs['surplus_freeze_until_ts'] == 130.0
-    assert out.surplus_dispatch_decision == 'ACTIVATE_RELAY2'
+    assert out.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'RELAY2'
 
 @pytest.mark.unit
 def test_policy_inactive_clear_all_freeze_until_is_stable_across_now_ts():
@@ -989,9 +993,7 @@ def test_policy_inactive_clear_all_freeze_until_is_stable_across_now_ts():
     )
 
     assert first.attrs['surplus_dispatch_action'] == 'CLEAR_ALL'
-    assert first.attrs['surplus_dispatch_decision'] == 'CLEAR_ALL'
     assert second.attrs['surplus_dispatch_action'] == 'CLEAR_ALL'
-    assert second.attrs['surplus_dispatch_decision'] == 'CLEAR_ALL'
     assert first.attrs['surplus_freeze_until_ts'] is None
     assert second.attrs['surplus_freeze_until_ts'] is None
 
@@ -1009,7 +1011,9 @@ def test_engine_home_battery_adjustable_uses_rpnz_controller_when_not_primary_ev
         **_relay_runtime_args(active_device_ids=('EV_CHARGER',)),
     )
 
-    assert out.surplus_dispatch_decision in ('NOOP', 'ACTIVATE_RELAY1', 'ACTIVATE_RELAY2')
+    assert out.attrs['surplus_dispatch_action'] in ('NOOP', 'ACTIVATE')
+    if out.attrs['surplus_dispatch_action'] == 'ACTIVATE':
+        assert out.attrs['surplus_dispatch_device_id'] in ('RELAY1', 'RELAY2')
     assert out.battery_target_w == 100
 
 
@@ -1048,7 +1052,8 @@ def test_engine_home_battery_candidate_release_stops_max_hold():
         **_relay_runtime_args(active_device_ids=('HOME_BATTERY',)),
     )
 
-    assert out.surplus_dispatch_decision == 'RELEASE_HOME_BATTERY'
+    assert out.attrs['surplus_dispatch_action'] == 'RELEASE'
+    assert out.attrs['surplus_dispatch_device_id'] == 'HOME_BATTERY'
     assert out.attrs['surplus_dispatch_action'] == 'RELEASE'
     assert out.attrs['surplus_dispatch_device_id'] == 'HOME_BATTERY'
     assert out.battery_target_w < 2000
@@ -1084,9 +1089,11 @@ def test_engine_surplus_activation_threshold_is_device_max_absorb_capability():
     assert target['device_id'] == 'EV_CHARGER'
     assert target['threshold_w'] == ev_max_w
     assert target['threshold_source'] == 'device_capabilities.max_absorb_w'
-    assert below.surplus_dispatch_decision == 'NOOP'
+    assert below.attrs['surplus_dispatch_action'] == 'NOOP'
+    assert below.attrs['surplus_dispatch_device_id'] == ''
     assert below.surplus_explanation == 'Waiting for EV_CHARGER; raw RPC below threshold'
-    assert at.surplus_dispatch_decision == 'ACTIVATE_EV_CHARGER'
+    assert at.attrs['surplus_dispatch_action'] == 'ACTIVATE'
+    assert at.attrs['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert at.surplus_explanation == f'Raw RPC {ev_max_w / 1000.0:.3f} kW >= EV_CHARGER threshold {ev_max_w / 1000.0:.3f} kW'
 
 
@@ -1961,7 +1968,6 @@ def test_engine_outputs_do_not_produce_p0_legacy_mirrors():
         'surplus_device_dispatch_contract',
         'surplus_device_targets',
         'surplus_targets_by_device_id',
-        'canonical_policy_output_contract',
         'diagnostics_contract',
         'runtime_contract',
     }

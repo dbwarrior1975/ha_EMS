@@ -44,7 +44,7 @@ Muutokset:
 3. legacy surplus-nimialiaset on poistettu; canonical `surplus_*`-kentat tuotetaan suoraan
 4. dispatch-command ja state applier kayttavat vain `device_id`-identiteettia
 5. `surplus_targets_by_device_id` on poistettu; targetit luetaan `device_policies`-rakenteesta
-6. redundantit diagnostics contract -markerit on poistettu; `policy_output_contract` sailyy
+6. redundantit diagnostics contract -markerit on poistettu kokonaan
 7. diagnostics legacy blacklist pieneni 38 avaimesta viiteen P1/P2-avaimeen; P1 jatkaa taman yhteen P2-avaimeen
 8. FORCE_ON/HARD_OFF-precedence, feedback protection, strict priority ja multi-EV writer routing sailyvat
 

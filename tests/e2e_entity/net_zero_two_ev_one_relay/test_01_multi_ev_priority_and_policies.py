@@ -21,7 +21,7 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
             'expect_derived': expect_derived_for_net_zero_intent(
                 rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0
             ),
-            'expect_policy': {'surplus_dispatch_decision': 'NOOP'},
+            'expect_policy': {'surplus_dispatch_action': 'NOOP'},
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': False, 'target_w': 0},
@@ -37,9 +37,9 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=5000.0, required_power_consumption_kw=5.0, at_s=30
             ),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_EV_GARAGE',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_GARAGE',
-            },
+                },
         },
         {
             'at_s': 60,
@@ -51,9 +51,9 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=7000.0, required_power_consumption_kw=7.0, at_s=60
             ),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_CHARGER',
-            },
+                },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': True, 'target_w': 3680},
@@ -69,7 +69,7 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=3000.0, required_power_consumption_kw=3.0, at_s=90
             ),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'RELAY1',
                 'surplus_active_device_ids': ('EV_GARAGE', 'EV_CHARGER'),
             },
@@ -98,7 +98,7 @@ def test_two_evs_arbitrate_by_device_priority_and_receive_independent_policies(p
                 rpnz_w=3000.0, required_power_consumption_kw=3.0, at_s=120
             ),
             'expect_policy': {
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_active_device_ids': ('EV_GARAGE', 'EV_CHARGER', 'RELAY1'),
             },
             'expect_device_policies': {

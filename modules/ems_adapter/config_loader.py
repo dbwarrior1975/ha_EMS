@@ -324,12 +324,6 @@ class ConfigValidationResult:
     warnings: Optional[tuple[ConfigValidationIssue, ...]] = None
 
 
-@dataclass
-class RuntimeAlias:
-    runtime_key: str
-    config_path: str
-    value: str
-    unit_transform: str = 'identity'
 
 
 @dataclass
@@ -872,6 +866,16 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         except ValueError as exc:
             issues.append(_issue('ems.policy_engine.diagnostics_interval_seconds', SEVERITY_ERROR, str(exc)))
 
+    if runtime_packet_mode and 'state' in ems:
+        issues.append(
+            _issue(
+                'ems.state',
+                SEVERITY_ERROR,
+                'runtime-packet mode owns state entity mappings via '
+                'sensor.ems_policy_config_runtime attribute entity_registry; '
+                'remove static ems.state from EMS_config.yaml',
+            )
+        )
     if isinstance(ems.get('state'), dict) and not runtime_packet_mode:
         _validate_required_entities(
             ems['state'],
@@ -945,152 +949,6 @@ def _validate_legacy_runtime_fields(
         if field_name in runtime:
             issues.append(_issue(f'ems.runtime.{field_name}', SEVERITY_ERROR, message))
 
-
-def build_runtime_aliases(config: dict) -> tuple[RuntimeAlias, ...]:
-    ems = config.get('ems', {})
-    profiles = ems.get('profiles', {})
-    global_config = ems.get('global_config', {})
-    runtime = ems.get('runtime', {})
-    devices = ems.get('devices', {})
-
-    aliases = [
-        _alias('control_profile', 'ems.profiles.control', profiles.get('control')),
-        _alias('goal_profile', 'ems.profiles.goal', profiles.get('goal')),
-        _alias('forecast_profile', 'ems.profiles.forecast', profiles.get('forecast')),
-        _alias('guard_profile', 'ems.profiles.guard', profiles.get('guard')),
-    ]
-    if not _ems_uses_runtime_packets(ems):
-        aliases.extend(
-            [
-                _alias('deadband_w', 'ems.global_config.deadband_w', global_config.get('deadband_w')),
-                _alias('ramp_max_w', 'ems.global_config.ramp_w', global_config.get('ramp_w')),
-                _alias('strict_limits_max_w', 'ems.global_config.strict_limit_w', global_config.get('strict_limit_w')),
-                _alias('surplus_freeze_s', 'ems.global_config.surplus_freeze_s', global_config.get('surplus_freeze_s')),
-                _alias('haeo_stale_timeout_s', 'ems.global_config.haeo_stale_timeout_s', global_config.get('haeo_stale_timeout_s')),
-                _alias('nz_battery_floor_default_w', 'ems.global_config.nz_battery_floor_default_w', global_config.get('nz_battery_floor_default_w')),
-                _alias('nz_battery_floor_ev_active_w', 'ems.global_config.nz_battery_floor_ev_active_w', global_config.get('nz_battery_floor_ev_active_w')),
-                _alias('primary_device_id', 'ems.global_config.primary_device_id', global_config.get('primary_device_id')),
-            ]
-        )
-
-    home_battery = devices.get('HOME_BATTERY', {})
-    battery_guard = home_battery.get('guard', {}) if isinstance(home_battery, dict) else {}
-    battery_capabilities = home_battery.get('capabilities', {}) if isinstance(home_battery, dict) else {}
-    battery_policy = home_battery.get('policy', {}) if isinstance(home_battery, dict) else {}
-    battery_adapter = home_battery.get('adapter', {}) if isinstance(home_battery, dict) else {}
-    aliases.extend(
-        [
-            _alias('max_solar_charge_w', 'ems.devices.HOME_BATTERY.capabilities.max_absorb_w', battery_capabilities.get('max_absorb_w')),
-            _alias('max_battery_discharge_w', 'ems.devices.HOME_BATTERY.capabilities.max_produce_w', battery_capabilities.get('max_produce_w')),
-            _alias('battery_protect_soc', 'ems.devices.HOME_BATTERY.guard.protect_soc', battery_guard.get('protect_soc')),
-            _alias('battery_protect_soc_recovery_margin', 'ems.devices.HOME_BATTERY.guard.protect_soc_recovery_margin', battery_guard.get('protect_soc_recovery_margin')),
-            _alias('battery_protect_min_cell_voltage_v', 'ems.devices.HOME_BATTERY.guard.protect_min_cell_voltage_v', battery_guard.get('protect_min_cell_voltage_v')),
-            _alias('battery_protect_charge_floor_w', 'ems.devices.HOME_BATTERY.guard.protect_min_absorb_w', battery_guard.get('protect_min_absorb_w')),
-            _alias('soc', 'ems.devices.HOME_BATTERY.guard.soc', battery_guard.get('soc')),
-            _alias('min_cell_voltage_v', 'ems.devices.HOME_BATTERY.guard.min_cell_voltage_v', battery_guard.get('min_cell_voltage_v')),
-            _alias('battery_heartbeat', 'ems.devices.HOME_BATTERY.guard.heartbeat', battery_guard.get('heartbeat')),
-            _alias('current_battery_sp', 'ems.devices.HOME_BATTERY.adapter.target_w', battery_adapter.get('target_w')),
-            _alias('actuator_battery_setpoint_w', 'ems.devices.HOME_BATTERY.adapter.target_w', battery_adapter.get('target_w')),
-        ]
-    )
-
-    ev = _first_device_of_kind(devices, 'EV_CHARGER')
-    ev_capabilities = ev.get('capabilities', {}) if isinstance(ev, dict) else {}
-    ev_policy = ev.get('policy', {}) if isinstance(ev, dict) else {}
-    ev_adapter = ev.get('adapter', {}) if isinstance(ev, dict) else {}
-    ev_id = _device_id_of(ev, 'EV_CHARGER')
-    aliases.extend(
-        [
-            _alias('ev_hard_off_pv_threshold_kw', f'ems.devices.{ev_id}.policy.low_pv_threshold_w', ev_policy.get('low_pv_threshold_w'), unit_transform='W_TO_KW'),
-            _alias('ev_hard_off_low_pv_cycles', f'ems.devices.{ev_id}.policy.hard_off_low_pv_cycles', ev_policy.get('hard_off_low_pv_cycles')),
-            _alias('ev_hard_off_release_cycles', f'ems.devices.{ev_id}.policy.hard_off_release_cycles', ev_policy.get('hard_off_release_cycles')),
-            _alias('charger_control', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
-            _alias('actuator_ev_enabled', f'ems.devices.{ev_id}.adapter.enabled', ev_adapter.get('enabled')),
-            _alias('charger_current', f'ems.devices.{ev_id}.adapter.current_a', ev_adapter.get('current_a')),
-            _alias('actuator_ev_current_a', f'ems.devices.{ev_id}.adapter.current_a', ev_adapter.get('current_a')),
-            _alias('ev_min_absorb_w', f'ems.devices.{ev_id}.capabilities.min_absorb_w', ev_capabilities.get('min_absorb_w')),
-            _alias('ev_max_absorb_w', f'ems.devices.{ev_id}.capabilities.max_absorb_w', ev_capabilities.get('max_absorb_w')),
-            _alias('ev_power_step_w', f'ems.devices.{ev_id}.capabilities.step_w', ev_capabilities.get('step_w')),
-            _alias('ev_current_step_a', f'ems.devices.{ev_id}.adapter.current_step_a', ev_adapter.get('current_step_a')),
-            _alias('ev_charger_phases', f'ems.devices.{ev_id}.adapter.phases', ev_adapter.get('phases')),
-            _alias('ev_force_on', f'ems.devices.{ev_id}.policy.force_on', ev_policy.get('force_on')),
-        ]
-    )
-
-    relay1 = _relay_device_by_index(devices, 0)
-    relay1_capabilities = relay1.get('capabilities', {}) if isinstance(relay1, dict) else {}
-    relay1_policy = relay1.get('policy', {}) if isinstance(relay1, dict) else {}
-    relay1_adapter = relay1.get('adapter', {}) if isinstance(relay1, dict) else {}
-    relay1_id = _device_id_of(relay1, 'RELAY1')
-    aliases.extend(
-        [
-            _alias('actuator_relay1', f'ems.devices.{relay1_id}.adapter.enabled', relay1_adapter.get('enabled')),
-        ]
-    )
-
-    relay2 = _relay_device_by_index(devices, 1)
-    relay2_capabilities = relay2.get('capabilities', {}) if isinstance(relay2, dict) else {}
-    relay2_policy = relay2.get('policy', {}) if isinstance(relay2, dict) else {}
-    relay2_adapter = relay2.get('adapter', {}) if isinstance(relay2, dict) else {}
-    relay2_id = _device_id_of(relay2, 'RELAY2')
-    aliases.extend(
-        [
-            _alias('actuator_relay2', f'ems.devices.{relay2_id}.adapter.enabled', relay2_adapter.get('enabled')),
-        ]
-    )
-
-    active_aliases = []
-    for alias in aliases:
-        if alias.value:
-            active_aliases.append(alias)
-    return tuple(active_aliases)
-
-
-def runtime_alias_index(config: dict) -> dict[str, RuntimeAlias]:
-    index = {}
-    for alias in build_runtime_aliases(config):
-        index[alias.runtime_key] = alias
-    return index
-
-
-def _first_device_of_kind(devices: dict, kind: str) -> dict:
-    if not isinstance(devices, dict):
-        return {}
-    for device_id, device in devices.items():
-        if isinstance(device, dict) and str(device.get('kind')) == str(kind):
-            mapped = dict(device)
-            mapped['_device_id'] = str(device_id)
-            return mapped
-    return {}
-
-
-def _relay_device_by_index(devices: dict, index: int) -> dict:
-    if not isinstance(devices, dict):
-        return {}
-    preferred_id = f'RELAY{index + 1}'
-    preferred = devices.get(preferred_id)
-    if isinstance(preferred, dict) and str(preferred.get('kind')) == 'RELAY':
-        mapped = dict(preferred)
-        mapped['_device_id'] = preferred_id
-        return mapped
-    relays = []
-    for device_id, device in devices.items():
-        if isinstance(device, dict) and str(device.get('kind')) == 'RELAY':
-            mapped = dict(device)
-            mapped['_device_id'] = str(device_id)
-            relays.append(mapped)
-    if index < len(relays):
-        return relays[index]
-    return {}
-
-
-def _device_id_of(device: dict, default: str) -> str:
-    if not isinstance(device, dict):
-        return default
-    resolved = device.get('device_id') or device.get('_device_id')
-    if resolved not in (None, ''):
-        return str(resolved)
-    return default
 
 
 def _entity_values_reader(entity_values: dict[str, object]):
@@ -1770,103 +1628,6 @@ def _resolve_snapshot_backed_section_value(
     return _resolve_snapshot_backed_value(static_value, section_dynamic_values, str(field), default)
 
 
-def _register_dynamic_runtime_read(
-    unique_reads: list[dict[str, object]],
-    unique_slots: dict[tuple[object, ...], int],
-    logical_read_counts: list[int],
-    value: DynamicConfigRef,
-) -> int:
-    cache_key = _runtime_materialization_ref_key(value)
-    slot = unique_slots.get(cache_key)
-    if slot is None:
-        slot = len(unique_reads)
-        unique_slots[cache_key] = slot
-        unique_reads.append(
-            {
-                'entity_id': str(value.entity_id),
-                'default': value.default,
-                'value_type': str(value.value_type),
-            }
-        )
-        logical_read_counts.append(0)
-    logical_read_counts[slot] = int(logical_read_counts[slot]) + 1
-    return slot
-
-
-def _compile_flat_runtime_section_fields(
-    section: object,
-    unique_reads: list[dict[str, object]],
-    unique_slots: dict[tuple[object, ...], int],
-    logical_read_counts: list[int],
-) -> tuple[tuple[str, Optional[int], object], ...]:
-    if not hasattr(section, 'items'):
-        return ()
-    bindings = []
-    for field_name, field_value in section.items():
-        if isinstance(field_value, DynamicConfigRef):
-            slot = _register_dynamic_runtime_read(unique_reads, unique_slots, logical_read_counts, field_value)
-            bindings.append((str(field_name), slot, field_value.default))
-        else:
-            bindings.append((str(field_name), None, field_value))
-    return tuple(bindings)
-
-
-def _compile_flat_runtime_role_constraint_fields(
-    role_constraints: object,
-    unique_reads: list[dict[str, object]],
-    unique_slots: dict[tuple[object, ...], int],
-    logical_read_counts: list[int],
-) -> tuple[tuple[str, str, str, Optional[int], object], ...]:
-    if not hasattr(role_constraints, 'items'):
-        return ()
-    bindings = []
-    default_fields = role_constraints.get('default', {}) if hasattr(role_constraints, 'get') else {}
-    if hasattr(default_fields, 'items'):
-        for field_name, field_value in default_fields.items():
-            if isinstance(field_value, DynamicConfigRef):
-                slot = _register_dynamic_runtime_read(unique_reads, unique_slots, logical_read_counts, field_value)
-                bindings.append(('default', '', str(field_name), slot, field_value.default))
-            else:
-                bindings.append(('default', '', str(field_name), None, field_value))
-    for role_key, role_devices in role_constraints.items():
-        if str(role_key) == 'default' or not hasattr(role_devices, 'items'):
-            continue
-        for device_id, device_fields in role_devices.items():
-            if not hasattr(device_fields, 'items'):
-                continue
-            for field_name, field_value in device_fields.items():
-                if isinstance(field_value, DynamicConfigRef):
-                    slot = _register_dynamic_runtime_read(unique_reads, unique_slots, logical_read_counts, field_value)
-                    bindings.append((str(role_key), str(device_id), str(field_name), slot, field_value.default))
-                else:
-                    bindings.append((str(role_key), str(device_id), str(field_name), None, field_value))
-    return tuple(bindings)
-
-
-def _compile_flat_runtime_device_dynamic_fields(
-    device_plan: StaticDevicePlan,
-    unique_reads: list[dict[str, object]],
-    unique_slots: dict[tuple[object, ...], int],
-    logical_read_counts: list[int],
-) -> tuple[tuple[str, str, int], ...]:
-    bindings = []
-    for section_name, section_value in (
-        ('capabilities', device_plan.static_capabilities),
-        ('adapter', device_plan.static_adapter),
-        ('policy', device_plan.static_policy),
-        ('guard', device_plan.static_guard),
-    ):
-        if not hasattr(section_value, 'items'):
-            continue
-        for field_name, field_value in section_value.items():
-            if not isinstance(field_value, DynamicConfigRef):
-                continue
-            slot = _register_dynamic_runtime_read(unique_reads, unique_slots, logical_read_counts, field_value)
-            bindings.append((str(section_name), str(field_name), slot))
-    return tuple(bindings)
-
-
-
 def _policy_runtime_static_section(device_plan: StaticDevicePlan, section: str):
     section_name = str(section)
     if section_name == 'capabilities':
@@ -2157,176 +1918,6 @@ def compile_policy_runtime_facts_plan(compiled_plan: CompiledEMSPlan) -> dict[st
         'dynamic_fact_binding_groups': tuple(dynamic_fact_binding_group_entries),
         'facts_plan_metrics': facts_plan_metrics,
     }
-
-
-def compile_dynamic_runtime_read_plan(compiled_plan: CompiledEMSPlan) -> dict[str, object]:
-    unique_reads: list[dict[str, object]] = []
-    unique_slots: dict[tuple[object, ...], int] = {}
-    logical_read_counts: list[int] = []
-
-    profiles_fields = _compile_flat_runtime_section_fields(
-        compiled_plan.profiles, unique_reads, unique_slots, logical_read_counts
-    )
-    if compiled_plan.static_topology is not None:
-        global_config_fields = ()
-    else:
-        global_config_fields = _compile_flat_runtime_section_fields(
-            compiled_plan.global_config, unique_reads, unique_slots, logical_read_counts
-        )
-    runtime_fields = _compile_flat_runtime_section_fields(
-        compiled_plan.runtime, unique_reads, unique_slots, logical_read_counts
-    )
-    state_fields = _compile_flat_runtime_section_fields(
-        compiled_plan.state, unique_reads, unique_slots, logical_read_counts
-    )
-    haeo_fields = None
-    if compiled_plan.haeo is not None:
-        haeo_fields = _compile_flat_runtime_section_fields(
-            compiled_plan.haeo, unique_reads, unique_slots, logical_read_counts
-        )
-    role_constraint_fields = _compile_flat_runtime_role_constraint_fields(
-        compiled_plan.role_constraints, unique_reads, unique_slots, logical_read_counts
-    )
-
-    device_dynamic_fields = {}
-    for device_id, device_plan in compiled_plan.devices.items():
-        device_dynamic_fields[str(device_id)] = _compile_flat_runtime_device_dynamic_fields(
-            device_plan,
-            unique_reads,
-            unique_slots,
-            logical_read_counts,
-        )
-    home_battery_dynamic_fields = _compile_flat_runtime_device_dynamic_fields(
-        compiled_plan.home_battery,
-        unique_reads,
-        unique_slots,
-        logical_read_counts,
-    )
-
-    battery_priority_static = None
-    battery_priority_slot = None
-    battery_priority_value = (
-        compiled_plan.home_battery.static_policy.get('priority')
-        if hasattr(compiled_plan.home_battery.static_policy, 'get')
-        else None
-    )
-    if isinstance(battery_priority_value, DynamicConfigRef):
-        battery_priority_slot = unique_slots.get(_runtime_materialization_ref_key(battery_priority_value))
-        if battery_priority_slot is None:
-            battery_priority_slot = _register_dynamic_runtime_read(
-                unique_reads,
-                unique_slots,
-                logical_read_counts,
-                battery_priority_value,
-            )
-        battery_priority_static = battery_priority_value.default
-    else:
-        battery_priority_static = battery_priority_value
-
-    dynamic_refs_seen = 0
-    for count in logical_read_counts:
-        dynamic_refs_seen += int(count)
-    dynamic_refs_unique = len(unique_reads)
-    compiled_logical_read_counts = []
-    for count in logical_read_counts:
-        compiled_logical_read_counts.append(int(count))
-    return {
-        'unique_reads': tuple(unique_reads),
-        'logical_read_counts': tuple(compiled_logical_read_counts),
-        'profiles_fields': profiles_fields,
-        'global_config_fields': global_config_fields,
-        'runtime_fields': runtime_fields,
-        'state_fields': state_fields,
-        'haeo_fields': haeo_fields,
-        'role_constraint_fields': role_constraint_fields,
-        'device_dynamic_fields': device_dynamic_fields,
-        'home_battery_dynamic_fields': home_battery_dynamic_fields,
-        'home_battery_priority_slot': battery_priority_slot,
-        'home_battery_priority_static': battery_priority_static,
-        'dynamic_refs_seen': int(dynamic_refs_seen),
-        'dynamic_refs_unique': int(dynamic_refs_unique),
-        'dynamic_ref_cache_hits': max(0, int(dynamic_refs_seen) - int(dynamic_refs_unique)),
-    }
-
-
-def _assemble_flat_runtime_section(
-    field_bindings: tuple[tuple[str, Optional[int], object], ...],
-    dynamic_values: tuple[object, ...],
-    stats: Optional[dict[str, int]] = None,
-) -> dict:
-    assembled = {}
-    if stats is not None:
-        stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 1
-    for field_name, slot, static_value in field_bindings:
-        if slot is None:
-            assembled[str(field_name)] = static_value
-        else:
-            assembled[str(field_name)] = dynamic_values[int(slot)]
-    return assembled
-
-
-def _assemble_flat_runtime_role_constraints(
-    field_bindings: tuple[tuple[str, str, str, Optional[int], object], ...],
-    dynamic_values: tuple[object, ...],
-    stats: Optional[dict[str, int]] = None,
-) -> dict:
-    assembled = {'default': {}}
-    if stats is not None:
-        stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 2
-    for role_key, device_id, field_name, slot, static_value in field_bindings:
-        resolved_value = static_value if slot is None else dynamic_values[int(slot)]
-        if role_key == 'default':
-            assembled['default'][str(field_name)] = resolved_value
-            continue
-        role_devices = assembled.get(str(role_key))
-        if role_devices is None:
-            role_devices = {}
-            assembled[str(role_key)] = role_devices
-            if stats is not None:
-                stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 1
-        device_fields = role_devices.get(str(device_id))
-        if device_fields is None:
-            device_fields = {}
-            role_devices[str(device_id)] = device_fields
-            if stats is not None:
-                stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 1
-        device_fields[str(field_name)] = resolved_value
-    return assembled
-
-
-def _assemble_flat_runtime_device_dynamic_values(
-    device_bindings: tuple[tuple[str, str, int], ...],
-    dynamic_values: tuple[object, ...],
-    stats: Optional[dict[str, int]] = None,
-) -> dict:
-    assembled = {}
-    if stats is not None:
-        stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 1
-    for section_name, field_name, slot in device_bindings:
-        section_values = assembled.get(str(section_name))
-        if section_values is None:
-            section_values = {}
-            assembled[str(section_name)] = section_values
-            if stats is not None:
-                stats['dict_nodes'] = int(stats.get('dict_nodes', 0) or 0) + 1
-        section_values[str(field_name)] = dynamic_values[int(slot)]
-    return assembled
-
-
-def _resolve_home_battery_priority_from_snapshot(
-    battery_plan: StaticDevicePlan,
-    battery_values: dict,
-    compiled_plan: CompiledEMSPlan,
-    device_values: dict[str, dict],
-) -> object:
-    # Device-owned surplus priority: HOME_BATTERY never inherits EV priority.
-    return _resolve_snapshot_backed_section_value(
-        battery_plan,
-        battery_values,
-        'policy',
-        'priority',
-        3,
-    )
 
 
 def _policy_runtime_device_plan(compiled_plan: CompiledEMSPlan, device_id: str) -> Optional[StaticDevicePlan]:
@@ -2620,112 +2211,71 @@ def _coerce_packet_value(value: object, default: object) -> object:
     return value
 
 
-def build_dynamic_runtime_snapshot(
+def build_core_config_view_snapshot(
     compiled_plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
     metrics: Optional[dict[str, int]] = None,
-    dynamic_runtime_read_plan: Optional[dict[str, object]] = None,
-    dynamic_runtime_read_values: Optional[tuple[object, ...]] = None,
 ) -> DynamicRuntimeSnapshot:
+    """Materialize a CoreConfigView snapshot without a parallel runtime read plan.
+
+    This helper remains for CoreConfigView consumers scheduled for L2 cleanup; the
+    production runtime does not call it. Repeated HA refs are deduplicated within
+    one snapshot through resolved_dynamic_values.
+    """
     materialize_started_ts = time.time()
-    runtime_read_plan = dynamic_runtime_read_plan or compile_dynamic_runtime_read_plan(compiled_plan)
-
-    if dynamic_runtime_read_values is None:
-        resolved_values_list = []
-        for index, read_entry in enumerate(runtime_read_plan.get('unique_reads', ())):
-            resolved_values_list.append(read_entity(str(read_entry['entity_id']), read_entry.get('default')))
-            logical_count = int(tuple(runtime_read_plan.get('logical_read_counts', ()))[index])
-            note_cached_dynamic_read = getattr(read_entity, 'note_cached_dynamic_read', None)
-            if callable(note_cached_dynamic_read):
-                duplicate_count = max(0, logical_count - 1)
-                while duplicate_count > 0:
-                    note_cached_dynamic_read(str(read_entry['entity_id']), read_entry.get('default'))
-                    duplicate_count -= 1
-        dynamic_runtime_read_values = tuple(resolved_values_list)
-
+    resolved_dynamic_values = {}
     snapshot_stats = {
         'dict_nodes': 0,
         'tuple_nodes': 0,
-        'dynamic_refs_seen': int(runtime_read_plan.get('dynamic_refs_seen', 0) or 0),
-        'dynamic_refs_unique': int(runtime_read_plan.get('dynamic_refs_unique', 0) or 0),
-        'dynamic_ref_cache_hits': int(runtime_read_plan.get('dynamic_ref_cache_hits', 0) or 0),
+        'dynamic_refs_seen': 0,
+        'dynamic_refs_unique': 0,
+        'dynamic_ref_cache_hits': 0,
     }
 
-    profiles_started_ts = time.time()
-    profiles = _assemble_flat_runtime_section(
-        tuple(runtime_read_plan.get('profiles_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    profiles = _materialize_runtime_mapping(
+        compiled_plan.profiles, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    global_config = _assemble_flat_runtime_section(
-        tuple(runtime_read_plan.get('global_config_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    global_config = _materialize_runtime_mapping(
+        compiled_plan.global_config, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    runtime = _assemble_flat_runtime_section(
-        tuple(runtime_read_plan.get('runtime_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    runtime = _materialize_runtime_mapping(
+        compiled_plan.runtime, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    state = _assemble_flat_runtime_section(
-        tuple(runtime_read_plan.get('state_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    state = _materialize_runtime_mapping(
+        compiled_plan.state, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    _record_core_config_metric(metrics, 'policy_engine_core_config_profiles_global_runtime_state_ms', profiles_started_ts)
 
-    devices_started_ts = time.time()
     device_values = {}
     for device_id, device_plan in compiled_plan.devices.items():
-        device_values[str(device_id)] = _assemble_flat_runtime_device_dynamic_values(
-            tuple(runtime_read_plan.get('device_dynamic_fields', {}).get(str(device_id), ()) or ()),
-            dynamic_runtime_read_values,
-            stats=snapshot_stats,
+        device_values[str(device_id)] = _materialize_device_snapshot_values(
+            device_plan, read_entity,
+            resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
         )
-    _record_core_config_metric(metrics, 'policy_engine_core_config_devices_ms', devices_started_ts)
-
-    home_battery_started_ts = time.time()
-    home_battery_values = _assemble_flat_runtime_device_dynamic_values(
-        tuple(runtime_read_plan.get('home_battery_dynamic_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    home_battery_values = _materialize_device_snapshot_values(
+        compiled_plan.home_battery, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    battery_priority_slot = runtime_read_plan.get('home_battery_priority_slot')
-    battery_priority_static = runtime_read_plan.get('home_battery_priority_static', 3)
-    resolved_battery_priority = battery_priority_static
-    if battery_priority_slot is not None:
-        resolved_battery_priority = dynamic_runtime_read_values[int(battery_priority_slot)]
-        home_battery_values.setdefault('policy', {})
-        home_battery_values['policy']['priority'] = resolved_battery_priority
-    _record_core_config_metric(metrics, 'policy_engine_core_config_home_battery_ms', home_battery_started_ts)
 
-    haeo_started_ts = time.time()
     haeo_values = None
     if compiled_plan.haeo is not None:
-        haeo_values = _assemble_flat_runtime_section(
-            tuple(runtime_read_plan.get('haeo_fields', ()) or ()),
-            dynamic_runtime_read_values,
-            stats=snapshot_stats,
+        haeo_values = _materialize_runtime_mapping(
+            compiled_plan.haeo, read_entity,
+            resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
         )
-    _record_core_config_metric(metrics, 'policy_engine_core_config_haeo_ms', haeo_started_ts)
-
-    role_constraints_started_ts = time.time()
-    role_constraint_values = _assemble_flat_runtime_role_constraints(
-        tuple(runtime_read_plan.get('role_constraint_fields', ()) or ()),
-        dynamic_runtime_read_values,
-        stats=snapshot_stats,
+    role_constraint_values = _materialize_runtime_mapping(
+        compiled_plan.role_constraints, read_entity,
+        resolved_dynamic_values=resolved_dynamic_values, stats=snapshot_stats,
     )
-    _record_core_config_metric(metrics, 'policy_engine_core_config_role_constraints_ms', role_constraints_started_ts)
 
-    derived_fields_started_ts = time.time()
     if metrics is not None:
-        metrics['policy_engine_dynamic_runtime_snapshot_dict_nodes'] = int(snapshot_stats['dict_nodes'])
-        metrics['policy_engine_dynamic_runtime_snapshot_tuple_nodes'] = int(snapshot_stats['tuple_nodes'])
-        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_refs_seen'] = int(snapshot_stats['dynamic_refs_seen'])
-        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_refs_unique'] = int(snapshot_stats['dynamic_refs_unique'])
-        metrics['policy_engine_dynamic_runtime_snapshot_dynamic_ref_cache_hits'] = int(snapshot_stats['dynamic_ref_cache_hits'])
-    _record_core_config_metric(metrics, 'policy_engine_core_config_derived_fields_ms', derived_fields_started_ts)
-    _record_core_config_metric(metrics, 'policy_engine_core_config_materialize_total_ms', materialize_started_ts)
+        metrics['policy_engine_core_config_materialize_total_ms'] = int(
+            round(max(0.0, time.time() - materialize_started_ts) * 1000.0)
+        )
+
     return DynamicRuntimeSnapshot(
         profiles=profiles,
         global_config=global_config,
@@ -2742,18 +2292,10 @@ def build_policy_context_view(
     compiled_plan: CompiledEMSPlan,
     read_entity: Callable[[str, object], object],
     metrics: Optional[dict[str, int]] = None,
-    dynamic_runtime_read_plan: Optional[dict[str, object]] = None,
-    dynamic_runtime_read_values: Optional[tuple[object, ...]] = None,
 ) -> CoreConfigView:
     snapshot_started_ts = time.time()
-    snapshot = build_dynamic_runtime_snapshot(
-        compiled_plan,
-        read_entity,
-        metrics=metrics,
-        dynamic_runtime_read_plan=dynamic_runtime_read_plan,
-        dynamic_runtime_read_values=dynamic_runtime_read_values,
-    )
-    _record_core_config_metric(metrics, 'policy_engine_dynamic_runtime_snapshot_ms', snapshot_started_ts)
+    snapshot = build_core_config_view_snapshot(compiled_plan, read_entity, metrics=metrics)
+    _record_core_config_metric(metrics, 'policy_engine_core_config_view_snapshot_ms', snapshot_started_ts)
     view_started_ts = time.time()
     cfg_view = CoreConfigView(PolicyContext(plan=compiled_plan, snapshot=snapshot))
     _record_core_config_metric(metrics, 'policy_engine_policy_context_view_ms', view_started_ts)
@@ -3409,7 +2951,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             issues.append(_issue(f'{device_path}.{section}', SEVERITY_ERROR, 'must be a mapping'))
 
     if runtime_packet_mode:
-        for runtime_owned_section in ('policy', 'guard', 'adapter'):
+        for runtime_owned_section in ('policy', 'guard'):
             if runtime_owned_section in device:
                 issues.append(
                     _issue(
@@ -3418,6 +2960,16 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                         'runtime packet-owned section must not be defined in EMS_config.yaml',
                     )
                 )
+        if 'adapter' in device:
+            issues.append(
+                _issue(
+                    f'{device_path}.adapter',
+                    SEVERITY_ERROR,
+                    'runtime-packet mode owns actuator entity mappings via '
+                    'sensor.ems_policy_config_runtime attribute entity_registry; '
+                    'remove static device adapter mapping from EMS_config.yaml',
+                )
+            )
         if kind == 'RELAY':
             capabilities = device.get('capabilities')
             if isinstance(capabilities, dict):
@@ -3975,30 +3527,6 @@ def _build_core_role_constraints(role_constraints: object, read_entity: Optional
         default=default_constraints,
         by_role=by_role,
     )
-
-
-def _alias(runtime_key: str, config_path: str, value: object, unit_transform: str = 'identity') -> RuntimeAlias:
-    return RuntimeAlias(
-        runtime_key=runtime_key,
-        config_path=config_path,
-        value='' if value is None else str(value),
-        unit_transform=unit_transform,
-    )
-
-
-def _read_grouped_value(
-    aliases: dict[str, RuntimeAlias],
-    read_entity: Callable[[str, object], object],
-    runtime_key: str,
-    default: object,
-) -> object:
-    alias = aliases.get(runtime_key)
-    if alias is None:
-        return default
-    raw_value = read_entity(alias.value, default)
-    if raw_value in (None, 'unknown', 'unavailable', 'none', ''):
-        return default
-    return raw_value
 
 
 def _resolve_core_config_value(

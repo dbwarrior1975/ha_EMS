@@ -1,32 +1,40 @@
 from ems_adapter.ha_adapter import get_attr, get_bool, get_float, get_int, get_str, publish_sensor, set_boolean, set_number
-from ems_adapter.runtime_context import read_core_config, read_runtime_entities
+from ems_adapter.runtime_context import read_core_config, read_runtime_context, read_runtime_entities
 from ems_core.domain.ev_power import ev_min_current_a_from_min_absorb_w, ev_power_w_to_current_a
 from ems_core.domain.models import EmsDeviceConfig
 from ems_core.domain.capabilities import clamp_target_w_for_capabilities, capability_block_reason
+from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS
 
 
 def _load_runtime_entities():
-    ent = globals().get('ENT', {})
-    try:
-        runtime_entities = read_runtime_entities(get_bool, get_float, get_int, get_str)
-    except Exception:
-        runtime_entities = {}
-    if ent:
-        merged = dict(ent)
-        merged.update(runtime_entities)
-        return merged
-    return runtime_entities
+    return read_runtime_entities(get_bool, get_float, get_int, get_str)
 
 
 def _load_core_config():
     return read_core_config(get_bool, get_float, get_int, get_str)
 
 
-def _ent(key, fallback, entities=None):
-    if entities is not None and key in entities:
-        return entities[key]
-    ent = globals().get('ENT', {})
-    return ent.get(key, fallback)
+def _load_runtime_context():
+    return read_runtime_context(get_bool, get_float, get_int, get_str)
+
+
+def _registry_entity(key, entities=None):
+    if not isinstance(entities, dict):
+        return None
+    value = entities.get(key)
+    if value in (None, ''):
+        return None
+    return str(value)
+
+
+def _device_adapter_entities(device_id, entities=None):
+    if not isinstance(entities, dict):
+        return {}
+    devices = entities.get('devices', {})
+    if not isinstance(devices, dict):
+        return {}
+    mapped = devices.get(str(device_id), {})
+    return mapped if isinstance(mapped, dict) else {}
 
 
 def _resolve_float_value(value, default=0.0):
@@ -50,7 +58,9 @@ def _device_policy_by_id(device_id, entities=None):
 
 
 def _device_policy_source_for_id(device_id, entities=None):
-    source_entity = _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities)
+    source_entity = _registry_entity('device_policies', entities)
+    if not source_entity:
+        return None, '', 'missing_device_policies_mapping'
     policies = get_attr(source_entity, 'device_policies', None)
     if policies:
         for policy in policies:
@@ -74,8 +84,8 @@ def _device_policy_target_w(policy, default=0):
     return float(policy.get('target_w') or 0)
 
 
-def _capability_device_config_for_id(device_id):
-    cfg = _load_core_config()
+def _capability_device_config_for_id(device_id, cfg=None):
+    cfg = cfg or _load_core_config()
     device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
     if device is None:
         return None
@@ -95,8 +105,12 @@ def _capability_device_config_for_id(device_id):
     )
 
 
-def _write_battery_actuator(entities=None):
-    control = get_str(_ent('control_profile', 'input_select.ems_control_profile', entities), 'AUTOMATIC')
+def _write_battery_actuator(entities=None, cfg=None):
+    if entities is None:
+        entities = _load_runtime_entities()
+    cfg = cfg or _load_core_config()
+    profiles = getattr(cfg, 'profiles', None)
+    control = str(getattr(profiles, 'control', 'AUTOMATIC') or 'AUTOMATIC')
 
     if control == 'MANUAL':
         return {
@@ -128,7 +142,7 @@ def _write_battery_actuator(entities=None):
         }
 
     target_w = _device_policy_target_w(device_policy, default=0)
-    capability_cfg = _capability_device_config_for_id('HOME_BATTERY')
+    capability_cfg = _capability_device_config_for_id('HOME_BATTERY', cfg=cfg)
     if capability_cfg is None:
         return {
             'target': 'victron',
@@ -139,10 +153,21 @@ def _write_battery_actuator(entities=None):
         }
     capability_reason = capability_block_reason(capability_cfg, target_w)
     target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
-    battery_entity = _ent('actuator_battery_setpoint_w', 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point', entities)
+
+    device_mapping = _device_adapter_entities('HOME_BATTERY', entities)
+    battery_entity = device_mapping.get('target_w')
+    if not battery_entity:
+        return {
+            'target': 'victron',
+            'action': 'skip',
+            'reason': 'missing_actuator_entity',
+            'written': False,
+            'policy_source': policy_source,
+        }
     current_w = get_float(battery_entity, 0)
-    deadband = get_float(_ent('deadband_w', 'input_number.ems_deadband_w', entities), 100)
-    ramp = get_float(_ent('ramp_max_w', 'input_number.ems_ramp_max_w', entities), 500)
+    global_cfg = getattr(cfg, 'global_config', None)
+    deadband = float(getattr(global_cfg, 'deadband_w', 100.0) or 100.0)
+    ramp = float(getattr(global_cfg, 'ramp_w', 500.0) or 500.0)
 
     delta = target_w - current_w
     if abs(delta) < deadband:
@@ -174,7 +199,10 @@ def _write_battery_actuator(entities=None):
     }
 
 
-def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
+def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
+    if entities is None:
+        entities = _load_runtime_entities()
+    cfg = cfg or _load_core_config()
     device_policy = _device_policy_by_id(device_id, entities) if device_id else None
     if device_policy is None:
         return {
@@ -186,19 +214,28 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
         }
 
     policy_source = 'canonical'
-    device_entities = (entities or {}).get('devices', {}) or {}
-    device_runtime = device_entities.get(device_id, {})
-    enabled_entity = device_runtime.get('enabled') or _ent('actuator_ev_enabled', 'switch.charger_control', entities)
-    current_entity = device_runtime.get('current_a') or _ent('actuator_ev_current_a', 'number.charger_current_level', entities)
+    device_runtime = _device_adapter_entities(device_id, entities)
+    enabled_entity = device_runtime.get('enabled')
+    current_entity = device_runtime.get('current_a')
+    if not enabled_entity or not current_entity:
+        return {
+            'target': device_id,
+            'action': 'skip',
+            'reason': 'missing_actuator_entity',
+            'written': False,
+            'policy_source': policy_source,
+        }
     current_on = get_bool(enabled_entity)
     current_level = get_int(current_entity, 0)
-    step_a = get_float(device_runtime.get('current_step_a') or _ent('ev_current_step_a', 'input_number.ems_ev_current_step_a', entities), 4)
-    phases = get_float(device_runtime.get('phases') or _ent('ev_charger_phases', 'input_number.ems_ev_charger_phases', entities), 1)
-    voltage_v = get_float(device_runtime.get('voltage_v') or _ent('ev_voltage_v', 'input_number.ems_ev_voltage_v', entities), 230)
+    core_device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
+    adapter_cfg = getattr(core_device, 'adapter', None) if core_device is not None else None
+    step_a = float(getattr(adapter_cfg, 'current_step_a', 4.0) or 4.0)
+    phases = float(getattr(adapter_cfg, 'phases', 1.0) or 1.0)
+    voltage_v = float(getattr(adapter_cfg, 'voltage_v', 230.0) or 230.0)
     ev_policy_mode = str(device_policy.get('mode') or '')
     capability_reason = ''
     target_w = _device_policy_target_w(device_policy, default=0)
-    capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER')
+    capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER', cfg=cfg)
     if capability_cfg is None:
         return {
             'target': device_id,
@@ -207,8 +244,8 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
             'written': False,
             'policy_source': policy_source,
         }
-    min_absorb_w = _resolve_float_value(device_runtime.get('min_absorb_w', capability_cfg.min_absorb_w), capability_cfg.min_absorb_w)
-    max_absorb_w = _resolve_float_value(device_runtime.get('max_absorb_w', capability_cfg.max_absorb_w), capability_cfg.max_absorb_w)
+    min_absorb_w = float(capability_cfg.min_absorb_w)
+    max_absorb_w = float(capability_cfg.max_absorb_w)
     derived_min_a = ev_min_current_a_from_min_absorb_w(
         min_absorb_w,
         phases=phases,
@@ -325,7 +362,10 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None):
     }
 
 
-def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entities=None):
+def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
+    if entities is None:
+        entities = _load_runtime_entities()
+    cfg = cfg or _load_core_config()
     device_policy = _device_policy_by_id(device_id, entities) if device_id else None
     if device_policy is None:
         return {
@@ -337,15 +377,8 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
         }
 
     policy_source = 'canonical'
-    device_entities = (entities or {}).get('devices', {}) or {}
-    device_runtime = device_entities.get(device_id or '', {})
-    if device_runtime.get('enabled'):
-        actuator_ent = device_runtime.get('enabled')
-    if not actuator_ent:
-        if device_id == 'RELAY1':
-            actuator_ent = _ent('actuator_relay1', 'switch.relay_1_2', entities)
-        elif device_id == 'RELAY2':
-            actuator_ent = _ent('actuator_relay2', 'switch.relay_2_2', entities)
+    device_runtime = _device_adapter_entities(device_id or '', entities)
+    actuator_ent = device_runtime.get('enabled')
     if not actuator_ent:
         return {
             'target': label,
@@ -356,7 +389,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
         }
     capability_reason = ''
     if device_id:
-        capability_cfg = _capability_device_config_for_id(device_id)
+        capability_cfg = _capability_device_config_for_id(device_id, cfg=cfg)
         if capability_cfg is None:
             return {
                 'target': label,
@@ -370,10 +403,7 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
     if str(device_policy.get('mode') or '') == 'skip':
         strategy = -1
     else:
-        if capability_reason:
-            strategy = 0
-        else:
-            strategy = 1 if _device_policy_enabled(device_policy) else 0
+        strategy = 0 if capability_reason else (1 if _device_policy_enabled(device_policy) else 0)
     is_on = get_bool(actuator_ent)
 
     if strategy < 0:
@@ -384,7 +414,6 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
             'written': False,
             'policy_source': policy_source,
         }
-
     if strategy == 1 and not is_on:
         set_boolean(actuator_ent, True)
         return {
@@ -394,7 +423,6 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
             'written': True,
             'policy_source': policy_source,
         }
-
     if strategy == 0 and is_on:
         set_boolean(actuator_ent, False)
         return {
@@ -404,7 +432,6 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
             'written': True,
             'policy_source': policy_source,
         }
-
     return {
         'target': label,
         'action': 'skip',
@@ -417,8 +444,10 @@ def _write_relay_actuator(policy_ent, actuator_ent, label, device_id=None, entit
 
 
 def _publish_writer_trace(victron, device_traces, entities=None):
-    trace_ent = _ent('actuator_writer_trace', 'sensor.ems_actuator_writer_trace', entities)
-    device_policies_entity = _ent('device_policies', 'sensor.ems_device_policies_pyscript', entities)
+    trace_ent = _registry_entity('actuator_writer_trace', entities)
+    device_policies_entity = _registry_entity('device_policies', entities)
+    if not trace_ent or not device_policies_entity:
+        return False
     attrs = {
         'writer_policy_contract': 'device_policy_primary',
         'writer_trace_canonical_contract': 'devices',
@@ -429,6 +458,7 @@ def _publish_writer_trace(victron, device_traces, entities=None):
         'devices': device_traces,
     }
     publish_sensor(trace_ent, 'ACTIVE', attrs)
+    return True
 
 
 @time_trigger('period(now, 30s)')
@@ -439,11 +469,9 @@ def _publish_writer_trace(victron, device_traces, entities=None):
 def ems_actuator_writers_loop():
     entities = {}
     try:
-        entities = _load_runtime_entities()
-        cfg = _load_core_config()
+        cfg, entities = _load_runtime_context()
     except Exception as exc:
-        trace_ent = _ent('actuator_writer_trace', 'sensor.ems_actuator_writer_trace', entities)
-        publish_sensor(trace_ent, 'SUPPRESSED', {
+        publish_sensor(CANONICAL_DIAGNOSTICS_OUTPUTS['actuator_writer_trace'], 'SUPPRESSED', {
             'writer_policy_contract': 'device_policy_primary',
             'actuator_writes_suppressed': True,
             'error': True,
@@ -456,20 +484,19 @@ def ems_actuator_writers_loop():
             'error_code': 'RUNTIME_CONTEXT_INVALID',
             'error_path': getattr(exc, 'path', ''),
         }
-    victron = _write_battery_actuator(entities)
+    victron = _write_battery_actuator(entities, cfg=cfg)
     device_traces = {}
     for device in getattr(cfg, 'devices', {}).values():
         device_id = str(device.device_id)
         kind = str(device.kind)
         if kind == 'EV_CHARGER':
-            device_traces[device_id] = _write_ev_actuator(device_id=device_id, entities=entities)
+            device_traces[device_id] = _write_ev_actuator(device_id=device_id, entities=entities, cfg=cfg)
         elif kind == 'RELAY':
             device_traces[device_id] = _write_relay_actuator(
-                None,
-                '',
                 device_id.lower(),
                 device_id=device_id,
                 entities=entities,
+                cfg=cfg,
             )
     _publish_writer_trace(victron, device_traces, entities)
     result = {

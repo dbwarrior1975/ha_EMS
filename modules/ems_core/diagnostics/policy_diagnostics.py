@@ -25,7 +25,6 @@ def net_zero_attrs(outputs, profiles, guard_decision=None):
         'battery_write_enabled': outputs.battery_write_enabled,
         'surplus_policy_active': outputs.surplus_policy_active,
         'surplus_next_threshold_kw': outputs.surplus_next_threshold_kw,
-        'surplus_dispatch_decision': outputs.surplus_dispatch_decision,
         'surplus_explanation': outputs.surplus_explanation,
         'device_policies': device_policy_payloads or (),
     }

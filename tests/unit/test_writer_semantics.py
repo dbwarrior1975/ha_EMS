@@ -63,7 +63,32 @@ def _load_writer_module(project_root):
         'actuator_relay1': 'input_boolean.actuator_relay1',
         'actuator_relay2': 'input_boolean.actuator_relay2',
         'device_policies': 'sensor.ems_device_policies_pyscript',
+        'actuator_writer_trace': 'sensor.ems_actuator_writer_trace',
     }
+    ENT['devices'] = {
+        'HOME_BATTERY': {'device_id': 'HOME_BATTERY', 'kind': 'BATTERY', 'target_w': ENT['actuator_battery_setpoint_w']},
+        'EV_CHARGER': {'device_id': 'EV_CHARGER', 'kind': 'EV_CHARGER', 'enabled': ENT['actuator_ev_enabled'], 'current_a': ENT['actuator_ev_current_a']},
+        'RELAY1': {'device_id': 'RELAY1', 'kind': 'RELAY', 'enabled': ENT['actuator_relay1']},
+        'RELAY2': {'device_id': 'RELAY2', 'kind': 'RELAY', 'enabled': ENT['actuator_relay2']},
+    }
+
+    def runtime_entities():
+        devices = ENT.get('devices', {})
+        ev_device_ids = []
+        relay_device_ids = []
+        for device_id, mapping in devices.items():
+            kind = str((mapping or {}).get('kind') or '')
+            if kind == 'EV_CHARGER':
+                ev_device_ids.append(str(device_id))
+            elif kind == 'RELAY':
+                relay_device_ids.append(str(device_id))
+        return {
+            'device_policies': ENT['device_policies'],
+            'actuator_writer_trace': ENT['actuator_writer_trace'],
+            'devices': devices,
+            'ev_device_ids': tuple(ev_device_ids),
+            'relay_device_ids': tuple(relay_device_ids),
+        }
 
     ns = {
         '__name__': 'writer_test_module',
@@ -79,14 +104,18 @@ def _load_writer_module(project_root):
         'set_number': set_number,
         'publish_sensor': publish_sensor,
         'ENT': ENT,
-        'read_runtime_entities': lambda *args, **kwargs: {},
+        'read_runtime_entities': lambda *args, **kwargs: runtime_entities(),
         '_TEST_TRIGGER_CALLS': trigger_calls,
         '_TEST_CALLS': calls,
+        '_TEST_STATE': state,
+        '_TEST_RUNTIME_ENTITIES': runtime_entities,
     }
     code = compile(src, str(path), 'exec')
     exec(code, ns)
-    ns['read_runtime_entities'] = lambda *args, **kwargs: {}
+    ns['read_runtime_entities'] = lambda *args, **kwargs: ns['_TEST_RUNTIME_ENTITIES']()
     _install_core_capabilities(ns)
+    ns['read_runtime_context'] = lambda *args, **kwargs: (ns['read_core_config'](), ns['_TEST_RUNTIME_ENTITIES']())
+    ns['_load_runtime_context'] = lambda *args, **kwargs: (ns['read_core_config'](), ns['_TEST_RUNTIME_ENTITIES']())
     return ns, state, ENT
 
 
@@ -110,6 +139,7 @@ def _install_device_policies_by_entity(mod, mapping):
 
 
 def _install_core_capabilities(mod, **overrides):
+    state = mod.get('_TEST_STATE', {})
     device_defaults = {
         'HOME_BATTERY': dict(can_absorb_w=True, can_produce_w=True, min_absorb_w=0, max_absorb_w=4000, max_produce_w=4000, step_w=50, priority=1),
         'EV_CHARGER': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=1380, max_absorb_w=6440, max_produce_w=0, step_w=460, priority=1),
@@ -127,18 +157,39 @@ def _install_core_capabilities(mod, **overrides):
             kind = 'BATTERY' if device_id == 'HOME_BATTERY' else ('EV_CHARGER' if device_id == 'EV_CHARGER' else 'RELAY')
         cap_values = {key: value for key, value in device_defaults[device_id].items() if key != 'kind'}
         caps = SimpleNamespace(**cap_values)
-        return SimpleNamespace(device_id=device_id, kind=kind, capabilities=caps, policy=SimpleNamespace(priority=device_defaults[device_id]['priority']))
+        if kind == 'EV_CHARGER':
+            adapter = SimpleNamespace(
+                current_step_a=float(state.get('input_number.ems_ev_current_step_a', 4) or 4),
+                phases=float(state.get('input_number.ems_ev_charger_phases', 1) or 1),
+                voltage_v=float(state.get('input_number.ems_ev_voltage_v', 230) or 230),
+            )
+        else:
+            adapter = SimpleNamespace()
+        return SimpleNamespace(
+            device_id=device_id,
+            kind=kind,
+            capabilities=caps,
+            policy=SimpleNamespace(priority=device_defaults[device_id]['priority']),
+            adapter=adapter,
+        )
 
-    devices = {device_id: _device(device_id) for device_id in device_defaults}
+    def _cfg():
+        devices = {device_id: _device(device_id) for device_id in device_defaults}
+        return SimpleNamespace(
+            profiles=SimpleNamespace(control=str(state.get('input_select.ems_control_profile', 'AUTOMATIC') or 'AUTOMATIC')),
+            global_config=SimpleNamespace(
+                deadband_w=float(state.get('input_number.ems_deadband_w', 100) or 100),
+                ramp_w=float(state.get('input_number.ems_ramp_max_w', 500) or 500),
+            ),
+            home_battery=devices['HOME_BATTERY'],
+            ev_charger=devices.get('EV_CHARGER'),
+            relay1=devices.get('RELAY1'),
+            relay2=devices.get('RELAY2'),
+            devices=devices,
+            device_by_id=lambda device_id: devices.get(device_id),
+        )
 
-    mod['read_core_config'] = lambda *args, **kwargs: SimpleNamespace(
-        home_battery=devices['HOME_BATTERY'],
-        ev_charger=devices['EV_CHARGER'],
-        relay1=devices['RELAY1'],
-        relay2=devices['RELAY2'],
-        devices=devices,
-        device_by_id=lambda device_id: devices.get(device_id),
-    )
+    mod['read_core_config'] = lambda *args, **kwargs: _cfg()
 
 
 @pytest.mark.unit
@@ -424,12 +475,7 @@ def test_writer_relay_device_policy_can_turn_off_actuator(project_root):
 
     state[ENT['actuator_relay1']] = True
 
-    result = mod['_write_relay_actuator'](
-        '',
-        ENT['actuator_relay1'],
-        'relay1',
-        device_id='RELAY1',
-    )
+    result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is True
     assert result['policy_source'] == 'canonical'
@@ -455,12 +501,7 @@ def test_writer_relay_turns_off_when_absorb_is_disallowed(project_root):
 
     state[ENT['actuator_relay1']] = True
 
-    result = mod['_write_relay_actuator'](
-        '',
-        ENT['actuator_relay1'],
-        'relay1',
-        device_id='RELAY1',
-    )
+    result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is True
     assert result['reason'] == 'capability_blocked_absorb'
@@ -485,12 +526,7 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
 
     state[ENT['actuator_relay1']] = True
 
-    result = mod['_write_relay_actuator'](
-        '',
-        ENT['actuator_relay1'],
-        'relay1',
-        device_id='RELAY1',
-    )
+    result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is False
     assert result['reason'] == 'policy_skip'
@@ -570,6 +606,7 @@ def test_writer_loop_writes_third_relay_from_device_registry(project_root):
 
     ENT['devices'] = {
         'RELAY3': {
+            'kind': 'RELAY',
             'enabled': 'switch.relay_3_2',
         },
     }
@@ -927,7 +964,7 @@ def test_writer_uses_canonical_device_policies(project_root):
 
     state[ENT['actuator_relay1']] = False
 
-    result = mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+    result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is True
     assert state[ENT['actuator_relay1']] is True
@@ -944,7 +981,7 @@ def test_writer_missing_canonical_device_policy_does_not_fallback(project_root):
 
     state[ENT['actuator_relay1']] = False
 
-    result = mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+    result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is False
     assert result['reason'] == 'missing_device_policy'
@@ -964,8 +1001,8 @@ def test_writer_repeated_identical_relay_policy_does_not_repeat_service_call(pro
 
     state[ENT['actuator_relay1']] = False
 
-    mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
-    mod['_write_relay_actuator']('', ENT['actuator_relay1'], 'relay1', device_id='RELAY1')
+    mod['_write_relay_actuator']('relay1', device_id='RELAY1')
+    mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert mod['_TEST_CALLS'] == [('set_boolean', ENT['actuator_relay1'], True)]
 
@@ -1019,6 +1056,29 @@ def test_writer_repeated_identical_battery_policy_respects_deadband_without_repe
         ('set_number', ENT['actuator_battery_setpoint_w'], 500),
     ]
 
+
+@pytest.mark.unit
+def test_writer_missing_required_ev_actuator_mapping_fails_closed_without_write(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_device_policies(
+        mod,
+        [
+            {'device_id': 'EV_CHARGER', 'target_w': 3680, 'enabled': True, 'mode': 'burn'},
+        ],
+    )
+    registry_devices = mod['_TEST_RUNTIME_ENTITIES']()['devices']
+    registry_devices['EV_CHARGER'] = dict(registry_devices['EV_CHARGER'])
+    registry_devices['EV_CHARGER'].pop('current_a', None)
+    ENT['devices'] = registry_devices
+
+    state[ENT['actuator_ev_enabled']] = False
+    state[ENT['actuator_ev_current_a']] = 6
+    result = mod['_write_ev_actuator']()
+
+    assert result['written'] is False
+    assert result['reason'] == 'missing_actuator_entity'
+    assert mod['_TEST_CALLS'] == []
+
 @pytest.mark.unit
 def test_writer_loop_fails_closed_when_runtime_context_is_invalid(project_root):
     mod, state, ENT = _load_writer_module(project_root)
@@ -1028,7 +1088,8 @@ def test_writer_loop_fails_closed_when_runtime_context_is_invalid(project_root):
         exc.path = 'measurements.schema_version'
         raise exc
 
-    mod['read_core_config'] = _raise_context_error
+    mod['read_runtime_context'] = _raise_context_error
+    mod['_load_runtime_context'] = _raise_context_error
 
     result = mod['ems_actuator_writers_loop']()
 

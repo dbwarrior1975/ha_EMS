@@ -8,8 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from ems_adapter.config_loader import load_grouped_ems_config
-from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
+from ems_adapter.config_loader import (
+    build_policy_context_view,
+    compile_core_config_plan_from_grouped_config,
+    load_grouped_ems_config,
+)
+from tests.e2e_entity.entity_registry import build_scenario_entity_registry
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 
@@ -76,10 +80,12 @@ class QuarterScenarioHarness:
             scenario_dir=self.scenario_dir,
         )
         self.grouped_config = None
+        self._scenario_compiled_plan = None
         self.ent = {}
         if self.grouped_config_path is not None and self.grouped_config_path.exists():
             self.grouped_config = load_grouped_ems_config(self.grouped_config_path)
-            self.ent = build_runtime_entities_from_grouped_config(self.grouped_config)
+            self._scenario_compiled_plan = compile_core_config_plan_from_grouped_config(self.grouped_config)
+            self.ent = build_scenario_entity_registry(self.grouped_config)
         if self.grouped_config_path is not None:
             os.environ['EMS_GROUPED_CONFIG_PATH'] = str(self.grouped_config_path)
 
@@ -498,6 +504,33 @@ class QuarterScenarioHarness:
         }
         code = compile(src, str(file_path), 'exec')
         exec(code, ns)
+
+        # Test-only bridge for legacy entity-driven scenarios. Production runtime
+        # remains direct-packet-only; the harness materializes its scenario config
+        # explicitly so behavior E2E coverage does not preserve a second runtime path.
+        if self._scenario_compiled_plan is not None:
+            def _scenario_read_entity(entity_id, default=None):
+                value = self.store.get_value(entity_id, default)
+                if value in (None, 'unknown', 'unavailable', 'none', ''):
+                    return default
+                return value
+
+            def _scenario_core_config():
+                return build_policy_context_view(
+                    self._scenario_compiled_plan,
+                    _scenario_read_entity,
+                )
+
+            if kind == 'policy':
+                ns['read_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
+            elif kind in ('writer', 'dispatch_state_applier'):
+                ns['read_runtime_entities'] = lambda *args, **kwargs: self.ent
+                ns['_load_runtime_entities'] = lambda *args, **kwargs: self.ent
+                if kind == 'writer':
+                    ns['read_core_config'] = lambda *args, **kwargs: _scenario_core_config()
+                    ns['_load_core_config'] = lambda *args, **kwargs: _scenario_core_config()
+                    ns['read_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
+                    ns['_load_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
         return ns
 
     @contextmanager

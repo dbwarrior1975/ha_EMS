@@ -17,7 +17,8 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=3.5, at_s=0),
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'RELAY1',
                 'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'RELAY1',
                 'surplus_dispatch_contract': 'device_id_primary',
@@ -43,7 +44,8 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=7.0, at_s=30),
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_dispatch_contract': 'device_id_primary',
@@ -70,7 +72,7 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=2.0, at_s=44),
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_dispatch_action': 'NOOP',
                 'surplus_dispatch_device_id': '',
                 'surplus_dispatch_contract': 'device_id_primary',
@@ -103,7 +105,7 @@ def test_activation_and_ev_burn_window(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=1.0, at_s=60),
             'expect_policy': {
                 'goal': 'NET_ZERO',
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_dispatch_action': 'NOOP',
                 'surplus_dispatch_device_id': '',
                 'surplus_dispatch_contract': 'device_id_primary',

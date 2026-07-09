@@ -16,9 +16,7 @@ from ems_adapter.config_loader import (
     build_core_config_from_grouped_reader,
     build_policy_context_view,
     compile_core_config_plan_from_grouped_config,
-    compile_dynamic_runtime_read_plan,
     materialize_core_config_from_plan,
-    runtime_alias_index,
     load_grouped_ems_config,
     load_and_validate_grouped_ems_config,
     validate_grouped_ems_config,
@@ -627,12 +625,6 @@ def test_diagnostics_outputs_section_is_rejected_with_unknown_key(project_root):
     )
 
 
-@pytest.mark.unit
-def test_runtime_alias_index_exposes_unit_transform_metadata(project_root):
-    config = _load_example(project_root)
-    aliases = runtime_alias_index(config)
-
-    assert aliases['ev_hard_off_pv_threshold_kw'].unit_transform == 'W_TO_KW'
 
 
 @pytest.mark.unit
@@ -659,34 +651,12 @@ def test_validate_rejects_legacy_runtime_fields_with_explicit_messages(project_r
     )
 
 
-@pytest.mark.unit
-def test_runtime_alias_index_contains_expected_core_aliases(project_root):
-    config = _load_example(project_root)
-    aliases = runtime_alias_index(config)
 
-    assert aliases['control_profile'].config_path == 'ems.profiles.control'
-    assert aliases['ramp_max_w'].config_path == 'ems.global_config.ramp_w'
-    assert aliases['battery_protect_charge_floor_w'].config_path == 'ems.devices.HOME_BATTERY.guard.protect_min_absorb_w'
-    assert aliases['actuator_ev_current_a'].config_path == 'ems.devices.EV_CHARGER.adapter.current_a'
+
 
 
 @pytest.mark.unit
-def test_runtime_alias_index_uses_kind_based_fallback_for_custom_device_ids(project_root):
-    config = _load_example(project_root)
-    devices = config['ems']['devices']
-    devices['GARAGE_EV'] = devices.pop('EV_CHARGER')
-    devices['POOL_PUMP'] = devices.pop('RELAY1')
-    devices['BOILER'] = devices.pop('RELAY2')
-
-    aliases = runtime_alias_index(config)
-
-    assert aliases['actuator_ev_current_a'].config_path == 'ems.devices.GARAGE_EV.adapter.current_a'
-    assert aliases['actuator_relay1'].config_path == 'ems.devices.POOL_PUMP.adapter.enabled'
-    assert aliases['actuator_relay2'].config_path == 'ems.devices.BOILER.adapter.enabled'
-
-
-@pytest.mark.unit
-def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alias_runtime(project_root, monkeypatch):
+def test_build_core_config_from_grouped_config_uses_canonical_grouped_values(project_root):
     config = _load_example(project_root)
     entity_values = {
         'input_number.ems_deadband_w': 75,
@@ -720,11 +690,6 @@ def test_build_core_config_from_grouped_config_no_longer_depends_on_runtime_alia
         'input_number.ems_surplus_relay1_priority': 2,
         'input_number.ems_surplus_relay2_priority': 1,
     }
-
-    def _fail_runtime_alias_runtime(_config):
-        raise AssertionError('runtime alias index must not be used by grouped runtime reader')
-
-    monkeypatch.setattr('ems_adapter.config_loader.runtime_alias_index', _fail_runtime_alias_runtime)
 
     cfg = build_core_config_from_grouped_config(config, entity_values)
 
@@ -892,12 +857,12 @@ def test_core_config_devices_view_materializes_each_device_at_most_once_per_view
 
 
 @pytest.mark.unit
-def test_dynamic_runtime_snapshot_keeps_only_dynamic_device_leaf_values(project_root):
+def test_core_config_view_snapshot_keeps_only_dynamic_device_leaf_values(project_root):
     config = _load_example(project_root)
     plan = compile_core_config_plan_from_grouped_config(config)
     config_loader_mod = sys.modules['ems_adapter.config_loader']
 
-    snapshot = config_loader_mod.build_dynamic_runtime_snapshot(plan, lambda _entity_id, default: default)
+    snapshot = config_loader_mod.build_core_config_view_snapshot(plan, lambda _entity_id, default: default)
 
     assert 'can_absorb_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
     assert 'can_produce_w' not in ((snapshot.device_values['EV_CHARGER'].get('capabilities') or {}))
@@ -1133,13 +1098,4 @@ def test_runtime_packet_config_rejects_static_global_config(project_root):
     assert result.ok is False
     assert any(issue.path == 'ems.global_config' for issue in result.errors)
 
-
-@pytest.mark.unit
-def test_runtime_packet_global_config_is_not_in_individual_dynamic_read_plan(project_root):
-    config = load_grouped_ems_config(project_root / 'example_EMS_runtime_packet_config.yaml')
-    plan = compile_core_config_plan_from_grouped_config(config)
-    read_plan = compile_dynamic_runtime_read_plan(plan)
-
-    assert read_plan['global_config_fields'] == ()
-    assert all('global_config' not in str(entry.get('path', '')) for entry in read_plan['unique_reads'])
 

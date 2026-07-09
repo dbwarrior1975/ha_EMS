@@ -40,7 +40,6 @@ def test_dispatch_state_applier_prefers_canonical_dispatch_command_over_trace(pr
 
     trace = harness.getattrs(DISPATCH_TRACE)
     assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ('RELAY1',)
-    assert trace['decision'] == 'ACTIVATE_RELAY1'
     assert trace['decision_source'] == 'dispatch_command'
     assert trace['dispatch_source_entity'] == ENT['dispatch_command']
     assert trace['dispatch_source_reason'] == 'canonical'
@@ -62,7 +61,6 @@ def test_dispatch_state_applier_missing_canonical_dispatch_command_is_noop(proje
 
     trace = harness.getattrs(DISPATCH_TRACE)
     assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ()
-    assert trace['decision'] == 'NOOP'
     assert trace['decision_source'] == 'dispatch_command'
     assert trace['dispatch_source_reason'] == 'canonical_missing_or_invalid'
     assert trace['device_dispatch_action'] == 'NOOP'
@@ -92,7 +90,6 @@ def test_dispatch_state_applier_activates_nth_relay_by_device_id(project_root):
         'RELAY2',
         'RELAY3',
     )
-    assert trace['decision'] == 'ACTIVATE_RELAY3'
     assert trace['device_dispatch_device_id'] == 'RELAY3'
     assert trace['active_surplus_device_ids'] == ('RELAY1', 'EV_CHARGER', 'RELAY2', 'RELAY3')
     assert trace['writes'] == ['on:RELAY3']
@@ -122,7 +119,6 @@ def test_dispatch_state_applier_releases_nth_relay_by_device_id(project_root):
         'EV_CHARGER',
         'RELAY2',
     )
-    assert trace['decision'] == 'RELEASE_RELAY3'
     assert trace['device_dispatch_device_id'] == 'RELAY3'
     assert trace['active_surplus_device_ids'] == ('RELAY1', 'EV_CHARGER', 'RELAY2')
     assert trace['writes'] == ['off:RELAY3']
@@ -148,10 +144,26 @@ def test_dispatch_state_applier_clear_all_releases_all_active_device_ids(project
 
     trace = harness.getattrs(DISPATCH_TRACE)
     assert harness.getattrs(ENT['active_surplus_devices'])['device_ids'] == ()
-    assert trace['decision'] == 'CLEAR_ALL'
     assert trace['active_surplus_device_ids'] == ()
     assert trace['writes'] == ['off:RELAY1', 'off:EV_CHARGER', 'off:RELAY2', 'off:RELAY3']
 
+
+
+@pytest.mark.unit
+def test_dispatch_state_applier_missing_required_mapping_fails_closed(project_root):
+    harness = QuarterScenarioHarness(project_root)
+    entities = dict(harness.ent)
+    entities.pop('active_surplus_devices', None)
+    harness.dispatch_state_applier_mod['_load_runtime_entities'] = lambda: entities
+
+    result = harness.dispatch_state_applier_mod['ems_dispatch_state_applier_loop']()
+
+    assert result['suppressed'] is True
+    assert result['error_code'] == 'MISSING_ENTITY_MAPPING'
+    assert result['missing_entity_mappings'] == ('active_surplus_devices',)
+    trace = harness.getattrs(DISPATCH_TRACE)
+    assert trace['actuator_writes_suppressed'] is True
+    assert trace['writes'] == ()
 
 @pytest.mark.unit
 def test_dispatch_state_applier_fails_closed_when_runtime_context_is_invalid(monkeypatch, project_root):
@@ -166,6 +178,7 @@ def test_dispatch_state_applier_fails_closed_when_runtime_context_is_invalid(mon
         raise exc
 
     monkeypatch.setattr(runtime_context, 'read_runtime_entities', _raise_context_error)
+    harness.dispatch_state_applier_mod['_load_runtime_entities'] = _raise_context_error
 
     result = harness.dispatch_state_applier_mod['ems_dispatch_state_applier_loop']()
 

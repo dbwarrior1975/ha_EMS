@@ -127,14 +127,6 @@ class RuntimePolicyConfig:
         ids = self.device_ids_by_kind(kind)
         return self.devices.get(ids[0]) if ids else None
 
-    def surplus_capable_devices(self) -> tuple:
-        items = []
-        for device_id, caps in self.device_capabilities_by_id.items():
-            if self.device_kind(device_id) == 'BATTERY':
-                continue
-            if bool(caps.get('can_absorb_w', False)):
-                items.append(self.devices[device_id])
-        return tuple(items)
 
     def device_capability(self, device_id: str, field: str, default=None):
         return self.device_capabilities_by_id.get(str(device_id), {}).get(str(field), default)
@@ -283,7 +275,7 @@ def _string_tuple(value, path: str) -> tuple[str, ...]:
     return tuple(items)
 
 
-def _schema_v2(packet: dict, packet_name: str) -> None:
+def _require_runtime_schema(packet: dict, packet_name: str) -> None:
     version = _integer(_required(packet, 'schema_version', packet_name), f'{packet_name}.schema_version')
     if version != RUNTIME_SCHEMA_VERSION:
         _fail(
@@ -385,7 +377,7 @@ def _parse_policy_config_v2(
     packet: dict,
     policy_engine: Optional[CorePolicyEngineConfig],
 ) -> RuntimePolicyConfig:
-    _schema_v2(packet, 'policy_config')
+    _require_runtime_schema(packet, 'policy_config')
     revision = _integer(_required(packet, 'revision', 'policy_config'), 'policy_config.revision')
     if revision < 0:
         _fail('policy_config.revision', 'must be non-negative')
@@ -592,7 +584,7 @@ def parse_policy_config_cached(
     policy_engine: Optional[CorePolicyEngineConfig] = None,
 ) -> tuple[RuntimePolicyConfig, bool]:
     packet = _mapping(packet, 'policy_config')
-    _schema_v2(packet, 'policy_config')
+    _require_runtime_schema(packet, 'policy_config')
     revision = _integer(_required(packet, 'revision', 'policy_config'), 'policy_config.revision')
     if (
         _POLICY_CONFIG_CACHE.get('entity_id') == topology.policy_config_entity_id
@@ -635,8 +627,8 @@ def parse_tick_frame_v3(
 ) -> TickFrame:
     measurements = _mapping(measurements_packet, 'measurements')
     state_packet = _mapping(policy_state_packet, 'policy_state')
-    _schema_v2(measurements, 'measurements')
-    _schema_v2(state_packet, 'policy_state')
+    _require_runtime_schema(measurements, 'measurements')
+    _require_runtime_schema(state_packet, 'policy_state')
 
     battery = _mapping(_required(measurements, 'battery', 'measurements'), 'measurements.battery')
     grid_power_w = _number(_required(measurements, 'grid_power_w', 'measurements'), 'measurements.grid_power_w')

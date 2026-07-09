@@ -39,7 +39,6 @@ Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa, joten
 
 Policy trace:
 
-- `policy_output_contract == 'device_policy_primary'`
 - `device_policies`
 - `surplus_dispatch_action`
 - `surplus_device_dispatch_target`

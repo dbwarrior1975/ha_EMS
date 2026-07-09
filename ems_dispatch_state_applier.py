@@ -1,22 +1,21 @@
 from datetime import datetime
 
 from ems_adapter.ha_adapter import get_attr, get_bool, get_float, get_int, get_str, publish_sensor, parse_input_datetime_ts
+from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS
 
 
 def _load_runtime_entities():
-    ent = globals().get('ENT', {})
-    if ent:
-        return dict(ent)
     from ems_adapter.runtime_context import read_runtime_entities
-
     return read_runtime_entities(get_bool, get_float, get_int, get_str)
 
 
-def _entity_id(key, fallback, entities=None):
-    if entities is not None and key in entities:
-        return entities[key]
-    ent = globals().get('ENT', {})
-    return ent.get(key, fallback)
+def _entity_id(key, entities=None):
+    if not isinstance(entities, dict):
+        return None
+    value = entities.get(key)
+    if value in (None, ''):
+        return None
+    return str(value)
 
 
 def _set_freeze_until_ts(entity_id, ts):
@@ -75,7 +74,9 @@ def _canonical_active_device_ids(active_ids):
 
 
 def _read_active_surplus_device_ids(entities=None):
-    active_entity = _entity_id('active_surplus_devices', 'sensor.ems_active_surplus_devices', entities)
+    active_entity = _entity_id('active_surplus_devices', entities)
+    if not active_entity:
+        return ()
     device_ids = get_attr(active_entity, 'device_ids', None)
     parsed = _parse_active_device_ids(device_ids)
     if parsed:
@@ -88,7 +89,10 @@ def _read_active_surplus_device_ids(entities=None):
 
 def _publish_active_surplus_device_ids(active_device_ids, entities=None):
     normalized = _canonical_active_device_ids(active_device_ids)
-    publish_sensor(_entity_id('active_surplus_devices', 'sensor.ems_active_surplus_devices', entities), ','.join(normalized), {
+    active_entity = _entity_id('active_surplus_devices', entities)
+    if not active_entity:
+        return None
+    publish_sensor(active_entity, ','.join(normalized), {
         'device_ids': normalized,
     })
     return normalized
@@ -98,24 +102,22 @@ def _valid_dispatch_action(action):
     return action in ('ACTIVATE', 'RELEASE', 'CLEAR_ALL', 'NOOP')
 
 
-def _decision_text_from_device_command(action, device_id):
-    if action == 'CLEAR_ALL':
-        return 'CLEAR_ALL'
-    if action == 'NOOP':
-        return 'NOOP'
-    if action in ('ACTIVATE', 'RELEASE') and device_id:
-        return action + '_' + str(device_id)
-    return 'NOOP'
-
-
 def _read_dispatch_command(entities=None):
     if entities is None:
         entities = _load_runtime_entities()
-    dispatch_entity = _entity_id('dispatch_command', 'sensor.ems_surplus_dispatch_command_pyscript', entities)
+    dispatch_entity = _entity_id('dispatch_command', entities)
+    if not dispatch_entity:
+        return {
+            'source_entity': '',
+            'source_reason': 'missing_dispatch_command_mapping',
+            'version': '',
+            'source': 'dispatch_command',
+            'action': 'NOOP',
+            'device_id': '',
+        }
     action = get_attr(dispatch_entity, 'surplus_dispatch_action', '')
     device_id = str(get_attr(dispatch_entity, 'surplus_dispatch_device_id', '') or '')
     version = get_attr(dispatch_entity, 'dispatch_command_version', '')
-
     if _valid_dispatch_action(action):
         return {
             'source_entity': dispatch_entity,
@@ -124,9 +126,7 @@ def _read_dispatch_command(entities=None):
             'source': 'dispatch_command',
             'action': action,
             'device_id': device_id,
-            'decision': _decision_text_from_device_command(action, device_id),
         }
-
     return {
         'source_entity': dispatch_entity,
         'source_reason': 'canonical_missing_or_invalid',
@@ -134,7 +134,6 @@ def _read_dispatch_command(entities=None):
         'source': 'dispatch_command',
         'action': 'NOOP',
         'device_id': '',
-        'decision': 'NOOP',
     }
 
 
@@ -182,7 +181,7 @@ def ems_dispatch_state_applier_loop():
     try:
         entities = _load_runtime_entities()
     except Exception as exc:
-        publish_sensor(_entity_id('dispatch_state_applier_trace', 'sensor.ems_dispatch_state_applier_trace', {}), 'SUPPRESSED', {
+        publish_sensor(CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace'], 'SUPPRESSED', {
             'dispatch_state_contract': 'device_id_primary',
             'actuator_writes_suppressed': True,
             'error': True,
@@ -196,16 +195,34 @@ def ems_dispatch_state_applier_loop():
             'error_code': 'RUNTIME_CONTEXT_INVALID',
             'error_path': getattr(exc, 'path', ''),
         }
-    command = _read_dispatch_command(entities)
-    decision = command['decision']
-    freeze_until_ts = get_attr(command['source_entity'], 'surplus_freeze_until_ts', None)
 
+    missing_mapping_values = []
+    for key in ('dispatch_command', 'active_surplus_devices', 'surplus_freeze_until', 'dispatch_state_applier_trace'):
+        if not _entity_id(key, entities):
+            missing_mapping_values.append(key)
+    missing_mappings = tuple(missing_mapping_values)
+    if missing_mappings:
+        publish_sensor(CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace'], 'SUPPRESSED', {
+            'dispatch_state_contract': 'device_id_primary',
+            'actuator_writes_suppressed': True,
+            'error': True,
+            'error_code': 'MISSING_ENTITY_MAPPING',
+            'missing_entity_mappings': missing_mappings,
+            'writes': (),
+        })
+        return {
+            'suppressed': True,
+            'error_code': 'MISSING_ENTITY_MAPPING',
+            'missing_entity_mappings': missing_mappings,
+        }
+
+    command = _read_dispatch_command(entities)
+    freeze_until_ts = get_attr(command['source_entity'], 'surplus_freeze_until_ts', None)
     writes = _apply_device_dispatch(command['action'], command['device_id'], entities)
-    freeze_written = _set_freeze_until_ts(_entity_id('surplus_freeze_until', 'input_datetime.ems_surplus_freeze_until', entities), freeze_until_ts)
+    freeze_written = _set_freeze_until_ts(_entity_id('surplus_freeze_until', entities), freeze_until_ts)
     active_device_ids = _active_surplus_device_ids(command, entities)
 
-    publish_sensor(_entity_id('dispatch_state_applier_trace', 'sensor.ems_dispatch_state_applier_trace', entities), decision, {
-        'decision': decision,
+    publish_sensor(_entity_id('dispatch_state_applier_trace', entities), command['action'], {
         'decision_source': command['source'],
         'dispatch_source_entity': command['source_entity'],
         'dispatch_source_reason': command['source_reason'],

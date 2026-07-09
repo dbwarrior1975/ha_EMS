@@ -13,6 +13,34 @@
   
         attributes:
           schema_version: "{{ 3 }}"
+
+          entity_registry: >-
+            {{
+              {
+                'state': {
+                  'surplus_freeze_until':
+                    'input_datetime.ems_surplus_freeze_until',
+                  'active_surplus_devices':
+                    'sensor.ems_active_surplus_devices'
+                },
+                'devices': {
+                  'HOME_BATTERY': {
+                    'target_w':
+                      'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                  },
+                  'EV_CHARGER': {
+                    'enabled': 'switch.charger_control',
+                    'current_a': 'number.charger_current_level'
+                  },
+                  'RELAY1': {
+                    'enabled': 'switch.relay_1_2'
+                  },
+                  'RELAY2': {
+                    'enabled': 'switch.relay_2_2'
+                  }
+                }
+              }
+            }}
   
           revision: >-
             {%- set revision_sources = [
@@ -50,10 +78,12 @@
               states.input_number.ems_ev_charger_phases,
               states.input_number.ems_ev_voltage_v,
   
+              states.input_number.ems_relay1_power_w,
               states.input_number.ems_surplus_relay1_priority,
               states.input_boolean.ems_relay1_enabled_import_zero,
               states.input_boolean.ems_relay1_force_on,
   
+              states.input_number.ems_relay2_power_w,
               states.input_number.ems_surplus_relay2_priority,
               states.input_boolean.ems_relay2_enabled_import_zero,
               states.input_boolean.ems_relay2_force_on
@@ -295,10 +325,13 @@
                     'uses_hard_off_lifecycle': false,
                     'supports_primary_regulation': false,
                     'supports_residual_regulation': false,
-                    'min_absorb_w': 2600,
-                    'max_absorb_w': 2600,
+                    'min_absorb_w':
+                      states('input_number.ems_relay1_power_w'),
+                    'max_absorb_w':
+                      states('input_number.ems_relay1_power_w'),
                     'max_produce_w': 0,
-                    'step_w': 2600
+                    'step_w':
+                      states('input_number.ems_relay1_power_w')
                   },
   
                   'policy': {
@@ -345,10 +378,13 @@
                     'uses_hard_off_lifecycle': false,
                     'supports_primary_regulation': false,
                     'supports_residual_regulation': false,
-                    'min_absorb_w': 5600,
-                    'max_absorb_w': 5600,
+                    'min_absorb_w':
+                      states('input_number.ems_relay2_power_w'),
+                    'max_absorb_w':
+                      states('input_number.ems_relay2_power_w'),
                     'max_produce_w': 0,
-                    'step_w': 5600
+                    'step_w':
+                      states('input_number.ems_relay2_power_w')
                   },
   
                   'policy': {

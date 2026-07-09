@@ -29,7 +29,7 @@ def test_max_export_hard_off_stability(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=0.0, required_power_consumption_kw=0.0, at_s=120),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_device_id': '',
                 'surplus_dispatch_contract': 'device_id_primary',
@@ -73,7 +73,7 @@ def test_max_export_hard_off_stability(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=1000.0, required_power_consumption_kw=7.0, at_s=150),
             'expect_policy': {
                 'goal': 'MAX_EXPORT',
-                'surplus_dispatch_decision': 'CLEAR_ALL',
+                'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_action': 'CLEAR_ALL',
                 'surplus_dispatch_device_id': '',
                 'surplus_dispatch_contract': 'device_id_primary',

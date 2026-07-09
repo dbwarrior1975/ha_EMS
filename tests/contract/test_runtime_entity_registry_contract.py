@@ -3,106 +3,37 @@ from copy import deepcopy
 import pytest
 
 from ems_adapter.config_loader import load_grouped_ems_config
-from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
-from ems_core.domain.constants import (
-    CANONICAL_DIAGNOSTICS_OUTPUTS,
-    CANONICAL_POLICY_OUTPUTS,
-)
-from tests.entity_ids import ENT
+from ems_adapter.direct_runtime import build_static_topology
+from ems_adapter.runtime_context import build_runtime_entities_from_policy_config_packet
+from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS, CANONICAL_POLICY_OUTPUTS
 
 
-@pytest.mark.unit
-def test_required_entities_exist():
-    required_keys = {
-        'control_profile',
-        'goal_profile',
-        'forecast_profile',
-        'guard_profile',
-        'device_policies',
-        'dispatch_command',
-        'policy_state',
-        'policy_diagnostics',
-        'active_surplus_devices',
-        'actuator_writer_trace',
-        'dispatch_state_applier_trace',
-        'actuator_battery_setpoint_w',
-        'actuator_ev_current_a',
-        'actuator_ev_enabled',
-        'actuator_relay1',
-        'actuator_relay2',
-        'devices',
-        'relay_device_ids',
-        'ev_device_ids',
-    }
-    assert required_keys.issubset(set(ENT))
+def _topology(project_root, config=None):
+    cfg = config or load_grouped_ems_config(project_root / 'EMS_config.yaml')
+    return build_static_topology(cfg)
 
 
-@pytest.mark.unit
-def test_runtime_registry_exposes_current_ev_watt_and_actuator_keys():
-    assert ENT['ev_min_absorb_w'].startswith('input_number.')
-    assert ENT['ev_max_absorb_w'].startswith('input_number.')
-    assert ENT['actuator_ev_current_a'].startswith('number.')
-    assert ENT['actuator_ev_enabled'].startswith('switch.')
-
-
-@pytest.mark.unit
-def test_entity_ids_are_unique():
-    # Reuse is intentional only where actuator and current sensor target are same HA entity.
-    duplicates = {}
-    for key, value in ENT.items():
-        if not isinstance(value, str):
-            continue
-        duplicates.setdefault(value, []).append(key)
-
-    allowed_shared_entities = {
-        'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point': {
-            'current_battery_sp',
-            'actuator_battery_setpoint_w',
+def _packet_registry():
+    return {
+        'schema_version': 3,
+        'entity_registry': {
+            'state': {
+                'surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
+                'active_surplus_devices': 'sensor.ems_active_surplus_devices',
+            },
+            'devices': {
+                'HOME_BATTERY': {'target_w': 'number.battery_target'},
+                'EV_CHARGER': {'enabled': 'switch.charger_control', 'current_a': 'number.charger_current'},
+                'RELAY1': {'enabled': 'switch.relay_1'},
+                'RELAY2': {'enabled': 'switch.relay_2'},
+            },
         },
-        'number.charger_current_level': {'charger_current', 'actuator_ev_current_a'},
-        'switch.charger_control': {'charger_control', 'actuator_ev_enabled'},
-        'sensor.hourly_energy_balance': {'quarter_energy_balance', 'quarter_energy_balance_kwh'},
     }
 
-    actual_shared = {
-        entity_id: set(keys)
-        for entity_id, keys in duplicates.items()
-        if len(keys) > 1
-    }
-    assert actual_shared == allowed_shared_entities
-
 
 @pytest.mark.unit
-def test_unit_conversion_contract():
-    assert ENT['grid_power_w'].startswith('sensor.')
-    assert ENT['quarter_energy_balance_kwh'].startswith('sensor.')
-    assert ENT['pv_power_w'].startswith('sensor.')
-    assert ENT['policy_diagnostics'].startswith('sensor.')
-    assert ENT['dispatch_command'].startswith('sensor.')
-    assert ENT['policy_state'].startswith('sensor.')
-    assert ENT['actuator_battery_setpoint_w'].startswith('number.')
-    assert ENT['actuator_ev_current_a'].startswith('number.')
-
-
-@pytest.mark.unit
-def test_unknown_state_defaults():
-    assert ENT['surplus_freeze_until'].startswith('input_datetime.')
-    assert ENT['active_surplus_devices'].startswith('sensor.')
-    assert ENT['dispatch_command'].startswith('sensor.')
-    assert ENT['policy_state'].startswith('sensor.')
-    assert ENT['policy_diagnostics'].startswith('sensor.')
-    assert ENT['actuator_writer_trace'].startswith('sensor.')
-    assert ENT['dispatch_state_applier_trace'].startswith('sensor.')
-
-
-@pytest.mark.unit
-def test_runtime_entity_registry_uses_canonical_outputs_without_yaml_sections(project_root):
-    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    config['ems'].pop('policy_outputs', None)
-    config['ems'].pop('diagnostics_outputs', None)
-
-    entities = build_runtime_entities_from_grouped_config(config)
-
+def test_runtime_entity_registry_exposes_canonical_outputs(project_root):
+    entities = build_runtime_entities_from_policy_config_packet(_packet_registry(), _topology(project_root))
     assert entities['device_policies'] == CANONICAL_POLICY_OUTPUTS['device_policies']
     assert entities['dispatch_command'] == CANONICAL_POLICY_OUTPUTS['dispatch_command']
     assert entities['policy_state'] == CANONICAL_POLICY_OUTPUTS['policy_state']
@@ -111,134 +42,96 @@ def test_runtime_entity_registry_uses_canonical_outputs_without_yaml_sections(pr
     assert entities['dispatch_state_applier_trace'] == CANONICAL_DIAGNOSTICS_OUTPUTS['dispatch_state_applier_trace']
 
 
-def _with_extra_relay_and_ev(config):
-    config = deepcopy(config)
+@pytest.mark.unit
+def test_runtime_entity_registry_is_template_packet_owned_and_device_native(project_root):
+    entities = build_runtime_entities_from_policy_config_packet(_packet_registry(), _topology(project_root))
+    assert entities['devices']['HOME_BATTERY']['target_w'].startswith('number.')
+    assert entities['devices']['EV_CHARGER']['enabled'].startswith('switch.')
+    assert entities['devices']['EV_CHARGER']['current_a'].startswith('number.')
+    assert entities['devices']['RELAY1']['enabled'].startswith('switch.')
+    assert 'actuator_ev_enabled' not in entities
+    assert 'actuator_relay1' not in entities
+    assert 'deadband_w' not in entities
+
+
+@pytest.mark.unit
+def test_runtime_entity_registry_routes_custom_devices_by_device_id(project_root):
+    config = deepcopy(load_grouped_ems_config(project_root / 'EMS_config.yaml'))
     devices = config['ems']['devices']
-    devices['RELAY3'] = {
-        'kind': 'RELAY',
-        'capabilities': {
-            'can_absorb_w': True,
-            'can_produce_w': False,
-            'min_absorb_w': 'input_number.ems_relay3_power_kw',
-            'max_absorb_w': 'input_number.ems_relay3_power_kw',
-            'step_w': 'input_number.ems_relay3_power_kw',
-        },
-        'policy': {
-            'priority': 'input_number.ems_surplus_relay3_priority',
-            'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
-            'force_on': 'input_boolean.ems_relay3_force_on',
-        },
-        'adapter': {
-            'enabled': 'switch.relay_3_2',
-        },
-    }
-    devices['EV_GARAGE'] = {
-        'kind': 'EV_CHARGER',
-        'capabilities': {
-            'can_absorb_w': True,
-            'can_produce_w': False,
-            'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
-            'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
-            'step_w': 'input_number.ems_ev_garage_power_step_w',
-        },
-        'policy': {
-            'priority': 'input_number.ems_surplus_ev_garage_priority',
-            'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-            'force_on': 'input_boolean.ems_ev_garage_force_on',
-            'low_pv_threshold_w': 'input_number.ems_ev_garage_hard_off_pv_threshold_w',
-            'hard_off_low_pv_cycles': 'input_number.ems_ev_garage_hard_off_low_pv_cycles',
-            'hard_off_release_cycles': 'input_number.ems_ev_garage_hard_off_release_cycles',
-        },
-        'adapter': {
-            'enabled': 'switch.ev_garage_control',
-            'current_a': 'number.ev_garage_current_level',
-            'current_step_a': 'input_number.ems_ev_garage_current_step_a',
-            'phases': 'input_number.ems_ev_garage_phases',
-            'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-        },
-    }
-    return config
+    devices['EV_GARAGE'] = devices.pop('EV_CHARGER')
+    devices['RELAY_SAUNA'] = devices.pop('RELAY1')
+    packet = _packet_registry()
+    registry_devices = packet['entity_registry']['devices']
+    registry_devices['EV_GARAGE'] = registry_devices.pop('EV_CHARGER')
+    registry_devices['RELAY_SAUNA'] = registry_devices.pop('RELAY1')
+
+    entities = build_runtime_entities_from_policy_config_packet(packet, _topology(project_root, config))
+    assert entities['ev_device_ids'] == ('EV_GARAGE',)
+    assert set(entities['relay_device_ids']) == {'RELAY_SAUNA', 'RELAY2'}
+    assert entities['devices']['EV_GARAGE']['enabled'] == 'switch.charger_control'
+    assert entities['devices']['RELAY_SAUNA']['enabled'] == 'switch.relay_1'
 
 
-def test_runtime_entity_registry_exposes_extra_relay_and_ev_without_top_level_alias(project_root):
-    config = _with_extra_relay_and_ev(
-        load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    )
-
-    entities = build_runtime_entities_from_grouped_config(config)
-
-    assert entities['relay_device_ids'] == ('RELAY1', 'RELAY2', 'RELAY3')
-    assert entities['ev_device_ids'] == ('EV_CHARGER', 'EV_GARAGE')
-    assert 'actuator_relay3' not in entities
-    assert 'relay3' not in entities
-
-    relay3 = entities['devices']['RELAY3']
-    assert relay3 == {
-        'device_id': 'RELAY3',
-        'kind': 'RELAY',
-        'enabled': 'switch.relay_3_2',
-        'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
-        'force_on': 'input_boolean.ems_relay3_force_on',
-        'priority': 'input_number.ems_surplus_relay3_priority',
-        'max_absorb_w': 'input_number.ems_relay3_power_kw',
-    }
-
-    ev_garage = entities['devices']['EV_GARAGE']
-    assert ev_garage == {
-        'device_id': 'EV_GARAGE',
-        'kind': 'EV_CHARGER',
-        'enabled': 'switch.ev_garage_control',
-        'current_a': 'number.ev_garage_current_level',
-        'current_step_a': 'input_number.ems_ev_garage_current_step_a',
-        'phases': 'input_number.ems_ev_garage_phases',
-        'voltage_v': 'input_number.ems_ev_garage_voltage_v',
-        'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
-        'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
-        'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
-        'force_on': 'input_boolean.ems_ev_garage_force_on',
-        'priority': 'input_number.ems_surplus_ev_garage_priority',
-    }
-
-
+@pytest.mark.unit
 def test_runtime_entity_registry_keeps_explicit_empty_device_id_lists(project_root):
-    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    devices = config['ems']['devices']
+    config = deepcopy(load_grouped_ems_config(project_root / 'EMS_config.yaml'))
     config['ems']['devices'] = {
         device_id: device
-        for device_id, device in devices.items()
-        if device.get('kind') not in {'RELAY', 'EV_CHARGER'}
+        for device_id, device in config['ems']['devices'].items()
+        if device.get('kind') == 'BATTERY'
     }
-
-    entities = build_runtime_entities_from_grouped_config(config)
-
+    entities = build_runtime_entities_from_policy_config_packet(_packet_registry(), _topology(project_root, config))
     assert entities['relay_device_ids'] == ()
     assert entities['ev_device_ids'] == ()
-    assert entities['devices'] == {
-        'HOME_BATTERY': {
-            'device_id': 'HOME_BATTERY',
-            'kind': 'BATTERY',
-            'target_w': 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
-            'measured_power_w': 'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
-            'priority': 'input_number.ems_adjustable_surplus_load_priority',
-        }
+    assert set(entities['devices']) == {'HOME_BATTERY'}
+
+
+@pytest.mark.unit
+def test_missing_packet_mapping_is_not_filled_from_static_config(project_root):
+    packet = _packet_registry()
+    del packet['entity_registry']['devices']['EV_CHARGER']['current_a']
+    entities = build_runtime_entities_from_policy_config_packet(packet, _topology(project_root))
+    assert 'current_a' not in entities['devices']['EV_CHARGER']
+
+@pytest.mark.unit
+def test_runtime_packet_static_config_rejects_state_entity_mappings(project_root):
+    config = deepcopy(load_grouped_ems_config(project_root / 'EMS_config.yaml'))
+    config['ems']['state'] = {
+        'surplus_freeze_until': 'input_datetime.should_not_live_here',
     }
+    from ems_adapter.config_loader import validate_grouped_ems_config
+
+    result = validate_grouped_ems_config(config)
+    assert result.ok is False
+    assert any(issue.path == 'ems.state' for issue in result.errors)
 
 
-def test_runtime_entity_registry_exposes_derived_ev_debug_fields_for_numeric_config(project_root):
-    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    ev = config['ems']['devices']['EV_CHARGER']
-    ev['capabilities']['min_absorb_w'] = 1380
-    ev['capabilities']['max_absorb_w'] = 3680
-    ev['adapter']['current_step_a'] = 2
-    ev['adapter']['phases'] = 1
-    ev['adapter']['voltage_v'] = 230
-    ev['adapter']['current_a'] = 10
+@pytest.mark.unit
+def test_runtime_packet_static_config_rejects_device_actuator_mappings(project_root):
+    config = deepcopy(load_grouped_ems_config(project_root / 'EMS_config.yaml'))
+    config['ems']['devices']['HOME_BATTERY']['adapter'] = {
+        'target_w': 'number.should_not_live_here',
+    }
+    from ems_adapter.config_loader import validate_grouped_ems_config
 
-    entities = build_runtime_entities_from_grouped_config(config)
-    ev_entry = entities['devices']['EV_CHARGER']
+    result = validate_grouped_ems_config(config)
+    assert result.ok is False
+    assert any(issue.path == 'ems.devices.HOME_BATTERY.adapter' for issue in result.errors)
 
-    assert ev_entry['ev_per_amp_w'] == 230.0
-    assert ev_entry['ev_derived_min_current_a'] == 6
-    assert ev_entry['ev_derived_max_current_a'] == 16
-    assert ev_entry['ev_derived_step_w'] == 460.0
-    assert ev_entry['ev_current_power_w'] == 2300.0
+
+@pytest.mark.unit
+def test_read_runtime_entities_reads_only_policy_config_packet(project_root, monkeypatch):
+    from ems_adapter.runtime_context import read_runtime_entities
+
+    monkeypatch.setenv('EMS_GROUPED_CONFIG_PATH', str(project_root / 'EMS_config.yaml'))
+    calls = []
+    packet = _packet_registry()
+
+    def _read_attrs(entity_id, default=None):
+        calls.append(entity_id)
+        return packet if entity_id == 'sensor.ems_policy_config_runtime' else default
+
+    entities = read_runtime_entities(read_attrs=_read_attrs)
+    assert calls == ['sensor.ems_policy_config_runtime']
+    assert entities['devices']['HOME_BATTERY']['target_w'] == 'number.battery_target'
+    assert entities['surplus_freeze_until'] == 'input_datetime.ems_surplus_freeze_until'

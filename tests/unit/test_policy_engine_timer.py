@@ -43,7 +43,7 @@ def _load_policy_module(project_root):
         'get_attr': lambda *args, **kwargs: kwargs.get('default'),
         'parse_input_datetime_ts': lambda *args, **kwargs: 0.0,
         'publish_sensor': lambda *args, **kwargs: None,
-        '_GROUPED_CONFIG_DUAL_READ_STATUS': {},
+        '_GROUPED_CONFIG_STATUS': {},
         'config_trace_attrs': lambda: {},
         'read_runtime_context': lambda *args, **kwargs: (None, {}),
         'runtime_context_metrics_attrs': lambda: {},
@@ -58,7 +58,6 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
     attrs = dict(attrs or {})
     attrs.setdefault('device_policies', ({'device_id': 'HOME_BATTERY', 'target_w': 100},))
     attrs.setdefault('surplus_dispatch_action', 'set_target')
-    attrs.setdefault('surplus_dispatch_decision', 'apply')
     attrs.setdefault('surplus_dispatch_device_id', 'HOME_BATTERY')
     attrs.setdefault('surplus_device_dispatch_target', 100)
     attrs.setdefault('surplus_candidates', ({'device_id': 'HOME_BATTERY', 'target_w': 100},))
@@ -466,18 +465,7 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
         'policy_engine_static_context_cache_hits': 8,
         'policy_engine_static_context_cache_misses': 1,
         'policy_engine_static_context_build_ms': 0,
-        'policy_engine_dynamic_config_reads_ms': 0,
         'policy_engine_runtime_entity_registry_ms': 0,
-        'policy_engine_core_config_build_ms': 12,
-        'policy_engine_core_config_materialize_total_ms': 12,
-        'policy_engine_core_config_profiles_global_runtime_state_ms': 2,
-        'policy_engine_core_config_devices_ms': 3,
-        'policy_engine_core_config_home_battery_ms': 1,
-        'policy_engine_core_config_haeo_ms': 1,
-        'policy_engine_core_config_role_constraints_ms': 1,
-        'policy_engine_core_config_derived_fields_ms': 4,
-        'policy_engine_dynamic_runtime_snapshot_ms': 9,
-        'policy_engine_policy_context_view_ms': 3,
     }
     mod['net_zero_compute_metrics_attrs'] = lambda: {
         'policy_engine_net_zero_cfg_scalar_reads': 5,
@@ -488,8 +476,6 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
         'policy_engine_net_zero_cfg_device_capability_calls': 3,
         'policy_engine_net_zero_cfg_device_adapter_value_calls': 4,
         'policy_engine_net_zero_cfg_device_policy_value_calls': 5,
-        'policy_engine_net_zero_cfg_legacy_bridge_count_calls': 1,
-        'policy_engine_net_zero_cfg_legacy_bridge_counts_by_kind_calls': 1,
     }
     cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
     entities = _minimal_entities()
@@ -513,9 +499,6 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
     assert diagnostics_attrs['policy_engine_static_context_cache_hit'] is True
     assert diagnostics_attrs['policy_engine_static_context_cache_hits'] == 8
     assert diagnostics_attrs['policy_engine_static_context_cache_misses'] == 1
-    assert diagnostics_attrs['policy_engine_core_config_build_ms'] == 12
-    assert diagnostics_attrs['policy_engine_core_config_materialize_total_ms'] == 12
-    assert diagnostics_attrs['policy_engine_core_config_devices_ms'] == 3
     assert diagnostics_attrs['policy_engine_net_zero_cfg_scalar_reads'] == 5
     assert diagnostics_attrs['policy_engine_net_zero_cfg_device_policy_value_calls'] == 5
 
@@ -549,8 +532,7 @@ def test_phase_timing_fields_do_not_change_canonical_keys(project_root):
             {'device_id': 'HOME_BATTERY', 'target_w': 100, 'mode': 'net_zero'},
         ),
         'surplus_dispatch_action': 'ACTIVATE',
-        'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
-        'surplus_dispatch_device_id': 'EV_CHARGER',
+        'surplus_dispatch_action': 'ACTIVATE', 'surplus_dispatch_device_id': 'EV_CHARGER',
         'surplus_candidates': ({'device_id': 'EV_CHARGER', 'enabled': True},),
         'surplus_freeze_until_ts': 130.0,
         'surplus_state_clear_reason': '',
@@ -589,7 +571,7 @@ def test_dispatch_command_key_stable_for_repeated_clear_all_with_only_now_ts_cha
     mod = _load_policy_module(project_root)
     attrs_100 = {
         'surplus_dispatch_action': 'CLEAR_ALL',
-        'surplus_dispatch_decision': 'CLEAR_ALL',
+        'surplus_dispatch_action': 'CLEAR_ALL',
         'surplus_dispatch_device_id': '',
         'surplus_candidates': (),
         'surplus_freeze_until_ts': 100.0,
@@ -612,8 +594,7 @@ def test_dispatch_command_key_keeps_activate_freeze_until_ts(project_root):
     mod = _load_policy_module(project_root)
     attrs_130 = {
         'surplus_dispatch_action': 'ACTIVATE',
-        'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
-        'surplus_dispatch_device_id': 'EV_CHARGER',
+        'surplus_dispatch_action': 'ACTIVATE', 'surplus_dispatch_device_id': 'EV_CHARGER',
         'surplus_candidates': ({'device_id': 'EV_CHARGER', 'enabled': True},),
         'surplus_freeze_until_ts': 130.0,
         'surplus_state_clear_reason': '',
@@ -643,7 +624,7 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
         mod,
         attrs={
             'surplus_dispatch_action': 'CLEAR_ALL',
-            'surplus_dispatch_decision': 'CLEAR_ALL',
+            'surplus_dispatch_action': 'CLEAR_ALL',
             'surplus_dispatch_device_id': '',
                 'surplus_candidates': (),
             'surplus_freeze_until_ts': 100.0,
@@ -660,7 +641,7 @@ def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(pro
         mod,
         attrs={
             'surplus_dispatch_action': 'CLEAR_ALL',
-            'surplus_dispatch_decision': 'CLEAR_ALL',
+            'surplus_dispatch_action': 'CLEAR_ALL',
             'surplus_dispatch_device_id': '',
                 'surplus_candidates': (),
             'surplus_freeze_until_ts': 105.0,

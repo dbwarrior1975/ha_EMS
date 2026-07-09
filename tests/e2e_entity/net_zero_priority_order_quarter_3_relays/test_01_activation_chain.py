@@ -19,7 +19,8 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=3.5, at_s=0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=3.5, at_s=0),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY1',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'RELAY1',
                 'surplus_freeze_until_ts': 15.0,
                 'surplus_explanation': 'Raw RPC 3.500 kW >= RELAY1 threshold 2.500 kW',
                 'surplus_next_device_id': 'RELAY1',
@@ -45,7 +46,8 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=7.0, at_s=30),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=7.0, at_s=30),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_EV_CHARGER',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_freeze_until_ts': 45.0,
                     'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
                 'surplus_next_device_id': 'EV_CHARGER',
@@ -69,7 +71,8 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=7.0, at_s=60),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=7.0, at_s=60),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY2',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'RELAY2',
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY2 threshold 5.000 kW',
                 'surplus_next_device_id': 'RELAY2',
@@ -95,7 +98,7 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=0.0, at_s=61),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=0.0, at_s=61),
             'expect_policy': {
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_freeze_until_ts': 75.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_device_id': 'RELAY3',
@@ -122,7 +125,8 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=8.0, at_s=75),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=8.0, at_s=75),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY3',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_dispatch_device_id': 'RELAY3',
                 'surplus_freeze_until_ts': 90.0,
                 'surplus_explanation': 'Raw RPC 8.000 kW >= RELAY3 threshold 7.500 kW',
                 'surplus_next_device_id': 'RELAY3',
@@ -149,7 +153,7 @@ def test_01_activation_chain(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500, required_power_consumption_kw=0.0, at_s=76),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500, required_power_consumption_kw=0.0, at_s=76),
             'expect_policy': {
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
                 'surplus_freeze_until_ts': 90.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'surplus_next_device_id': '',

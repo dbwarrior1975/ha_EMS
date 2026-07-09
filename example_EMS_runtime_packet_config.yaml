@@ -1,4 +1,4 @@
-# EMS schema-v2 direct runtime configuration.
+# EMS direct runtime v3 configuration.
 #
 # Ownership rule:
 # - This file owns only static topology, physical direction capabilities,

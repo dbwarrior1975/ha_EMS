@@ -13,6 +13,34 @@ template:
   
         attributes:
           schema_version: "{{ 3 }}"
+
+          entity_registry: >-
+            {{
+              {
+                'state': {
+                  'surplus_freeze_until':
+                    'input_datetime.ems_surplus_freeze_until',
+                  'active_surplus_devices':
+                    'sensor.ems_active_surplus_devices'
+                },
+                'devices': {
+                  'HOME_BATTERY': {
+                    'target_w':
+                      'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                  },
+                  'EV_CHARGER': {
+                    'enabled': 'switch.charger_control',
+                    'current_a': 'number.charger_current_level'
+                  },
+                  'RELAY1': {
+                    'enabled': 'switch.relay_1_2'
+                  },
+                  'RELAY2': {
+                    'enabled': 'switch.relay_2_2'
+                  }
+                }
+              }
+            }}
   
           revision: >-
             {%- set revision_sources = [

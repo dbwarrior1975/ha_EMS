@@ -363,16 +363,6 @@ class CoreConfig:
                 items.append(device)
         return tuple(items)
 
-    def surplus_capable_devices(self) -> tuple[CoreDeviceConfig, ...]:
-        if self.devices is None:
-            return ()
-        items = []
-        for device in self.devices.values():
-            if str(device.kind) == 'BATTERY':
-                continue
-            if bool(device.capabilities.can_absorb_w):
-                items.append(device)
-        return tuple(items)
 
 
 @dataclass
@@ -505,7 +495,6 @@ class NetZeroOutputs:
     battery_target_w: int
     surplus_policy_active: bool
     surplus_next_threshold_kw: float
-    surplus_dispatch_decision: str
     surplus_explanation: str
     effective_forecast: str
     dominant_limitation: str

@@ -204,11 +204,6 @@ def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
         f"actual={config_source} expected=grouped_config"
     )
 
-    policy_contract = policy_trace.get('policy_output_contract')
-    assert policy_contract == 'device_policy_primary', (
-        f"step={idx} note={note} policy.policy_output_contract "
-        f"actual={policy_contract} expected=device_policy_primary"
-    )
 
     dispatch_source = dispatch_state_trace.get('decision_source')
     assert dispatch_source == 'dispatch_command', (

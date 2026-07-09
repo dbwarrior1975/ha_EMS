@@ -20,7 +20,7 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             'expect_policy': {
                 'ev_device_ids': ('EV_MAIN', 'EV_GARAGE'),
                 'relay_device_ids': ('RELAY_SAUNA', 'RELAY_BOILER'),
-                'surplus_dispatch_decision': 'NOOP',
+                'surplus_dispatch_action': 'NOOP',
             },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
@@ -35,9 +35,9 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=30),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=30),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_EV_GARAGE',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_GARAGE',
-            },
+                },
             'expect_device_policies': {
                 'HOME_BATTERY': {'target_w': 1000},
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
@@ -50,9 +50,9 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=60),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY_SAUNA',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'RELAY_SAUNA',
-            },
+                },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': True, 'target_w': 3680},
@@ -72,9 +72,9 @@ def test_01_custom_device_ids_are_not_runtime_requirements(project_root):
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=90),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=4000.0, required_power_consumption_kw=4.0, at_s=90),
             'expect_policy': {
-                'surplus_dispatch_decision': 'ACTIVATE_RELAY_BOILER',
+                'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'RELAY_BOILER',
-            },
+                },
             'expect_device_policies': {
                 'EV_MAIN': {'enabled': False, 'target_w': 0},
                 'EV_GARAGE': {'enabled': True, 'target_w': 3680},

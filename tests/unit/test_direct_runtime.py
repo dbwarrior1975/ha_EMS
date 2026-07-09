@@ -581,9 +581,9 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
     assert second_entities['_direct_tick_frame'].policy_config_revision == 17
     assert first_metrics['policy_engine_runtime_packet_reads'] == 3
     assert second_metrics['policy_engine_runtime_policy_config_cache_hit'] is True
-    assert second_metrics['policy_engine_dynamic_runtime_snapshot_ms'] == 0
-    assert second_metrics['policy_engine_policy_context_view_ms'] == 0
-    assert second_metrics['policy_engine_core_config_materialize_total_ms'] == 0
+    assert 'policy_engine_core_config_view_snapshot_ms' not in second_metrics
+    assert 'policy_engine_policy_context_view_ms' not in second_metrics
+    assert 'policy_engine_core_config_materialize_total_ms' not in second_metrics
 
 
 @pytest.mark.unit

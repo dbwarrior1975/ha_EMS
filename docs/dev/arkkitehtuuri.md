@@ -273,7 +273,6 @@ Diagnostiikkapayload sisaltaa selitys- ja seurantakenttia kuten:
 11. `previous_device_states`
 12. `device_lifecycle_states`
 13. `config_source`
-14. `policy_output_contract`
 
 P0-cleanup poistaa legacy surplus-/selected-EV-tuottajat ennen diagnostiikkaprojektiota.
 P1 poistaa HAEO scalar limit -peilit, device bridge -metriikat, selected-EV config-view'n ja

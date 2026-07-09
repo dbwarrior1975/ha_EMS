@@ -1,7 +1,7 @@
 import pytest
 
 from ems_adapter.config_loader import load_grouped_ems_config, validate_grouped_ems_config
-from ems_adapter.runtime_context import build_runtime_entities_from_grouped_config
+from tests.e2e_entity.entity_registry import build_scenario_entity_registry
 from tests.entity_ids import ENT
 from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
 from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
@@ -12,7 +12,7 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     grouped_config_path = project_root / 'example_EMS_config.yaml'
     grouped_config = load_grouped_ems_config(grouped_config_path)
     validation = validate_grouped_ems_config(grouped_config)
-    runtime_entities = build_runtime_entities_from_grouped_config(grouped_config)
+    runtime_entities = build_scenario_entity_registry(grouped_config)
 
     assert validation.ok is True
     assert 'HOME_BATTERY' in runtime_entities['devices']
@@ -40,8 +40,6 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
 
     assert trace_attrs['config_source'] == 'grouped_config'
-    assert trace_attrs['config_grouped_path'] == str(grouped_config_path)
-    assert trace_attrs['policy_output_contract'] == 'device_policy_primary'
     assert writer_attrs['writer_trace_canonical_contract'] == 'devices'
     assert 'EV_CHARGER' in writer_attrs['devices']
     assert 'RELAY1' in writer_attrs['devices']
