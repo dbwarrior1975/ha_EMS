@@ -90,21 +90,26 @@ Harness ei tue `__legacy__.*`-derived-input overrideja. Skenaariot seedaavat `gr
 Nykyinen e2e-malli:
 
 1. jokaisella `tests/e2e_entity/<scenario>/` -kansiolla on oma
-   `EMS_config.yaml`
-2. `QuarterScenarioHarness(... scenario_dir=Path(__file__).parent)` lataa
-   saman scenario YAML:n seka runtimelle etta testin entity registryksi
-3. testit ja seed-helperit kayttavat vain `h.ent`- ja
+   `EMS_config.yaml`, joka toimii vain ihmisluettavana fixture-maarittelyna
+2. `QuarterScenarioHarness(... scenario_dir=Path(__file__).parent)` materialisoi
+   joka ajolla strict schema-v3 `policy_config`, `measurements` ja
+   `policy_state` -paketit
+3. policy runtime kulkee aina oikeiden `parse_policy_config_cached()`- ja
+   `parse_tick_frame_v3()`-parserien kautta; legacy `PolicyContext/CoreConfigView`
+   -siltaa ei ole
+4. testit ja seed-helperit kayttavat vain `h.ent`- ja
    `h.device_entity(device_id, field)` -pintaa
-4. root-tason `EMS_config.yaml` ei saa vaikuttaa e2e-skenaarion device
+5. root-tason `EMS_config.yaml` ei saa vaikuttaa e2e-skenaarion device
    registryyn, entity-id -hakuun tai seedaukseen
-5. harness kutsuu `ems_policy_engine_loop(trigger_reason='e2e')`, ei oikeaa
-   Pyscript-timeria
-6. `trigger_reason='e2e'` pakottaa `policy_diagnostics`-julkaisun, vaikka
+6. harness kutsuu `ems_policy_engine_loop(trigger_reason='e2e')` ja jatkaa
+   oikeaan dispatch-applier -> writer -ketjuun
+7. jokainen aktiivinen E2E-step asserttoi
+   `runtime_input_contract == direct_tick_frame_v3`
+8. `trigger_reason='e2e'` pakottaa `policy_diagnostics`-julkaisun, vaikka
    tuotannon timer-ajossa diagnostiikka olisi throttlatty
 
-Root YAML -kytkenta on erikseen regressiosuojattu testissa
-`tests/contract/test_grouped_config_runtime_parity.py::
-test_scenario_harness_registry_is_isolated_from_root_ent`.
+Root YAML -kytkenta ja direct-v3-harness on regressiosuojattu testissa
+`tests/contract/test_e2e_direct_runtime_contract.py`.
 
 ### Smoke-testit
 
@@ -127,10 +132,10 @@ Keskeiset contract-kohteet:
 
 1. `test_runtime_entity_registry_contract.py`
 2. `test_grouped_config_contract.py`
-3. `test_grouped_config_runtime_parity.py`
+3. `test_e2e_direct_runtime_contract.py`
 
-Kaytannollinen painotus on grouped-configissa, runtime-registryssa ja
-runtime-parityssa.
+Kaytannollinen painotus on static config -contractissa, packet-owned runtime-registryssa
+ja direct_tick_frame_v3 E2E -pariteetissa.
 
 Grouped-config contract testaa nyt myos sen, etta `runtime.*` on aktiivinen
 user-config surface, mutta `policy_outputs` ja `diagnostics_outputs` ovat
@@ -269,11 +274,11 @@ Nykyiset testit kattavat esimerkiksi:
 
 ### Contract-kattavuus
 
-Grouped-config- ja parity-testeilla on nyt perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
+Static config-, packet registry- ja direct-v3 E2E -testeilla on nyt perustason kattavuus. Lisaakattavuudelle on silti tilaa esimerkiksi:
 
-1. etta grouped-configin kaikki pakolliset device-pinnat on validoitu
+1. etta static configin kaikki pakolliset device-pinnat on validoitu
 2. ettei runtime-entity-id -konflikteja ole
-3. etta grouped-configin ja alias-pintojen erot ovat tarkoituksellisia
+3. etta template -> packet -> parser -round-trip katetaan aidolla HA-template-renderoinnilla
 
 ### DEGRADED- ja anti-flap-kattavuus
 

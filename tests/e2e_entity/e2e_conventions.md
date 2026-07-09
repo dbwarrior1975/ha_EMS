@@ -19,9 +19,11 @@ E2E-testien tulee todistaa nykyista tuotantoketjua:
 3. writerit lukevat device-policyja
 4. HA-actuatorit ja state-entityt paattyvat odotettuun lopputilaan
 
-Skenaario-YAML:n `runtime.*` entity-id:t ovat user-config read targetteja.
-Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa, joten
-`policy_outputs`- tai `diagnostics_outputs`-osioita ei kuulu skenaario-YAML:iin.
+Skenaario-YAML on vain ihmisluettava fixture-maarittely. Harness materialisoi
+jokaisella policy-ajolla kolme strict schema-v3 -pakettia (`policy_config`,
+`measurements`, `policy_state`) ja ajaa ne oikeiden
+`parse_policy_config_cached()`- ja `parse_tick_frame_v3()`-parserien kautta.
+Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa.
 
 ## Scenario and harness rules
 
@@ -30,9 +32,12 @@ Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa, joten
 2. Hae globaalit entityt `h.ent`-registrysta.
 3. Hae laitekohtaiset entityt `h.device_entity(device_id, field)`-helperilla.
 4. Ala importtaa `tests.entity_ids.ENT`:a e2e-polkuun.
-5. Yksi harness-step simuloi yhden policy-sampling-ajon kutsumalla
-   `ems_policy_engine_loop(trigger_reason='e2e')`.
-6. E2E-triggeri julkaisee `policy_diagnostics`-payloadin aina, vaikka
+5. Yksi harness-step rakentaa strict v3 -paketit, kutsuu
+   `ems_policy_engine_loop(trigger_reason='e2e')` ja jatkaa samaan
+   dispatch-applier -> writer -ketjuun kuin tuotanto.
+6. `policy_diagnostics.runtime_input_contract` on aina
+   `direct_tick_frame_v3` aktiivisissa E2E-skenaarioissa.
+7. E2E-triggeri julkaisee `policy_diagnostics`-payloadin aina, vaikka
    tuotannon timer-ajossa diagnostiikka olisi throttlatty.
 
 ## Preferred assertions

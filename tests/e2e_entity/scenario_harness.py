@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 import copy
-import os
 import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from ems_adapter.config_loader import (
-    build_policy_context_view,
-    compile_core_config_plan_from_grouped_config,
-    load_grouped_ems_config,
-)
+import yaml
 from tests.e2e_entity.entity_registry import build_scenario_entity_registry
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
+from tests.e2e_entity.direct_runtime_packets import ScenarioDirectRuntimeV3
 
 
 class FakeEntityStore:
@@ -48,7 +44,7 @@ class FakeEntityStore:
 
 class QuarterScenarioHarness:
     """
-    Grouped-config-driven quarter simulator for the current three-loop production chain:
+    Direct-runtime-v3 quarter simulator for the current three-loop production chain:
 
         policy loop -> dispatch state applier loop -> writer loop
 
@@ -64,7 +60,7 @@ class QuarterScenarioHarness:
         start_ts: float = 0.0,
         step_s: int = 30,
         cfg_overrides: dict | None = None,
-        grouped_config_path: Path | None = None,
+        scenario_config_path: Path | None = None,
         scenario_dir: Path | None = None,
     ):
         self.project_root = Path(project_root)
@@ -74,20 +70,25 @@ class QuarterScenarioHarness:
         self.cfg_overrides = dict(cfg_overrides or {})
         self.history = []
         self.scenario_dir = Path(scenario_dir) if scenario_dir is not None else None
-        self.grouped_config_path = self._resolve_grouped_config_path(
+        self.scenario_config_path = self._resolve_scenario_config_path(
             project_root=self.project_root,
-            grouped_config_path=grouped_config_path,
+            scenario_config_path=scenario_config_path,
             scenario_dir=self.scenario_dir,
         )
-        self.grouped_config = None
-        self._scenario_compiled_plan = None
+        self.scenario_config = None
+        self.direct_runtime = None
         self.ent = {}
-        if self.grouped_config_path is not None and self.grouped_config_path.exists():
-            self.grouped_config = load_grouped_ems_config(self.grouped_config_path)
-            self._scenario_compiled_plan = compile_core_config_plan_from_grouped_config(self.grouped_config)
-            self.ent = build_scenario_entity_registry(self.grouped_config)
-        if self.grouped_config_path is not None:
-            os.environ['EMS_GROUPED_CONFIG_PATH'] = str(self.grouped_config_path)
+        if self.scenario_config_path is not None and self.scenario_config_path.exists():
+            loaded = yaml.safe_load(self.scenario_config_path.read_text(encoding='utf-8'))
+            if not isinstance(loaded, dict):
+                raise ValueError(f'scenario config root must be a mapping: {self.scenario_config_path}')
+            self.scenario_config = loaded
+            self.ent = build_scenario_entity_registry(self.scenario_config)
+            self.direct_runtime = ScenarioDirectRuntimeV3(
+                self.scenario_config,
+                self.store,
+                lambda: self.now,
+            )
 
         self.policy_mod = self._load_module(self.project_root / 'ems_policy_engine.py', kind='policy')
         self.dispatch_state_applier_mod = self._load_module(
@@ -104,7 +105,7 @@ class QuarterScenarioHarness:
         entity_id = self.ent.get(key)
         if not entity_id:
             raise KeyError(
-                f"missing runtime entity key={key} config={self.grouped_config_path}"
+                f"missing runtime entity key={key} config={self.scenario_config_path}"
             )
         return entity_id
 
@@ -121,7 +122,7 @@ class QuarterScenarioHarness:
         if not entity_id:
             raise KeyError(
                 f"missing scenario runtime entity for device_id={device_id} field={field} "
-                f"config={self.grouped_config_path}"
+                f"config={self.scenario_config_path}"
             )
         return entity_id
 
@@ -129,14 +130,14 @@ class QuarterScenarioHarness:
         return self.device_entity(device_id, field)
 
     @staticmethod
-    def _resolve_grouped_config_path(
+    def _resolve_scenario_config_path(
         *,
         project_root: Path,
-        grouped_config_path: Path | None = None,
+        scenario_config_path: Path | None = None,
         scenario_dir: Path | None = None,
     ) -> Path | None:
-        if grouped_config_path is not None:
-            return Path(grouped_config_path)
+        if scenario_config_path is not None:
+            return Path(scenario_config_path)
 
         if scenario_dir is not None:
             scenario_path = Path(scenario_dir)
@@ -146,10 +147,6 @@ class QuarterScenarioHarness:
             raise FileNotFoundError(
                 f"scenario_dir requires EMS_config.yaml: {scenario_path}"
             )
-
-        env_grouped_path = os.environ.get('EMS_GROUPED_CONFIG_PATH', '').strip()
-        if env_grouped_path:
-            return Path(env_grouped_path)
 
         for filename in ('example_EMS_config.yaml', 'EMS_config.yaml'):
             candidate = Path(project_root) / filename
@@ -162,7 +159,7 @@ class QuarterScenarioHarness:
         self.store.set_now(self.now)
         for entity_id, value in dict(mapping or {}).items():
             self.store.set_value(entity_id, value)
-            self._sync_grouped_config_entities(entity_id, value)
+            self._sync_scenario_derived_entities(entity_id, value)
 
     def set_attrs(self, entity_id: str, attrs: dict):
         self.store.set_now(self.now)
@@ -204,7 +201,7 @@ class QuarterScenarioHarness:
         return snap
 
     def _seed_defaults(self):
-        if self.grouped_config is None:
+        if self.scenario_config is None:
             return
         self.store.set_now(self.now)
         default_specs = (
@@ -280,7 +277,7 @@ class QuarterScenarioHarness:
                 defaults[entity_id] = value
         for k, v in defaults.items():
             self.store.set_value(k, v)
-            self._sync_grouped_config_entities(k, v)
+            self._sync_scenario_derived_entities(k, v)
 
         raw_net_zero_defaults = runtime_inputs_for_net_zero_intent(
             self.ent,
@@ -291,7 +288,7 @@ class QuarterScenarioHarness:
         )
         for entity_id, value in raw_net_zero_defaults.items():
             self.store.set_value(entity_id, value)
-            self._sync_grouped_config_entities(entity_id, value)
+            self._sync_scenario_derived_entities(entity_id, value)
 
         for device_id, field, value in (
             ('EV_CHARGER', 'priority', 2),
@@ -308,7 +305,7 @@ class QuarterScenarioHarness:
             entity_id = self._optional_device_entity_id(device_id, field)
             if entity_id:
                 self.store.set_value(entity_id, value)
-                self._sync_grouped_config_entities(entity_id, value)
+                self._sync_scenario_derived_entities(entity_id, value)
 
         if self.ent:
             seed_active_surplus_devices(self, active_device_ids=())
@@ -327,23 +324,23 @@ class QuarterScenarioHarness:
         self.store.set_value('input_number.ems_home_battery_default_min_absorb_w', 100)
         self.store.set_value('input_number.ems_ev_voltage_v', 230)
         self.store.set_value('sensor.ems_device_policies_pyscript', '')
-        self._sync_grouped_config_entities('input_number.ems_ev_voltage_v', 230)
+        self._sync_scenario_derived_entities('input_number.ems_ev_voltage_v', 230)
         for key, default in (
             ('ev_current_step_a', 4),
             ('ev_charger_phases', 1),
         ):
             entity_id = self._optional_entity_id(key)
             if entity_id:
-                self._sync_grouped_config_entities(entity_id, self.store.get_value(entity_id, default))
+                self._sync_scenario_derived_entities(entity_id, self.store.get_value(entity_id, default))
         for device_id, field, default in (
             ('RELAY1', 'max_absorb_w', 2500),
             ('RELAY2', 'max_absorb_w', 5000),
         ):
             entity_id = self._optional_device_entity_id(device_id, field)
             if entity_id:
-                self._sync_grouped_config_entities(entity_id, self.store.get_value(entity_id, default))
+                self._sync_scenario_derived_entities(entity_id, self.store.get_value(entity_id, default))
 
-    def _sync_grouped_config_entities(self, entity_id, value):
+    def _sync_scenario_derived_entities(self, entity_id, value):
         voltage_v = self.store.get_value('input_number.ems_ev_voltage_v', 230) or 230
         ev_charger_phases = self._optional_entity_id('ev_charger_phases')
         ev_current_step_a = self._optional_entity_id('ev_current_step_a')
@@ -357,7 +354,7 @@ class QuarterScenarioHarness:
                 (ev_current_step_a, 4),
             ):
                 if dep_entity_id:
-                    self._sync_grouped_config_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
+                    self._sync_scenario_derived_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
             return
 
         if entity_id == ev_charger_phases:
@@ -366,7 +363,7 @@ class QuarterScenarioHarness:
                 (ev_current_step_a, 4),
             ):
                 if dep_entity_id:
-                    self._sync_grouped_config_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
+                    self._sync_scenario_derived_entities(dep_entity_id, self.store.get_value(dep_entity_id, dep_default))
             return
 
         if entity_id == ev_current_step_a:
@@ -489,7 +486,6 @@ class QuarterScenarioHarness:
             '__file__': str(file_path),
             'time_trigger': _time_trigger,
             'state_trigger': _state_trigger,
-            'ENT': self.ent,
             'get_bool': get_bool,
             'get_float': get_float,
             'get_int': get_int,
@@ -505,32 +501,20 @@ class QuarterScenarioHarness:
         code = compile(src, str(file_path), 'exec')
         exec(code, ns)
 
-        # Test-only bridge for legacy entity-driven scenarios. Production runtime
-        # remains direct-packet-only; the harness materializes its scenario config
-        # explicitly so behavior E2E coverage does not preserve a second runtime path.
-        if self._scenario_compiled_plan is not None:
-            def _scenario_read_entity(entity_id, default=None):
-                value = self.store.get_value(entity_id, default)
-                if value in (None, 'unknown', 'unavailable', 'none', ''):
-                    return default
-                return value
-
-            def _scenario_core_config():
-                return build_policy_context_view(
-                    self._scenario_compiled_plan,
-                    _scenario_read_entity,
-                )
-
+        # Production-parity E2E bridge: every policy tick is built as the same
+        # strict three-packet direct_tick_frame_v3 contract used by production.
+        if self.direct_runtime is not None:
             if kind == 'policy':
-                ns['read_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
+                ns['read_runtime_context'] = self.direct_runtime.read_runtime_context
+                ns['config_trace_attrs'] = self.direct_runtime.config_trace_attrs
             elif kind in ('writer', 'dispatch_state_applier'):
-                ns['read_runtime_entities'] = lambda *args, **kwargs: self.ent
-                ns['_load_runtime_entities'] = lambda *args, **kwargs: self.ent
+                ns['read_runtime_entities'] = self.direct_runtime.read_runtime_entities
+                ns['_load_runtime_entities'] = self.direct_runtime.read_runtime_entities
                 if kind == 'writer':
-                    ns['read_core_config'] = lambda *args, **kwargs: _scenario_core_config()
-                    ns['_load_core_config'] = lambda *args, **kwargs: _scenario_core_config()
-                    ns['read_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
-                    ns['_load_runtime_context'] = lambda *args, **kwargs: (_scenario_core_config(), self.ent)
+                    ns['read_core_config'] = lambda *args, **kwargs: self.direct_runtime.snapshot().runtime_config
+                    ns['_load_core_config'] = lambda *args, **kwargs: self.direct_runtime.snapshot().runtime_config
+                    ns['read_runtime_context'] = self.direct_runtime.read_runtime_context
+                    ns['_load_runtime_context'] = self.direct_runtime.read_runtime_context
         return ns
 
     @contextmanager

@@ -9,7 +9,7 @@ from tests.entity_ids import ENT
 
 @pytest.mark.unit
 def test_runtime_inputs_helper_generates_raw_values_matching_expected_derived(project_root):
-    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    harness = QuarterScenarioHarness(project_root, scenario_config_path=project_root / 'example_EMS_config.yaml')
     values = runtime_inputs_for_net_zero_intent(
         harness.ent,
         rpnz_w=-10,
@@ -43,7 +43,7 @@ def test_runtime_inputs_helper_generates_raw_values_matching_expected_derived(pr
 
 @pytest.mark.unit
 def test_runtime_inputs_helper_rejects_nonzero_required_power_above_export_stop_threshold(project_root):
-    harness = QuarterScenarioHarness(project_root, grouped_config_path=project_root / 'example_EMS_config.yaml')
+    harness = QuarterScenarioHarness(project_root, scenario_config_path=project_root / 'example_EMS_config.yaml')
 
     with pytest.raises(AssertionError, match='cannot encode nonzero NET_ZERO required_power above export stop threshold'):
         runtime_inputs_for_net_zero_intent(

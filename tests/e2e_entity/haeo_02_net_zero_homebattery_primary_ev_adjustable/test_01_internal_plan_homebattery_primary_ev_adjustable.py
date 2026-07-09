@@ -136,6 +136,8 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 E['battery_heartbeat']: 0.0,
                 E['haeo_battery_active_power_fresh_source']: 2.0,
                 E['haeo_ev_active_power_fresh_source']: 2.0,
+                E['haeo_battery_power_active']: 1.0,
+                E['haeo_ev_battery_power_active']: 5.0,
             },
             'expect_derived': expect_derived_for_net_zero_intent(
                 rpnz_w=7000.0,

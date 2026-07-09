@@ -23,10 +23,10 @@ def _scenario_fixture_relay(devices, device_id):
 
 
 def build_scenario_entity_registry(config):
-    """Test-harness registry for grouped scenario YAML.
+    """Test-harness entity registry for scenario YAML.
 
     This intentionally lives under tests: production runtime execution is packet-only
-    and does not materialize scalar aliases from grouped config.
+    and does not participate in policy runtime execution.
     """
     ems = config.get('ems', {}) if isinstance(config, dict) else {}
     profiles = ems.get('profiles', {}) if isinstance(ems.get('profiles'), dict) else {}

@@ -8,7 +8,7 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
 @pytest.mark.smoke
-def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
+def test_release_example_config_loads_and_runs_direct_v3_smoke_step(project_root):
     grouped_config_path = project_root / 'example_EMS_config.yaml'
     grouped_config = load_grouped_ems_config(grouped_config_path)
     validation = validate_grouped_ems_config(grouped_config)
@@ -19,7 +19,7 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     assert runtime_entities['ev_device_ids'] == ('EV_CHARGER',)
     assert runtime_entities['relay_device_ids'] == ('RELAY1', 'RELAY2')
 
-    harness = QuarterScenarioHarness(project_root, grouped_config_path=grouped_config_path)
+    harness = QuarterScenarioHarness(project_root, scenario_config_path=grouped_config_path)
     snap = harness.step(
         {
             **runtime_inputs_for_net_zero_intent(
@@ -39,7 +39,8 @@ def test_release_example_grouped_config_loads_and_runs_smoke_step(project_root):
     trace_attrs = snap['attrs'][ENT['policy_diagnostics']]
     writer_attrs = snap['attrs']['sensor.ems_actuator_writer_trace']
 
-    assert trace_attrs['config_source'] == 'grouped_config'
+    assert trace_attrs['config_source'] == 'direct_tick_frame_v3_e2e'
+    assert trace_attrs['runtime_input_contract'] == 'direct_tick_frame_v3'
     assert writer_attrs['writer_trace_canonical_contract'] == 'devices'
     assert 'EV_CHARGER' in writer_attrs['devices']
     assert 'RELAY1' in writer_attrs['devices']

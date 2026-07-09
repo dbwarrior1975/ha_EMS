@@ -22,6 +22,8 @@ NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon malli on:
 RPNZ/RPC shown in helper arguments
     -> fixture helper calculates raw EMS inputs
     -> h.step() applies quarter_energy_balance_kwh, grid_power_w, pv_power_w
+    -> harness materializes strict measurements/policy_state/policy_config v3 packets
+    -> parse_tick_frame_v3() validates and parses the same runtime contract as production
     -> EMS production code derives RPNZ/RPC internally
     -> expect_derived verifies fixture intent
     -> policy / dispatch / writer expectations are checked

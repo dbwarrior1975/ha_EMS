@@ -14,21 +14,13 @@ def build_harness(project_root):
         E['haeo_stale_timeout_s']: 300,
         E['haeo_battery_active_power_fresh_source']: 1.0,
         E['haeo_ev_active_power_fresh_source']: 1.0,
+        E['haeo_battery_power_active']: 1.5,
+        E['haeo_ev_battery_power_active']: 3.7,
         E['ev_min_absorb_w']: 920,
         E['ev_current_step_a']: 4,
         E['actuator_battery_setpoint_w']: 0.0,
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,
-    })
-    h.set_attrs(E['haeo_battery_power_active'], {
-        'forecast': [
-            {'time': 0, 'value': 1.5},
-        ],
-    })
-    h.set_attrs(E['haeo_ev_battery_power_active'], {
-        'forecast': [
-            {'time': 0, 'value': 3.7},
-        ],
     })
     return h
 

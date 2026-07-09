@@ -15,6 +15,8 @@ def build_harness(project_root):
         E['haeo_stale_timeout_s']: 300,
         E['haeo_battery_active_power_fresh_source']: 1.0,
         E['haeo_ev_active_power_fresh_source']: 1.0,
+        E['haeo_battery_power_active']: 3.0,
+        E['haeo_ev_battery_power_active']: 1.5,
         # Deliberately opposite to the expected HAEO plan. The future EMS-internal
         # HAEO NET_ZERO path should choose the combo from the forecast, not from
         # these config helpers.
@@ -31,18 +33,6 @@ def build_harness(project_root):
         E['pv_power_w']: 3500.0,
     })
     seed_active_surplus_devices(h, active_device_ids=())
-    h.set_attrs(E['haeo_battery_power_active'], {
-        'forecast': [
-            {'time': 0, 'value': 3.0},
-            {'time': 900, 'value': 1.0},
-        ],
-    })
-    h.set_attrs(E['haeo_ev_battery_power_active'], {
-        'forecast': [
-            {'time': 0, 'value': 1.5},
-            {'time': 900, 'value': 5.0},
-        ],
-    })
     return h
 
 

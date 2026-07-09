@@ -47,7 +47,7 @@ def _entity(h, key):
     ent = _registry(h)
     entity_id = ent.get(key)
     if not entity_id:
-        raise KeyError(f"missing runtime entity key={key} config={getattr(h, 'grouped_config_path', None)}")
+        raise KeyError(f"missing runtime entity key={key} config={getattr(h, 'scenario_config_path', None)}")
     return entity_id
 
 
@@ -199,9 +199,14 @@ def _nested_value(mapping, path):
 
 def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
     config_source = policy_trace.get('config_source')
-    assert config_source == 'grouped_config', (
+    assert config_source == 'direct_tick_frame_v3_e2e', (
         f"step={idx} note={note} policy.config_source "
-        f"actual={config_source} expected=grouped_config"
+        f"actual={config_source} expected=direct_tick_frame_v3_e2e"
+    )
+    runtime_contract = policy_trace.get('runtime_input_contract')
+    assert runtime_contract == 'direct_tick_frame_v3', (
+        f"step={idx} note={note} policy.runtime_input_contract "
+        f"actual={runtime_contract} expected=direct_tick_frame_v3"
     )
 
 
