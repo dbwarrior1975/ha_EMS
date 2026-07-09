@@ -19,6 +19,9 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'ev_device_ids': (),
+                'primary_device_id': '',
+                'primary_surplus_combo_valid': True,
+                'primary_surplus_combo_reason': 'surplus_only_topology',
                 'surplus_dispatch_action': 'NOOP',
                 'surplus_active_device_ids': (),
             },

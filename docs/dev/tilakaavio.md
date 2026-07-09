@@ -93,7 +93,7 @@ Tulkitse kaavio nain:
 stateDiagram-v2
     [*] --> BATTERY_NET_ZERO_CONTROLLER
 
-    BATTERY_NET_ZERO_CONTROLLER --> BATTERY_FLOOR_HOLD: use_ev_primary_mode and ev_policy_mode in (burn, restore_min) and charger_on=true
+    BATTERY_NET_ZERO_CONTROLLER --> BATTERY_FLOOR_HOLD: explicit primary EV DevicePolicy.mode in (burn, restore_min) and charger_on=true
     BATTERY_FLOOR_HOLD --> BATTERY_NET_ZERO_CONTROLLER: charger_on=false or EV policy no longer active
 
     BATTERY_FLOOR_HOLD --> BATTERY_FLOOR_HOLD: keep floor while EV actually charging

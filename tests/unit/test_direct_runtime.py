@@ -231,8 +231,8 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         previous_primary_load='',
         previous_primary_device_id=frame.previous_primary_device_id,
     )
-    selected_ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
-    adjustable_active = selected_ev_device_id in set(frame.active_surplus_device_ids)
+    ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
+    adjustable_active = ev_device_id in set(frame.active_surplus_device_ids)
     outputs = compute_net_zero_engine_outputs(
         profiles,
         cfg,
@@ -986,7 +986,7 @@ def test_direct_parser_rejects_missing_device_owned_surplus_policy_field(project
 
 
 @pytest.mark.unit
-def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus_role(project_root):
+def test_direct_parser_blank_primary_preserves_valid_surplus_only_topology(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=198)
@@ -1009,7 +1009,9 @@ def test_direct_parser_blank_primary_uses_capability_driven_fallback_not_surplus
         freeze_until_ts=None,
     )
 
-    assert out.attrs['primary_device_id'] == 'HOME_BATTERY'
+    assert out.attrs['primary_device_id'] == ''
+    assert out.attrs['primary_surplus_combo_valid'] is True
+    assert out.attrs['primary_surplus_combo_reason'] == 'surplus_only_topology'
     assert 'surplus_adjustable_device_id' not in out.attrs
     assert out.attrs['surplus_candidate_device_ids'] == ('HOME_BATTERY', 'RELAY1')
 

@@ -117,6 +117,9 @@ def _v3_battery_device_id(cfg):
     return str(battery_ids[0]) if battery_ids else ''
 
 
+# L4 boundary: HAEO still has scalar ev_target_kw state, so the plan must choose
+# one EV view. Do not reuse this helper in NET_ZERO core execution; L4 replaces
+# it with device-ID-keyed HAEO targets/state/limits.
 def _selected_ev_device_id(cfg):
     primary_device_id = str(_global_config_value(cfg, 'primary_device_id', '') or '')
     if _is_ev_device_id(cfg, primary_device_id):

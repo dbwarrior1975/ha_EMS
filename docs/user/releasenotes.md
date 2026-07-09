@@ -1,3 +1,22 @@
+## 2026-07-09 — L3 per-device EV execution cleanup
+
+L3 poistaa NET_ZERO-coren implicit selected-EV execution pivotin ilman policy-objective redesignia.
+
+Muutokset:
+
+1. primary on optional explicit `primary_device_id`; tyhja primary on validi surplus-only-topologia
+2. first-primary-capable ja first-EV fallbackit on poistettu NET_ZERO-coresta
+3. EV lifecycle lasketaan per device-ID canonical state-mapista
+4. jokaiselle EV:lle rakennetaan oma `DevicePolicy`; explicit primary EV saa erillisen role-polun
+5. `hard_off_active` on device-owned latch ja sailyttaa policy-auktoriteetin myos ilman surplus-eligibilitya
+6. FORCE_ON precedence, latchin sailyminen ja FORCE_ON release -> HARD_OFF palautuminen sailyvat
+7. surplus `fixed` tarkoittaa canonicalisti `min_absorb_w`; `max_absorb` tarkoittaa `max_absorb_w` kaikille device-kindeille
+8. direct-runtime `selected_ev_context_by_id` ja selected-EV metrics/intermediates on poistettu
+9. no-primary E2E, device-order permutation ja multi-EV per-device regressiot lukitsevat uuden execution-sopimuksen
+10. HAEO:n scalar one-selected-EV plan-selection sailyy tarkoituksella L4-velkana
+
+---
+
 ## 2026-07-08 — Legacy compatibility cleanup P2
 
 P2 viimeistelee primary-role -nimimigraation ilman control-policy redesignia.

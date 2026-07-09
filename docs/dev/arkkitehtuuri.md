@@ -159,10 +159,24 @@ HARD_OFFia ilman historiallista battery/EV-riskibooleanin sivuvaikutusta. FORCE_
 voi samanaikaisesti bypassata taman optimizer-owned tilan effective policyssa;
 lifecycle-historiaa ei tuhota.
 
+Primary-role ownership ja EV execution:
+
+1. `primary_device_id` on optional explicit device-ID role: tyhja arvo on validi surplus-only-topologia
+2. effective primary -maara on 0 tai 1; engine ei valitse first-capable/first-EV fallbackia
+3. capability `supports_primary_regulation` kertoo vain fyysisen kyvyn, ei roolin omistajuutta
+4. EV lifecycle siirtyy aina `previous_device_states[device_id]` -> `device_lifecycle_states[device_id]`
+5. jokaiselle EV:lle muodostetaan oma `DevicePolicy`; vain explicit primary EV kayttaa primary-envelopea
+6. latched `hard_off_active=true` sailyttaa device-owned policy-auktoriteetin myos ilman primary/surplus-eligibilitya
+7. FORCE_ON ohittaa optimizer-owned HARD_OFF activation gaten, mutta ei nollaa latchia
+
+HAEO NET_ZERO -planin nykyinen scalar `ev_target_kw` pakottaa viela yhden EV:n valinnan
+`haeo_net_zero_plan.py`:ssa. Tama one-selected-EV oletus on tarkoituksella L4-velkaa ja
+poistetaan vasta device-ID-keyed HAEO target/state -migraatiossa.
+
 Generic feedback diagnostics:
 
 `activation_block_reason` sailyy tarkoituksella singular-kenttana: nykyinen execution-
-arkkitehtuuri ratkaisee yhden `primary_device_id`:n ja feedback protection arvioi yhden
+arkkitehtuuri ratkaisee enintaan yhden explicit `primary_device_id`:n ja feedback protection arvioi yhden
 primary/residual-parin kerrallaan. Jos multi-primary joskus tulee execution-sopimukseen,
 tama diagnostiikkamuoto on migroitava per-device-rakenteeksi.
 

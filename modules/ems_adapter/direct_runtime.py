@@ -73,7 +73,6 @@ class RuntimePolicyConfig:
             'device_capabilities_by_id': self.device_capabilities_by_id,
             'device_policy_by_id': self.device_policy_by_id,
             'device_adapter_by_id': self.device_adapter_config_by_id,
-            'selected_ev_context_by_id': {},
         }
 
     def v3_battery_device_id(self):
