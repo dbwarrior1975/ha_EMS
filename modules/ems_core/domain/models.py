@@ -69,18 +69,19 @@ class CoreGlobalConfig:
     haeo_stale_timeout_s: ScalarRef
     nz_battery_floor_default_w: ScalarRef
     nz_battery_floor_ev_active_w: ScalarRef
-    primary_device_id: EntityRef
+    primary_consuming_device_ids: tuple[str, ...]
 
 
 @dataclass
 class CoreDeviceCapabilitiesConfig:
     can_absorb_w: bool
     can_produce_w: bool
-    supports_primary_regulation: bool
-    supports_residual_regulation: bool
+    supports_primary_consuming_regulation: bool
+    supports_producing_regulation: bool
     min_absorb_w: ScalarRef
     max_absorb_w: ScalarRef
     step_w: ScalarRef
+    min_produce_w: Optional[ScalarRef] = None
     max_produce_w: Optional[ScalarRef] = None
     uses_hard_off_lifecycle: bool = False
 
@@ -93,13 +94,15 @@ class DeviceControlContext:
     can_produce_w: bool
     min_absorb_w: float
     max_absorb_w: float
+    min_produce_w: float
     max_produce_w: float
     step_w: float
-    supports_primary_regulation: bool
-    supports_residual_regulation: bool
+    supports_primary_consuming_regulation: bool
+    supports_producing_regulation: bool
     uses_hard_off_lifecycle: bool
     priority: int
-    current_measured_power_w: float = 0.0
+    producing_priority: int
+    current_control_target_w: float = 0.0
 
 
 @dataclass
@@ -116,6 +119,7 @@ class HardOffLifecycleTransition:
 @dataclass
 class CoreBatteryPolicyConfig:
     priority: ScalarRef
+    producing_priority: ScalarRef
     surplus_allowed: bool = False
     surplus_dispatch_mode: str = 'max_absorb'
     default_min_absorb_w: Optional[ScalarRef] = None
@@ -135,7 +139,6 @@ class CoreBatteryGuardConfig:
 @dataclass
 class CoreBatteryAdapterConfig:
     target_w: EntityRef
-    measured_power_w: EntityRef
 
 
 @dataclass
@@ -151,6 +154,7 @@ class CoreBatteryDeviceConfig:
 @dataclass
 class CoreEvPolicyConfig:
     priority: ScalarRef
+    producing_priority: ScalarRef
     surplus_allowed: EntityRef
     force_on: EntityRef
     low_pv_threshold_w: ScalarRef
@@ -180,6 +184,7 @@ class CoreEvChargerDeviceConfig:
 @dataclass
 class CoreRelayPolicyConfig:
     priority: ScalarRef
+    producing_priority: ScalarRef
     surplus_allowed: EntityRef
     force_on: EntityRef
     surplus_dispatch_mode: str = 'fixed'
@@ -208,10 +213,7 @@ class CoreRuntimeConfig:
 
 @dataclass
 class CoreHaeoConfig:
-    battery_power_active: EntityRef
-    ev_power_active: EntityRef
-    battery_fresh_source: EntityRef
-    ev_fresh_source: EntityRef
+    devices: dict[str, dict[str, EntityRef]]
 
 
 @dataclass
@@ -309,21 +311,23 @@ class CoreConfig:
 @dataclass
 class RuntimeMeasurements:
     now_ts: float
-    soc: Optional[float]
-    min_cell_voltage_v: Optional[float]
-    battery_heartbeat_age_s: float
     grid_power_w: float
-    current_battery_setpoint_w: float
     quarter_energy_balance_kwh: float
     pv_power_w: Optional[float] = None
+    battery_states: Optional[dict[str, dict]] = None
     relay_states: Optional[dict[str, dict]] = None
     ev_states: Optional[dict[str, dict]] = None
 
     def __post_init__(self):
+        if self.battery_states is None:
+            self.battery_states = {}
         if self.relay_states is None:
             self.relay_states = {}
         if self.ev_states is None:
             self.ev_states = {}
+
+    def battery_state(self, device_id: str) -> dict:
+        return dict((self.battery_states or {}).get(str(device_id), {}) or {})
 
 
 @dataclass
@@ -331,8 +335,20 @@ class HaeoTargets:
     effective_forecast: str
     configured_forecast: str
     fresh: bool
-    battery_target_kw: float = 0.0
-    ev_target_kw: float = 0.0
+    device_target_kw_by_id: Optional[dict[str, float]] = None
+    device_age_s_by_id: Optional[dict[str, float]] = None
+
+    def __post_init__(self):
+        if self.device_target_kw_by_id is None:
+            self.device_target_kw_by_id = {}
+        if self.device_age_s_by_id is None:
+            self.device_age_s_by_id = {}
+
+    def target_kw(self, device_id: str, default: float = 0.0) -> float:
+        return float((self.device_target_kw_by_id or {}).get(str(device_id), default) or 0.0)
+
+    def age_s(self, device_id: str, default: float = float('inf')) -> float:
+        return float((self.device_age_s_by_id or {}).get(str(device_id), default))
 
 
 @dataclass
@@ -340,7 +356,7 @@ class HaeoNetZeroPlan:
     active: bool
     quarter_key: str = ''
     primary_load: str = ''
-    primary_device_id: str = ''
+    primary_consuming_device_id: str = ''
     preferred_surplus_device_id: str = ''
     device_limits_w: Optional[dict] = None
     reason: str = ''
@@ -366,9 +382,11 @@ class EmsDeviceConfig:
     can_produce_w: bool
     min_absorb_w: int
     max_absorb_w: int
+    min_produce_w: int
     max_produce_w: int
     step_w: int
     priority: int
+    producing_priority: int
     enabled: bool = True
 
 
@@ -377,7 +395,6 @@ class EmsDeviceState:
     device_id: str
     available: bool
     active: bool
-    measured_power_w: int
     current_target_w: int
     guard_state: str = 'OK'
 

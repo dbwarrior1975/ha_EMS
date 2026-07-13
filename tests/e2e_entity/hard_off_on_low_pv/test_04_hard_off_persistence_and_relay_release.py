@@ -47,8 +47,8 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
             ),
             'expect_policy': {
                 'surplus_explanation': 'RPNZ <= 10 W release deadband -> release lowest-priority active target',
-                'surplus_next_device_id': 'EV_CHARGER',
-                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 3,
+                'surplus_next_device_id': 'RELAY2',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 1.1,
             },
@@ -85,7 +85,7 @@ def test_04_hard_off_persistence_and_relay_release(project_root):
             'expect_policy': {
                 'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'surplus_next_device_id': 'RELAY1',
-                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'pv_power_kw': 1.9,
             },

@@ -31,7 +31,7 @@ def ev_strategy_target_w(profiles, ev_context, haeo, burn_active):
         return max_absorb_w
 
     if haeo.effective_forecast == ForecastProfile.HAEO and profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:
-        target_w = float(getattr(haeo, 'ev_target_kw', 0.0) or 0.0) * 1000.0
+        target_w = float(haeo.target_kw(getattr(ev_context, 'device_id', ''), 0.0) or 0.0) * 1000.0
         return target_w if target_w > 0.0 else 0.0
 
     if profiles.goal == GoalProfile.CHEAP_GRID_CHARGE:

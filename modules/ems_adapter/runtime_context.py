@@ -14,7 +14,7 @@ from ems_adapter.direct_runtime import (
     RuntimePacketSchemaError,
     build_static_topology,
     parse_policy_config_cached,
-    parse_tick_frame_v3,
+    parse_tick_frame_v5,
     reset_direct_runtime_cache,
 )
 from ems_core.domain.models import CorePolicyEngineConfig
@@ -401,7 +401,7 @@ def _read_grouped_runtime_candidate(read_bool, read_float, read_int, read_str, r
     config_parse_ms = _elapsed_ms(config_parse_started_ts, time.time())
 
     frame_parse_started_ts = _runtime_context_profile_started_ts()
-    tick_frame = parse_tick_frame_v3(
+    tick_frame = parse_tick_frame_v5(
         static_topology,
         runtime_cfg,
         runtime_packets.get('measurements', {}),

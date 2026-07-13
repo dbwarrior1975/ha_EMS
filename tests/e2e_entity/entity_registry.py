@@ -34,6 +34,9 @@ def build_scenario_entity_registry(config):
     runtime = ems.get('runtime', {}) if isinstance(ems.get('runtime'), dict) else {}
     state = ems.get('state', {}) if isinstance(ems.get('state'), dict) else {}
     haeo = ems.get('haeo', {}) if isinstance(ems.get('haeo'), dict) else {}
+    haeo_devices = haeo.get('devices', {}) if isinstance(haeo.get('devices'), dict) else {}
+    haeo_home_battery = haeo_devices.get('HOME_BATTERY', {}) if isinstance(haeo_devices.get('HOME_BATTERY'), dict) else {}
+    haeo_ev_charger = haeo_devices.get('EV_CHARGER', {}) if isinstance(haeo_devices.get('EV_CHARGER'), dict) else {}
     devices = ems.get('devices', {}) if isinstance(ems.get('devices'), dict) else {}
     battery = devices.get('HOME_BATTERY', {}) if isinstance(devices.get('HOME_BATTERY'), dict) else {}
     battery_caps = battery.get('capabilities', {}) if isinstance(battery.get('capabilities'), dict) else {}
@@ -49,6 +52,11 @@ def build_scenario_entity_registry(config):
     relay1_adapter = relay1.get('adapter', {}) if isinstance(relay1.get('adapter'), dict) else {}
     relay2_adapter = relay2.get('adapter', {}) if isinstance(relay2.get('adapter'), dict) else {}
 
+    primary_consuming_device_ids = global_cfg.get('primary_consuming_device_ids') or ()
+    primary_consuming_device_id_entity = ''
+    if isinstance(primary_consuming_device_ids, (list, tuple)) and primary_consuming_device_ids:
+        primary_consuming_device_id_entity = primary_consuming_device_ids[0]
+
     ent = {
         'control_profile': profiles.get('control'),
         'goal_profile': profiles.get('goal'),
@@ -61,7 +69,8 @@ def build_scenario_entity_registry(config):
         'haeo_stale_timeout_s': global_cfg.get('haeo_stale_timeout_s'),
         'nz_battery_floor_default_w': global_cfg.get('nz_battery_floor_default_w'),
         'nz_battery_floor_ev_active_w': global_cfg.get('nz_battery_floor_ev_active_w'),
-        'primary_device_id': global_cfg.get('primary_device_id'),
+        'primary_consuming_device_id': primary_consuming_device_id_entity,
+        'primary_consuming_device_ids': tuple(primary_consuming_device_ids),
         'max_solar_charge_w': battery_caps.get('max_absorb_w'),
         'max_battery_discharge_w': battery_caps.get('max_produce_w'),
         'battery_protect_soc': battery_guard.get('protect_soc'),
@@ -94,10 +103,20 @@ def build_scenario_entity_registry(config):
         'pv_power_w': runtime.get('pv_power_w'),
         'surplus_freeze_until': state.get('surplus_freeze_until'),
         'active_surplus_devices': state.get('active_surplus_devices'),
-        'haeo_battery_power_active': haeo.get('battery_power_active'),
-        'haeo_ev_battery_power_active': haeo.get('ev_power_active'),
-        'haeo_battery_active_power_fresh_source': haeo.get('battery_fresh_source'),
-        'haeo_ev_active_power_fresh_source': haeo.get('ev_fresh_source'),
+        'haeo_battery_power_active': haeo_home_battery.get('power_active'),
+        'haeo_ev_battery_power_active': haeo_ev_charger.get('power_active'),
+        'haeo_battery_active_power_fresh_source': haeo_home_battery.get('fresh_source'),
+        'haeo_ev_active_power_fresh_source': haeo_ev_charger.get('fresh_source'),
+        'haeo_device_power_active_by_id': {
+            str(device_id): mapping.get('power_active')
+            for device_id, mapping in haeo_devices.items()
+            if isinstance(mapping, dict)
+        },
+        'haeo_device_fresh_source_by_id': {
+            str(device_id): mapping.get('fresh_source')
+            for device_id, mapping in haeo_devices.items()
+            if isinstance(mapping, dict)
+        },
         'device_policies': CANONICAL_POLICY_OUTPUTS['device_policies'],
         'dispatch_command': CANONICAL_POLICY_OUTPUTS['dispatch_command'],
         'policy_state': CANONICAL_POLICY_OUTPUTS['policy_state'],

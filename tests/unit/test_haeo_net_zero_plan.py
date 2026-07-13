@@ -41,15 +41,18 @@ def _core_cfg_with_selected_custom_ev(
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ems_ev_garage_power_step_w',
         },
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
@@ -117,16 +120,16 @@ def test_ev_larger_forecast_selects_ev_primary():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         make_cfg(ev_min_absorb_w=ev_w(4), ev_current_step_a=4),
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=5.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_CHARGER': 5.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_CHARGER': 0.0}),
         now_ts=0.0,
     )
 
     assert plan.active is True
     assert plan.primary_load == 'EV_CHARGER'
-    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.primary_consuming_device_id == 'EV_CHARGER'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_CHARGER': 5000}
-    assert plan.reason == 'ev_forecast_larger'
+    assert plan.reason == 'largest_explicit_device_target'
 
 
 @pytest.mark.unit
@@ -140,7 +143,7 @@ def test_battery_larger_forecast_selects_home_battery_primary():
 
     assert plan.active is True
     assert plan.primary_load == 'HOME_BATTERY'
-    assert plan.primary_device_id == 'HOME_BATTERY'
+    assert plan.primary_consuming_device_id == 'HOME_BATTERY'
     assert plan.preferred_surplus_device_id == 'EV_CHARGER'
     assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
     assert not hasattr(plan, 'battery_limit_w')
@@ -154,32 +157,32 @@ def test_tie_keeps_previous_primary_when_available():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         make_cfg(),
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=2.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_CHARGER': 2.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_CHARGER': 0.0}),
         now_ts=30.0,
         previous_quarter_key='0',
         previous_primary_load='EV_CHARGER',
     )
 
     assert plan.primary_load == 'EV_CHARGER'
-    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.primary_consuming_device_id == 'EV_CHARGER'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
     assert plan.changed is False
 
 
 @pytest.mark.unit
-def test_tie_keeps_previous_primary_device_id_when_available():
+def test_tie_keeps_previous_primary_consuming_device_id_when_available():
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         make_cfg(),
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=2.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_CHARGER': 2.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_CHARGER': 0.0}),
         now_ts=30.0,
         previous_quarter_key='0',
         previous_primary_load='HOME_BATTERY',
-        previous_primary_device_id='EV_CHARGER',
+        previous_primary_consuming_device_id='EV_CHARGER',
     )
 
-    assert plan.primary_device_id == 'EV_CHARGER'
+    assert plan.primary_consuming_device_id == 'EV_CHARGER'
     assert plan.primary_load == 'EV_CHARGER'
     assert plan.reason == 'tie_keep_previous'
     assert plan.changed is False
@@ -249,12 +252,12 @@ def test_custom_selected_ev_device_id_is_used_in_haeo_plan(project_root):
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         cfg,
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=5.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_GARAGE': 5.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_GARAGE': 0.0}),
         now_ts=0.0,
     )
 
     assert plan.active is True
-    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.primary_consuming_device_id == 'EV_GARAGE'
     assert plan.primary_load == 'EV_GARAGE'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_GARAGE': 5000}
@@ -267,29 +270,29 @@ def test_custom_selected_ev_device_limit_cap_is_used(project_root):
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         cfg,
-        _fresh_haeo(battery_target_kw=1.0, ev_target_kw=9.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 1.0, 'EV_GARAGE': 9.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_GARAGE': 0.0}),
         now_ts=0.0,
     )
 
-    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.primary_consuming_device_id == 'EV_GARAGE'
     assert plan.device_limits_w == {'HOME_BATTERY': 1000, 'EV_GARAGE': 6900}
     assert plan.device_limits_w['EV_GARAGE'] == 6900
 
 
 @pytest.mark.unit
-def test_tie_keeps_previous_custom_ev_primary_device_id(project_root):
+def test_tie_keeps_previous_custom_ev_primary_consuming_device_id(project_root):
     cfg = _core_cfg_with_selected_custom_ev(project_root)
 
     plan = compute_haeo_net_zero_plan(
         _haeo_profiles(),
         cfg,
-        _fresh_haeo(battery_target_kw=2.0, ev_target_kw=2.0),
+        _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_GARAGE': 2.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_GARAGE': 0.0}),
         now_ts=30.0,
         previous_quarter_key='0',
-        previous_primary_device_id='EV_GARAGE',
+        previous_primary_consuming_device_id='EV_GARAGE',
     )
 
-    assert plan.primary_device_id == 'EV_GARAGE'
+    assert plan.primary_consuming_device_id == 'EV_GARAGE'
     assert plan.primary_load == 'EV_GARAGE'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'

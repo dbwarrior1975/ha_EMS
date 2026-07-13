@@ -11,7 +11,7 @@ from ems_adapter.direct_runtime import (
     RuntimePacketSchemaError,
     build_static_topology,
     parse_policy_config_cached,
-    parse_tick_frame_v3,
+    parse_tick_frame_v5,
     reset_direct_runtime_cache,
 )
 from ems_adapter import runtime_context
@@ -32,7 +32,7 @@ def _topology(project_root):
 
 def _policy_packet(*, revision=17):
     return {
-        'schema_version': 3,
+        'schema_version': 5,
         'revision': revision,
         'profiles': {
             'control': 'AUTOMATIC',
@@ -50,21 +50,23 @@ def _policy_packet(*, revision=17):
             'haeo_stale_timeout_s': 900,
             'nz_battery_floor_default_w': 100,
             'nz_battery_floor_ev_active_w': 100,
-            'primary_device_id': 'HOME_BATTERY',
+            'primary_consuming_device_ids': ['HOME_BATTERY'],
         },
         'devices': {
             'HOME_BATTERY': {
                 'capabilities': {
                     'min_absorb_w': 0,
                     'max_absorb_w': 3800,
-                    'max_produce_w': -4000,
+                    'min_produce_w': 0,
+                    'max_produce_w': 4000,
                     'step_w': 50,
                     'uses_hard_off_lifecycle': False,
-                    'supports_primary_regulation': True,
-                    'supports_residual_regulation': True,
+                    'supports_primary_consuming_regulation': True,
+                    'supports_producing_regulation': True,
                 },
                 'policy': {
                     'priority': 3,
+                    'producing_priority': 100,
                     'surplus_allowed': True,
                     'surplus_dispatch_mode': 'max_absorb',
                     'default_min_absorb_w': 0,
@@ -80,14 +82,16 @@ def _policy_packet(*, revision=17):
                 'capabilities': {
                     'min_absorb_w': 1300,
                     'max_absorb_w': 6400,
+                    'min_produce_w': 0,
                     'max_produce_w': 0,
                     'step_w': 400,
                     'uses_hard_off_lifecycle': True,
-                    'supports_primary_regulation': True,
-                    'supports_residual_regulation': False,
+                    'supports_primary_consuming_regulation': True,
+                    'supports_producing_regulation': False,
                 },
                 'policy': {
                     'priority': 4,
+                    'producing_priority': 0,
                     'surplus_allowed': False,
                     'surplus_dispatch_mode': 'max_absorb',
                     'force_on': False,
@@ -105,14 +109,16 @@ def _policy_packet(*, revision=17):
                 'capabilities': {
                     'min_absorb_w': 2600,
                     'max_absorb_w': 2600,
+                    'min_produce_w': 0,
                     'max_produce_w': 0,
                     'step_w': 2600,
                     'uses_hard_off_lifecycle': False,
-                    'supports_primary_regulation': False,
-                    'supports_residual_regulation': False,
+                    'supports_primary_consuming_regulation': False,
+                    'supports_producing_regulation': False,
                 },
                 'policy': {
                     'priority': 1,
+                    'producing_priority': 0,
                     'surplus_allowed': True,
                     'surplus_dispatch_mode': 'fixed',
                     'force_on': False,
@@ -122,14 +128,16 @@ def _policy_packet(*, revision=17):
                 'capabilities': {
                     'min_absorb_w': 5600,
                     'max_absorb_w': 5600,
+                    'min_produce_w': 0,
                     'max_produce_w': 0,
                     'step_w': 5600,
                     'uses_hard_off_lifecycle': False,
-                    'supports_primary_regulation': False,
-                    'supports_residual_regulation': False,
+                    'supports_primary_consuming_regulation': False,
+                    'supports_producing_regulation': False,
                 },
                 'policy': {
                     'priority': 2,
+            'producing_priority': 50,
                     'surplus_allowed': False,
                     'surplus_dispatch_mode': 'fixed',
                     'force_on': False,
@@ -141,48 +149,41 @@ def _policy_packet(*, revision=17):
 
 def _measurements_packet():
     return {
-        'schema_version': 3,
+        'schema_version': 5,
         'grid_power_w': 221.8,
         'quarter_energy_balance_kwh': 0.014,
         'pv_power_w': 489,
-        'battery': {
-            'soc': 74,
-            'min_cell_voltage_v': 3.319,
-            'heartbeat': -95.8,
-            'heartbeat_age_s': 12.5,
-            'target_w': -1800,
-            'measured_power_w': -1794,
-        },
-        'ev': {
-            'EV_CHARGER': {
-                'enabled': False,
-                'current_a': 6,
+        'batteries': {
+            'HOME_BATTERY': {
+                'soc': 74,
+                'min_cell_voltage_v': 3.319,
+                'heartbeat': -95.8,
+                'heartbeat_age_s': 12.5,
+                'current_setpoint_w': -1800,
             },
         },
-        'relays': {
-            'RELAY1': {'enabled': False},
-            'RELAY2': {'enabled': False},
-        },
+        'ev': {'EV_CHARGER': {'enabled': False, 'current_a': 6}},
+        'relays': {'RELAY1': {'enabled': False}, 'RELAY2': {'enabled': False}},
     }
 
 
 def _state_packet():
     return {
-        'schema_version': 3,
+        'schema_version': 5,
         'surplus': {
             'freeze_until': None,
             'active_device_ids': [],
             'previous_device_states': {},
         },
         'haeo': {
-            'battery_state_kw': 0,
-            'ev_state_kw': 0,
-            'battery_age_s': 10,
-            'ev_age_s': 15,
+            'devices': {
+                'HOME_BATTERY': {'state_kw': 0, 'age_s': 10},
+                'EV_CHARGER': {'state_kw': 0, 'age_s': 15},
+            },
         },
         'policy': {
             'haeo_nz_quarter_key': '',
-            'haeo_nz_primary_device_id': '',
+            'haeo_nz_primary_consuming_device_id': '',
             'prev_force_on_device_ids': [],
         },
     }
@@ -192,7 +193,7 @@ def _parse(project_root, policy=None, measurements=None, state=None, *, now_ts=N
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     runtime_cfg, cache_hit = parse_policy_config_cached(topology, policy or _policy_packet())
-    frame = parse_tick_frame_v3(
+    frame = parse_tick_frame_v5(
         topology,
         runtime_cfg,
         measurements or _measurements_packet(),
@@ -229,7 +230,7 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         now_ts,
         previous_quarter_key=frame.previous_quarter_key,
         previous_primary_load='',
-        previous_primary_device_id=frame.previous_primary_device_id,
+        previous_primary_consuming_device_id=frame.previous_primary_consuming_device_id,
     )
     ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
     adjustable_active = ev_device_id in set(frame.active_surplus_device_ids)
@@ -271,7 +272,7 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
     first_packet = _policy_packet(revision=17)
     first, first_hit = parse_policy_config_cached(topology, first_packet)
 
-    malformed_same_revision = {'schema_version': 3, 'revision': 17}
+    malformed_same_revision = {'schema_version': 5, 'revision': 17}
     second, second_hit = parse_policy_config_cached(topology, malformed_same_revision)
 
     changed = _policy_packet(revision=18)
@@ -295,7 +296,7 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
         ('adjustable_surplus_activation_w', 2300),
     ),
 )
-def test_direct_parser_rejects_removed_legacy_surplus_config_fields(project_root, field, value):
+def test_direct_parser_rejects_removed_surplus_config_fields(project_root, field, value):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=180)
@@ -305,7 +306,7 @@ def test_direct_parser_rejects_removed_legacy_surplus_config_fields(project_root
         parse_policy_config_cached(topology, packet)
 
     assert exc.value.path == f'policy_config.config.{field}'
-    assert 'legacy field removed' in str(exc.value)
+    assert 'field removed' in str(exc.value)
 
 
 @pytest.mark.unit
@@ -350,22 +351,23 @@ def test_direct_parser_rejects_non_boolean_hard_off_lifecycle_capability(project
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+@pytest.mark.parametrize('field', ('supports_primary_consuming_regulation', 'supports_producing_regulation'))
 @pytest.mark.parametrize('value', (True, False))
 def test_direct_parser_accepts_explicit_regulation_capability_booleans(project_root, field, value):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=187)
-    packet['devices']['EV_CHARGER']['capabilities'][field] = value
+    device_id = 'HOME_BATTERY' if field == 'supports_producing_regulation' else 'EV_CHARGER'
+    packet['devices'][device_id]['capabilities'][field] = value
 
     cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cache_hit is False
-    assert cfg.direct_policy_maps['device_capabilities_by_id']['EV_CHARGER'][field] is value
+    assert cfg.direct_policy_maps['device_capabilities_by_id'][device_id][field] is value
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+@pytest.mark.parametrize('field', ('supports_primary_consuming_regulation', 'supports_producing_regulation'))
 def test_direct_parser_rejects_missing_regulation_capability(project_root, field):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
@@ -379,7 +381,7 @@ def test_direct_parser_rejects_missing_regulation_capability(project_root, field
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('field', ('supports_primary_regulation', 'supports_residual_regulation'))
+@pytest.mark.parametrize('field', ('supports_primary_consuming_regulation', 'supports_producing_regulation'))
 @pytest.mark.parametrize('value', ('true', 1, 0, None, 'unknown'))
 def test_direct_parser_rejects_non_boolean_regulation_capability(project_root, field, value):
     reset_direct_runtime_cache()
@@ -407,7 +409,7 @@ def test_policy_config_rejects_removed_legacy_adjustable_surplus_alias(project_r
 
 
 @pytest.mark.unit
-def test_direct_runtime_v3_rejects_v2_policy_packet(project_root):
+def test_direct_runtime_v5_rejects_v2_policy_packet(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=189)
@@ -417,21 +419,21 @@ def test_direct_runtime_v3_rejects_v2_policy_packet(project_root):
         parse_policy_config_cached(topology, packet)
 
     assert exc.value.path == 'policy_config.schema_version'
-    assert 'must equal 3' in str(exc.value)
+    assert 'must equal 5' in str(exc.value)
 
 
 @pytest.mark.unit
-def test_direct_runtime_v3_requires_primary_device_id_key(project_root):
+def test_direct_runtime_v5_requires_primary_consuming_device_ids_key(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=1891)
-    packet['config'].pop('primary_device_id')
+    packet['config'].pop('primary_consuming_device_ids')
     packet['config']['adjustable_primary_load'] = 'HOME_BATTERY'
 
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.primary_device_id'
+    assert exc.value.path == 'policy_config.config.primary_consuming_device_ids'
 
 
 @pytest.mark.unit
@@ -439,28 +441,27 @@ def test_direct_parser_rejects_primary_without_primary_regulation_capability(pro
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=190)
-    packet['devices']['HOME_BATTERY']['capabilities']['supports_primary_regulation'] = False
+    packet['devices']['HOME_BATTERY']['capabilities']['supports_primary_consuming_regulation'] = False
 
     with pytest.raises(RuntimePacketSchemaError) as exc:
         parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.primary_device_id'
-    assert 'does not support primary regulation' in str(exc.value)
+    assert exc.value.path == 'policy_config.config.primary_consuming_device_ids[0]'
+    assert 'does not support primary consuming regulation' in str(exc.value)
 
 
 @pytest.mark.unit
-def test_direct_parser_rejects_combination_without_residual_regulator(project_root):
+def test_direct_parser_accepts_zero_producer_topology(project_root):
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=191)
-    packet['devices']['HOME_BATTERY']['capabilities']['supports_residual_regulation'] = False
-    packet['devices']['EV_CHARGER']['capabilities']['supports_residual_regulation'] = False
+    packet['devices']['HOME_BATTERY']['capabilities']['supports_producing_regulation'] = False
+    packet['devices']['EV_CHARGER']['capabilities']['supports_producing_regulation'] = False
 
-    with pytest.raises(RuntimePacketSchemaError) as exc:
-        parse_policy_config_cached(topology, packet)
+    cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
-    assert exc.value.path == 'policy_config.config.primary_device_id'
-    assert 'no residual regulator capability' in str(exc.value)
+    assert cache_hit is False
+    assert cfg.producing_device_ids() == ()
 
 
 @pytest.mark.unit
@@ -468,14 +469,14 @@ def test_direct_parser_primary_role_is_independent_of_removed_surplus_alias(proj
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=192)
-    packet['config']['primary_device_id'] = 'HOME_BATTERY'
+    packet['config']['primary_consuming_device_id'] = 'HOME_BATTERY'
 
     cfg, cache_hit = parse_policy_config_cached(topology, packet)
 
     assert cache_hit is False
-    assert cfg.global_config.primary_device_id == 'HOME_BATTERY'
+    assert cfg.global_config.primary_consuming_device_ids == ('HOME_BATTERY',)
     assert not hasattr(cfg, 'adjustable_surplus_load')
-    assert cfg.device_capabilities_by_id['HOME_BATTERY']['supports_primary_regulation'] is True
+    assert cfg.device_capabilities_by_id['HOME_BATTERY']['supports_primary_consuming_regulation'] is True
 
 
 @pytest.mark.unit
@@ -483,7 +484,7 @@ def test_direct_parser_preserves_float_measurement_signed_discharge_and_runtime_
     _top, cfg, frame, _cache_hit = _parse(project_root)
 
     assert frame.quarter_energy_balance_kwh == 0.014
-    assert cfg.v3_battery_capability('max_produce_w') == -4000.0
+    assert cfg.device_capability('HOME_BATTERY', 'max_produce_w') == 4000.0
     assert cfg.direct_policy_maps['device_adapter_by_id']['EV_CHARGER']['current_step_a'] == 2
     assert cfg.device_policy_by_id['EV_CHARGER']['priority'] == 4
     assert frame.ev_states['EV_CHARGER']['current_a'] == 6
@@ -512,7 +513,7 @@ def test_direct_tick_frame_preserves_generic_device_owned_lifecycle_states(proje
         },
     }
 
-    frame = parse_tick_frame_v3(topology, cfg, _measurements_packet(), state, NOW_TS)
+    frame = parse_tick_frame_v5(topology, cfg, _measurements_packet(), state, NOW_TS)
 
     assert frame.previous_device_states['EV_CHARGER']['low_pv_cycles'] == 50
     assert frame.previous_device_states['EV_GARAGE']['low_pv_cycles'] == 3
@@ -524,12 +525,12 @@ def test_direct_parser_fails_closed_on_missing_required_measurement(project_root
     topology = _topology(project_root)
     cfg, _cache_hit = parse_policy_config_cached(topology, _policy_packet())
     measurements = _measurements_packet()
-    del measurements['battery']['soc']
+    del measurements['batteries']['HOME_BATTERY']['soc']
 
-    with pytest.raises(RuntimePacketSchemaError, match=r'RUNTIME_PACKET_INVALID: measurements\.battery\.soc missing') as exc:
-        parse_tick_frame_v3(topology, cfg, measurements, _state_packet(), NOW_TS)
+    with pytest.raises(RuntimePacketSchemaError, match=r'RUNTIME_PACKET_INVALID: measurements\.batteries\.HOME_BATTERY\.soc missing') as exc:
+        parse_tick_frame_v5(topology, cfg, measurements, _state_packet(), NOW_TS)
 
-    assert exc.value.path == 'measurements.battery.soc'
+    assert exc.value.path == 'measurements.batteries.HOME_BATTERY.soc'
 
 
 @pytest.mark.unit
@@ -593,7 +594,7 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
         (
             'positive_import',
             lambda p, m, s: m.update(grid_power_w=1500, quarter_energy_balance_kwh=0, pv_power_w=1000),
-            {'battery_target_w': 100, 'dispatch_action': 'NOOP'},
+            {'battery_target_w': -2600, 'dispatch_action': 'NOOP'},
         ),
         (
             'export_surplus_activation',
@@ -605,7 +606,7 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
         ),
         (
             'battery_guard_active',
-            lambda p, m, s: m['battery'].update(soc=0.5, min_cell_voltage_v=3.0),
+            lambda p, m, s: m['batteries']['HOME_BATTERY'].update(soc=0.5, min_cell_voltage_v=3.0),
             {'guard': 'BATTERY_PROTECT', 'battery_target_w': 100, 'dispatch_action': 'CLEAR_ALL'},
         ),
         (
@@ -632,7 +633,7 @@ def test_runtime_context_direct_path_reads_exactly_three_packets_and_reuses_conf
                     }
                 ),
             ),
-            {'ev_policy_mode': 'hard_off', 'ev_hard_off_active': True, 'ev_low_pv_cycles': 101},
+            {'ev_policy_mode': 'hard_off', 'ev_hard_off_active': True, 'ev_low_pv_cycles': 100},
         ),
     ),
 )
@@ -682,10 +683,10 @@ def test_direct_policy_golden_quarter_end_large_rpnz(project_root):
     )
 
     assert derived.rpnz_w == -6000
-    assert derived.required_power_w == -3200
+    assert derived.required_power_w == -6200
     assert outputs.battery_target_w == -2800
-    assert outputs.attrs['discharge_limit_sign_mode'] == 'canonical_negative'
-    assert outputs.attrs['configured_discharge_limit_w'] == -4000.0
+    assert outputs.attrs['discharge_limit_sign_mode'] == 'positive_magnitude'
+    assert outputs.attrs['configured_discharge_limit_w'] == 4000.0
 
 @pytest.mark.unit
 def test_runtime_packet_source_error_names_missing_measurements_entity(project_root):
@@ -813,15 +814,15 @@ def test_runtime_packet_policy_config_revision_is_automatic_not_missing_helper(p
 
 
 @pytest.mark.unit
-def test_runtime_packet_templates_use_v3_primary_device_id_contract(project_root):
+def test_runtime_packet_templates_use_v5_primary_consuming_device_ids_contract(project_root):
     for filename in ('template.yaml', 'example_EMS_runtime_packet_sensors.yaml'):
         source = yaml.safe_load((project_root / filename).read_text(encoding='utf-8'))
         sensors = source['template'][0]['sensor']
         policy_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Policy Config Runtime')
         config_template = policy_sensor['attributes']['config']
 
-        assert policy_sensor['attributes']['schema_version'].strip() == '{{ 3 }}'
-        assert "'primary_device_id':" in config_template
+        assert policy_sensor['attributes']['schema_version'].strip() == '{{ 5 }}'
+        assert "'primary_consuming_device_ids':" in config_template
         assert "states('input_select.ems_adjustable_primary_load')" in config_template
         assert "'adjustable_primary_load':" not in config_template
 
@@ -874,19 +875,19 @@ def test_production_template_surplus_eligibility_is_independent_of_legacy_adjust
 @pytest.mark.unit
 def test_direct_parser_requires_and_preserves_heartbeat_age(project_root):
     _top, _cfg, frame, _cache_hit = _parse(project_root)
-    assert frame.battery_heartbeat_age_s == 12.5
+    assert frame.battery_state('HOME_BATTERY')['heartbeat_age_s'] == 12.5
 
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     cfg, _cache_hit = parse_policy_config_cached(topology, _policy_packet())
     measurements = _measurements_packet()
-    del measurements['battery']['heartbeat_age_s']
+    del measurements['batteries']['HOME_BATTERY']['heartbeat_age_s']
 
     with pytest.raises(
         RuntimePacketSchemaError,
-        match=r'RUNTIME_PACKET_INVALID: measurements\.battery\.heartbeat_age_s missing',
+        match=r'RUNTIME_PACKET_INVALID: measurements\.batteries\.HOME_BATTERY\.heartbeat_age_s missing',
     ):
-        parse_tick_frame_v3(topology, cfg, measurements, _state_packet(), NOW_TS)
+        parse_tick_frame_v5(topology, cfg, measurements, _state_packet(), NOW_TS)
 
 
 @pytest.mark.unit
@@ -897,7 +898,7 @@ def test_runtime_packet_measurements_do_not_mask_missing_required_sources_with_z
     sensors = source['template'][0]['sensor']
     measurement_sensor = next(sensor for sensor in sensors if sensor['name'] == 'EMS Measurements Runtime')
 
-    battery_template = measurement_sensor['attributes']['battery']
+    battery_template = measurement_sensor['attributes']['batteries']
     ev_template = measurement_sensor['attributes']['ev']
     relay_template = measurement_sensor['attributes']['relays']
     battery_compact = ''.join(battery_template.split())
@@ -990,26 +991,26 @@ def test_direct_parser_blank_primary_preserves_valid_surplus_only_topology(proje
     reset_direct_runtime_cache()
     topology = _topology(project_root)
     packet = _policy_packet(revision=198)
-    packet['config']['primary_device_id'] = ''
+    packet['config']['primary_consuming_device_ids'] = []
 
     cfg, _cache_hit = parse_policy_config_cached(topology, packet)
     out = compute_net_zero_engine_outputs(
         cfg.profiles,
         cfg,
-        parse_tick_frame_v3(topology, cfg, _measurements_packet(), _state_packet(), NOW_TS),
+        parse_tick_frame_v5(topology, cfg, _measurements_packet(), _state_packet(), NOW_TS),
         HaeoTargets(
             effective_forecast='NONE',
             configured_forecast='NONE',
             fresh=False,
-            battery_target_kw=0.0,
-            ev_target_kw=0.0,
+            device_target_kw_by_id={},
+            device_age_s_by_id={},
         ),
         NetZeroState(rpnz_w=0.0, required_power_consumption_kw=0.0),
         NOW_TS,
         freeze_until_ts=None,
     )
 
-    assert out.attrs['primary_device_id'] == ''
+    assert out.attrs['primary_consuming_device_id'] == ''
     assert out.attrs['primary_surplus_combo_valid'] is True
     assert out.attrs['primary_surplus_combo_reason'] == 'surplus_only_topology'
     assert 'surplus_adjustable_device_id' not in out.attrs
@@ -1027,8 +1028,8 @@ def _multi_battery_topology_and_policy(project_root):
             'capabilities': {
                 'can_absorb_w': True,
                 'can_produce_w': True,
-                'supports_primary_regulation': True,
-                'supports_residual_regulation': True,
+                'supports_primary_consuming_regulation': True,
+                'supports_producing_regulation': True,
             },
         },
     }
@@ -1045,14 +1046,16 @@ def _multi_battery_topology_and_policy(project_root):
         'capabilities': {
             'min_absorb_w': 0,
             'max_absorb_w': 7200,
-            'max_produce_w': -7600,
+            'min_produce_w': 0,
+            'max_produce_w': 7600,
             'step_w': 100,
             'uses_hard_off_lifecycle': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': True,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': True,
         },
         'policy': {
             'priority': 2,
+            'producing_priority': 50,
             'surplus_allowed': True,
             'surplus_dispatch_mode': 'max_absorb',
             'default_min_absorb_w': 0,
@@ -1066,12 +1069,12 @@ def _multi_battery_topology_and_policy(project_root):
         },
         **policy['devices'],
     }
-    policy['config']['primary_device_id'] = 'BATTERY_30KWH'
+    policy['config']['primary_consuming_device_ids'] = ['BATTERY_30KWH']
     return topology, policy
 
 
 @pytest.mark.unit
-def test_direct_v3_multi_battery_requires_policy_config_entry_for_every_static_device(project_root):
+def test_direct_v4_multi_battery_requires_policy_config_entry_for_every_static_device(project_root):
     reset_direct_runtime_cache()
     topology, policy = _multi_battery_topology_and_policy(project_root)
     del policy['devices']['BATTERY_60KWH']
@@ -1084,7 +1087,7 @@ def test_direct_v3_multi_battery_requires_policy_config_entry_for_every_static_d
 
 
 @pytest.mark.unit
-def test_direct_v3_multi_battery_config_exposes_explicit_single_channel_owner(project_root):
+def test_direct_v4_multi_battery_config_exposes_explicit_single_channel_owner(project_root):
     reset_direct_runtime_cache()
     topology, policy = _multi_battery_topology_and_policy(project_root)
 
@@ -1092,67 +1095,70 @@ def test_direct_v3_multi_battery_config_exposes_explicit_single_channel_owner(pr
 
     assert cache_hit is False
     assert cfg.device_ids_by_kind('BATTERY') == ('BATTERY_30KWH', 'BATTERY_60KWH')
-    assert cfg.v3_battery_device_id() == 'BATTERY_30KWH'
-    assert cfg.unsupported_v3_battery_device_ids() == ('BATTERY_60KWH',)
+    assert cfg.global_config.primary_consuming_device_ids == ('BATTERY_30KWH',)
+    assert cfg.producing_device_ids() == ('BATTERY_30KWH', 'BATTERY_60KWH')
     assert cfg.device_by_id('BATTERY_60KWH').capabilities.max_absorb_w == 7200
-    assert cfg.device_by_id('BATTERY_60KWH').policy.priority == 2
+    assert cfg.device_by_id('BATTERY_60KWH').capabilities.max_produce_w == 7600
+    assert cfg.device_by_id('BATTERY_60KWH').policy.producing_priority == 50
 
 
 @pytest.mark.unit
-def test_direct_v3_multi_battery_policy_fails_closed_for_unwired_battery(project_root):
+def test_direct_v4_multi_battery_policy_routes_each_battery_and_opens_second_only_after_first_hard_ceiling(project_root):
     reset_direct_runtime_cache()
     topology, policy = _multi_battery_topology_and_policy(project_root)
     cfg, _cache_hit = parse_policy_config_cached(topology, policy)
-    frame = parse_tick_frame_v3(
-        topology,
-        cfg,
-        _measurements_packet(),
-        _state_packet(),
-        NOW_TS,
-    )
+
+    measurements = _measurements_packet()
+    home_state = measurements['batteries'].pop('HOME_BATTERY')
+    measurements['batteries'] = {
+        'BATTERY_30KWH': dict(home_state),
+        'BATTERY_60KWH': {**home_state, 'current_setpoint_w': 0},
+    }
+    measurements.update(grid_power_w=200, quarter_energy_balance_kwh=0.05)
+
+    state = _state_packet()
+    state['haeo']['devices'].pop('HOME_BATTERY', None)
+    state['haeo']['devices']['BATTERY_30KWH'] = {'state_kw': 0, 'age_s': 10}
+    state['haeo']['devices']['BATTERY_60KWH'] = {'state_kw': 0, 'age_s': 10}
+
+    frame = parse_tick_frame_v5(topology, cfg, measurements, state, 1783134890.0)
     guard = evaluate_guard(cfg.profiles.guard, frame, cfg)
     profiles = Profiles(cfg.profiles.control, cfg.profiles.goal, cfg.profiles.forecast, guard.guard)
     haeo = frame.haeo_targets(profiles, cfg)
     derived = derive_net_zero_inputs(
         quarter_energy_balance_kwh=frame.quarter_energy_balance_kwh,
         grid_power_w=frame.grid_power_w,
-        now_ts=NOW_TS,
+        now_ts=1783134890.0,
     )
     nz = NetZeroState(
         rpnz_w=derived.rpnz_w,
         required_power_consumption_kw=derived.required_power_consumption_kw,
     )
-    haeo_plan = compute_haeo_net_zero_plan(
-        profiles,
-        cfg,
-        haeo,
-        NOW_TS,
-        previous_quarter_key=frame.previous_quarter_key,
-        previous_primary_load='',
-        previous_primary_device_id=frame.previous_primary_device_id,
-    )
-
     outputs = compute_net_zero_engine_outputs(
         profiles,
         cfg,
         frame,
         haeo,
         nz,
-        NOW_TS,
+        1783134890.0,
         freeze_until_ts=frame.surplus_freeze_until_ts,
         pv_power_kw=frame.pv_power_w / 1000.0,
         relay_device_states=frame.relay_states,
         previous_device_states=frame.previous_device_states,
         previous_force_on_device_ids=frame.previous_force_on_device_ids,
-        haeo_nz_plan=haeo_plan,
     )
-    policies = {policy.device_id: policy for policy in outputs.device_policies}
+    policies = {item.device_id: item for item in outputs.device_policies}
 
-    owner = policies['BATTERY_30KWH']
-    unwired = policies['BATTERY_60KWH']
-    assert owner.reason == 'battery_policy'
-    assert unwired.target_w == 0
-    assert unwired.enabled is False
-    assert unwired.reason == 'unsupported_v3_battery_channel'
-    assert outputs.attrs['v3_battery_device_id'] == 'BATTERY_30KWH'
-    assert outputs.attrs['v3_unsupported_battery_device_ids'] == ('BATTERY_60KWH',)
+    assert derived.rpnz_w == -6000
+    assert outputs.attrs['producer_allocated_w_by_id'] == {
+        'BATTERY_30KWH': 4000.0,
+        'BATTERY_60KWH': 900.0,
+    }
+    assert outputs.attrs['producer_effective_hard_ceiling_w_by_id'] == {
+        'BATTERY_30KWH': 4000.0,
+        'BATTERY_60KWH': 7600.0,
+    }
+    assert policies['BATTERY_30KWH'].reason == 'producer_authority'
+    assert policies['BATTERY_30KWH'].target_w == -2800
+    assert policies['BATTERY_60KWH'].reason == 'producer_authority'
+    assert policies['BATTERY_60KWH'].target_w == -900

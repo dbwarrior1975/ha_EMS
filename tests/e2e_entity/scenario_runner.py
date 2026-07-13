@@ -119,7 +119,8 @@ def _assert_no_deprecated_e2e_fields(idx, step):
 
 def _writer_trace_branch(writer_trace, branch):
     if branch == 'victron':
-        return writer_trace.get('victron')
+        batteries = writer_trace.get('batteries') or {}
+        return batteries.get('HOME_BATTERY')
     devices = writer_trace.get('devices') or {}
     return devices.get(branch)
 
@@ -165,7 +166,7 @@ def _assert_expected_derived(idx, step, h):
         'required_power_consumption_kw': actual.required_power_consumption_kw,
         'remaining_quarter_s': actual.remaining_quarter_s,
         'remaining_quarter_min': actual.remaining_quarter_min,
-        'remaining_template_minutes': actual.remaining_quarter_min,
+        'control_horizon_s': actual.control_horizon_s,
         'input_quality': actual.input_quality,
         'input_warnings': actual.input_warnings,
     }
@@ -199,14 +200,14 @@ def _nested_value(mapping, path):
 
 def _assert_canonical_contracts(idx, note, policy_trace, dispatch_state_trace):
     config_source = policy_trace.get('config_source')
-    assert config_source == 'direct_tick_frame_v3_e2e', (
+    assert config_source == 'direct_tick_frame_v5_e2e', (
         f"step={idx} note={note} policy.config_source "
-        f"actual={config_source} expected=direct_tick_frame_v3_e2e"
+        f"actual={config_source} expected=direct_tick_frame_v5_e2e"
     )
     runtime_contract = policy_trace.get('runtime_input_contract')
-    assert runtime_contract == 'direct_tick_frame_v3', (
+    assert runtime_contract == 'direct_tick_frame_v5', (
         f"step={idx} note={note} policy.runtime_input_contract "
-        f"actual={runtime_contract} expected=direct_tick_frame_v3"
+        f"actual={runtime_contract} expected=direct_tick_frame_v5"
     )
 
 

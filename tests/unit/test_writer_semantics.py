@@ -141,21 +141,21 @@ def _install_device_policies_by_entity(mod, mapping):
 def _install_core_capabilities(mod, **overrides):
     state = mod.get('_TEST_STATE', {})
     device_defaults = {
-        'HOME_BATTERY': dict(can_absorb_w=True, can_produce_w=True, min_absorb_w=0, max_absorb_w=4000, max_produce_w=4000, step_w=50, priority=1),
-        'EV_CHARGER': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=1380, max_absorb_w=6440, max_produce_w=0, step_w=460, priority=1),
-        'RELAY1': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=2500, max_absorb_w=2500, max_produce_w=0, step_w=2500, priority=1),
-        'RELAY2': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=5000, max_absorb_w=5000, max_produce_w=0, step_w=5000, priority=1),
+        'HOME_BATTERY': dict(can_absorb_w=True, can_produce_w=True, min_absorb_w=0, max_absorb_w=4000, min_produce_w=0, max_produce_w=4000, step_w=50, priority=1, producing_priority=100),
+        'EV_CHARGER': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=1380, max_absorb_w=6440, min_produce_w=0, max_produce_w=0, step_w=460, priority=1, producing_priority=0),
+        'RELAY1': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=2500, max_absorb_w=2500, min_produce_w=0, max_produce_w=0, step_w=2500, priority=1, producing_priority=0),
+        'RELAY2': dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=5000, max_absorb_w=5000, min_produce_w=0, max_produce_w=0, step_w=5000, priority=1, producing_priority=0),
     }
     for device_id, values in overrides.items():
         if device_id not in device_defaults:
-            device_defaults[device_id] = dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=0, max_absorb_w=0, max_produce_w=0, step_w=1, priority=1)
+            device_defaults[device_id] = dict(can_absorb_w=True, can_produce_w=False, min_absorb_w=0, max_absorb_w=0, min_produce_w=0, max_produce_w=0, step_w=1, priority=1, producing_priority=0)
         device_defaults[device_id].update(values)
 
     def _device(device_id):
         kind = device_defaults[device_id].get('kind')
         if kind is None:
             kind = 'BATTERY' if device_id == 'HOME_BATTERY' else ('EV_CHARGER' if device_id == 'EV_CHARGER' else 'RELAY')
-        cap_values = {key: value for key, value in device_defaults[device_id].items() if key != 'kind'}
+        cap_values = {key: value for key, value in device_defaults[device_id].items() if key not in ('kind', 'priority', 'producing_priority')}
         caps = SimpleNamespace(**cap_values)
         if kind == 'EV_CHARGER':
             adapter = SimpleNamespace(
@@ -169,7 +169,7 @@ def _install_core_capabilities(mod, **overrides):
             device_id=device_id,
             kind=kind,
             capabilities=caps,
-            policy=SimpleNamespace(priority=device_defaults[device_id]['priority']),
+            policy=SimpleNamespace(priority=device_defaults[device_id]['priority'], producing_priority=device_defaults[device_id]['producing_priority']),
             adapter=adapter,
         )
 
@@ -224,7 +224,7 @@ def test_writer_manual_battery_is_hands_off(project_root):
     state['input_select.ems_control_profile'] = 'MANUAL'
     state[ENT['actuator_battery_setpoint_w']] = 250
 
-    result = mod['_write_battery_actuator']()
+    result = mod['_write_battery_actuator']('HOME_BATTERY')
     assert result['written'] is False
     assert result['reason'] == 'manual_skip'
     assert state[ENT['actuator_battery_setpoint_w']] == 250
@@ -249,7 +249,7 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
     state['input_select.ems_control_profile'] = 'MANUAL_SAFE'
     state[ENT['actuator_battery_setpoint_w']] = -500
 
-    result = mod['_write_battery_actuator']()
+    result = mod['_write_battery_actuator']('HOME_BATTERY')
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
     assert result['policy_source'] == 'canonical'
@@ -294,7 +294,7 @@ def test_writer_battery_can_read_device_policy_target(project_root):
     state['input_number.ems_ramp_max_w'] = 1000
     state[ENT['actuator_battery_setpoint_w']] = 0
 
-    result = mod['_write_battery_actuator']()
+    result = mod['_write_battery_actuator']('HOME_BATTERY')
 
     assert result['written'] is True
     assert result['policy_source'] == 'canonical'
@@ -324,10 +324,46 @@ def test_writer_battery_clamps_disallowed_discharge_to_zero(project_root):
     state['input_number.ems_ramp_max_w'] = 5000
     state[ENT['actuator_battery_setpoint_w']] = -800
 
-    result = mod['_write_battery_actuator']()
+    result = mod['_write_battery_actuator']('HOME_BATTERY')
 
     assert result['written'] is True
     assert result['reason'] == 'capability_blocked_produce'
+    assert state[ENT['actuator_battery_setpoint_w']] == 0
+
+
+@pytest.mark.unit
+def test_writer_negative_max_produce_limit_fails_closed_instead_of_becoming_positive(project_root):
+    mod, state, ENT = _load_writer_module(project_root)
+    _install_core_capabilities(
+        mod,
+        HOME_BATTERY={
+            'can_absorb_w': True,
+            'can_produce_w': True,
+            'max_produce_w': -1600,
+        },
+    )
+
+    _install_device_policies(
+        mod,
+        [
+            {
+                'device_id': 'HOME_BATTERY',
+                'target_w': -1200,
+                'enabled': True,
+                'mode': 'power',
+            }
+        ],
+    )
+
+    state['input_select.ems_control_profile'] = 'AUTOMATIC'
+    state['input_number.ems_deadband_w'] = 1
+    state['input_number.ems_ramp_max_w'] = 5000
+    state[ENT['actuator_battery_setpoint_w']] = -800
+
+    result = mod['_write_battery_actuator']('HOME_BATTERY')
+
+    assert result['written'] is True
+    assert result['policy_target_w'] == 0
     assert state[ENT['actuator_battery_setpoint_w']] == 0
 
 
@@ -583,7 +619,7 @@ def test_writer_loop_uses_device_policies_across_all_devices(project_root):
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
-    assert result['victron']['policy_source'] == 'canonical'
+    assert result['batteries']['HOME_BATTERY']['policy_source'] == 'canonical'
     assert result['devices']['EV_CHARGER']['policy_source'] == 'canonical'
     assert result['devices']['RELAY1']['policy_source'] == 'canonical'
     assert result['devices']['RELAY2']['policy_source'] == 'canonical'
@@ -1048,8 +1084,8 @@ def test_writer_repeated_identical_battery_policy_respects_deadband_without_repe
     state['input_number.ems_ramp_max_w'] = 1000
     state[ENT['actuator_battery_setpoint_w']] = 0
 
-    mod['_write_battery_actuator']()
-    mod['_write_battery_actuator']()
+    mod['_write_battery_actuator']('HOME_BATTERY')
+    mod['_write_battery_actuator']('HOME_BATTERY')
 
     assert mod['_TEST_CALLS'] == [
         ('set_number', ENT['actuator_battery_setpoint_w'], 500),
@@ -1118,10 +1154,11 @@ def test_writer_routes_v3_battery_owner_by_generic_device_id(project_root):
             can_produce_w=True,
             min_absorb_w=0,
             max_absorb_w=5000,
+            min_produce_w=0,
             max_produce_w=5000,
             step_w=50,
         ),
-        policy=SimpleNamespace(priority=2),
+        policy=SimpleNamespace(priority=2, producing_priority=100),
         adapter=SimpleNamespace(),
     )
     cfg = SimpleNamespace(
@@ -1157,7 +1194,7 @@ def test_writer_routes_v3_battery_owner_by_generic_device_id(project_root):
     )
     state[battery_entity] = 0
 
-    result = mod['_write_battery_actuator']()
+    result = mod['_write_battery_actuator'](battery_id)
 
     assert result['written'] is True
     assert result['policy_target_w'] == 750

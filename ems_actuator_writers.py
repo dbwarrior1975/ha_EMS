@@ -84,19 +84,6 @@ def _device_policy_target_w(policy, default=0):
     return float(policy.get('target_w') or 0)
 
 
-def _v3_battery_device_id(cfg):
-    if hasattr(cfg, 'v3_battery_device_id'):
-        return str(cfg.v3_battery_device_id() or '')
-    if hasattr(cfg, 'device_ids_by_kind'):
-        battery_ids = tuple(cfg.device_ids_by_kind('BATTERY') or ())
-        return str(battery_ids[0]) if battery_ids else ''
-    devices = getattr(cfg, 'devices', {}) or {}
-    for device_id, device in devices.items():
-        if str(getattr(device, 'kind', '') or '') == 'BATTERY':
-            return str(device_id)
-    return ''
-
-
 def _capability_device_config_for_id(device_id, cfg=None):
     cfg = cfg or _load_core_config()
     device = cfg.device_by_id(device_id) if hasattr(cfg, 'device_by_id') else None
@@ -112,9 +99,11 @@ def _capability_device_config_for_id(device_id, cfg=None):
         can_produce_w=bool(caps.can_produce_w),
         min_absorb_w=int(round(float(caps.min_absorb_w))),
         max_absorb_w=int(round(float(caps.max_absorb_w))),
-        max_produce_w=int(round(abs(float(caps.max_produce_w or 0)))),
+        min_produce_w=int(round(float(caps.min_produce_w or 0))),
+        max_produce_w=int(round(float(caps.max_produce_w or 0))),
         step_w=max(1, int(round(float(caps.step_w)))),
         priority=int(round(float(policy.priority))),
+        producing_priority=int(round(float(policy.producing_priority))),
     )
 
 
@@ -122,7 +111,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
     if entities is None:
         entities = _load_runtime_entities()
     cfg = cfg or _load_core_config()
-    device_id = str(device_id or _v3_battery_device_id(cfg) or '')
+    device_id = str(device_id or '')
     profiles = getattr(cfg, 'profiles', None)
     control = str(getattr(profiles, 'control', 'AUTOMATIC') or 'AUTOMATIC')
 
@@ -458,7 +447,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
     }
 
 
-def _publish_writer_trace(victron, device_traces, entities=None):
+def _publish_writer_trace(battery_traces, device_traces, entities=None):
     trace_ent = _registry_entity('actuator_writer_trace', entities)
     device_policies_entity = _registry_entity('device_policies', entities)
     if not trace_ent or not device_policies_entity:
@@ -469,7 +458,7 @@ def _publish_writer_trace(victron, device_traces, entities=None):
         'policy_source_entity': device_policies_entity,
         'policy_source_reason': 'canonical',
         'device_policies_version': get_str(device_policies_entity, ''),
-        'victron': victron,
+        'batteries': battery_traces,
         'devices': device_traces,
     }
     publish_sensor(trace_ent, 'ACTIVE', attrs)
@@ -499,13 +488,19 @@ def ems_actuator_writers_loop():
             'error_code': 'RUNTIME_CONTEXT_INVALID',
             'error_path': getattr(exc, 'path', ''),
         }
-    victron = _write_battery_actuator(entities=entities, cfg=cfg)
+    battery_traces = {}
     device_traces = {}
     for device in getattr(cfg, 'devices', {}).values():
         device_id = str(device.device_id)
         kind = str(device.kind)
-        if kind == 'EV_CHARGER':
-            device_traces[device_id] = _write_ev_actuator(device_id=device_id, entities=entities, cfg=cfg)
+        if kind == 'BATTERY':
+            battery_traces[device_id] = _write_battery_actuator(
+                device_id=device_id, entities=entities, cfg=cfg
+            )
+        elif kind == 'EV_CHARGER':
+            device_traces[device_id] = _write_ev_actuator(
+                device_id=device_id, entities=entities, cfg=cfg
+            )
         elif kind == 'RELAY':
             device_traces[device_id] = _write_relay_actuator(
                 device_id.lower(),
@@ -513,10 +508,9 @@ def ems_actuator_writers_loop():
                 entities=entities,
                 cfg=cfg,
             )
-    _publish_writer_trace(victron, device_traces, entities)
-    result = {
-        'victron': victron,
+    _publish_writer_trace(battery_traces, device_traces, entities)
+    return {
+        'batteries': battery_traces,
         'devices': device_traces,
         'writer_trace_canonical_contract': 'devices',
     }
-    return result

@@ -48,7 +48,7 @@ def test_battery_device_mapping_uses_current_limits_and_runtime_state():
 
     assert battery_state.available is True
     assert battery_state.active is True
-    assert battery_state.measured_power_w == -900
+    assert battery_state.current_target_w == -900
     assert battery_state.current_target_w == -900
     assert battery_state.guard_state == 'OK'
 
@@ -82,13 +82,13 @@ def test_ev_device_mapping_converts_current_to_power():
 
     assert ev_runtime_state.available is True
     assert ev_runtime_state.active is True
-    assert ev_runtime_state.measured_power_w == 6900
+    assert ev_runtime_state.current_target_w == 6900
     assert ev_runtime_state.current_target_w == 6900
     assert ev_runtime_state.guard_state == 'OK'
 
 
 @pytest.mark.unit
-def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
+def test_ev_device_states_use_each_ev_adapter_for_control_target_power(project_root):
     grouped_config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
     grouped_config['ems']['devices']['EV_A'] = grouped_config['ems']['devices'].pop('EV_CHARGER')
     grouped_config['ems']['devices']['EV_A']['adapter']['phases'] = 'input_number.ev_a_phases'
@@ -112,15 +112,18 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ev_b_min_power_w',
             'max_absorb_w': 'input_number.ev_b_max_power_w',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ev_b_power_step_w',
         },
         'policy': {
             'priority': 'input_number.ev_b_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ev_b_surplus_allowed',
             'activation_threshold_w': 'input_number.ev_b_activation_threshold_w',
             'surplus_dispatch_mode': 'max_absorb',
@@ -187,8 +190,8 @@ def test_ev_device_states_use_each_ev_adapter_for_measured_power(project_root):
 
     states = _state_by_id(core_cfg, m)
 
-    assert states['EV_A'].measured_power_w == 2300
-    assert states['EV_B'].measured_power_w == 6900
+    assert states['EV_A'].current_target_w == 2300
+    assert states['EV_B'].current_target_w == 6900
 
 
 @pytest.mark.unit
@@ -200,7 +203,7 @@ def test_ev_device_states_fall_back_to_default_adapter_power_values():
 
     states = _state_by_id(cfg, m)
 
-    assert states['EV_CHARGER'].measured_power_w == 2300
+    assert states['EV_CHARGER'].current_target_w == 2300
 
 
 @pytest.mark.unit
@@ -222,7 +225,7 @@ def test_relay1_device_mapping_is_constant_power_when_active():
 
     assert relay_runtime_state.available is True
     assert relay_runtime_state.active is True
-    assert relay_runtime_state.measured_power_w == 2500
+    assert relay_runtime_state.current_target_w == 2500
     assert relay_runtime_state.current_target_w == 2500
 
 
@@ -243,7 +246,7 @@ def test_relay2_device_mapping_is_zero_when_inactive():
 
     assert relay_runtime_state.available is True
     assert relay_runtime_state.active is False
-    assert relay_runtime_state.measured_power_w == 0
+    assert relay_runtime_state.current_target_w == 0
     assert relay_runtime_state.current_target_w == 0
 
 
@@ -308,9 +311,9 @@ def test_core_config_device_states_use_core_capability_power_for_relays(project_
 
     states = _state_by_id(core_cfg, m)
 
-    assert states['RELAY1'].measured_power_w == 2500
-    assert states['RELAY2'].measured_power_w == 5000
-    assert states['EV_CHARGER'].measured_power_w == 2300
+    assert states['RELAY1'].current_target_w == 2500
+    assert states['RELAY2'].current_target_w == 5000
+    assert states['EV_CHARGER'].current_target_w == 2300
 
 
 @pytest.mark.unit
@@ -321,15 +324,18 @@ def test_core_config_device_registry_exposes_extra_relay_without_fixed_dataclass
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': False,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': False,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': False,
             'min_absorb_w': 'input_number.ems_relay3_power_kw',
             'max_absorb_w': 'input_number.ems_relay3_power_kw',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ems_relay3_power_kw',
         },
         'policy': {
             'priority': 'input_number.ems_surplus_relay3_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
             'activation_threshold_w': 'input_number.ems_relay3_power_kw',
             'surplus_dispatch_mode': 'fixed',
@@ -389,6 +395,6 @@ def test_core_config_device_states_map_custom_relay_ids_without_fixed_relay_name
     states = _state_by_id(core_cfg, m)
 
     assert states['POOL_PUMP'].active is True
-    assert states['POOL_PUMP'].measured_power_w == 2500
+    assert states['POOL_PUMP'].current_target_w == 2500
     assert states['BOILER'].active is False
-    assert states['BOILER'].measured_power_w == 0
+    assert states['BOILER'].current_target_w == 0

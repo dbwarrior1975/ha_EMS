@@ -45,9 +45,11 @@ def _device_configs_from_core_config(cfg):
                 can_produce_w=bool(capabilities.can_produce_w),
                 min_absorb_w=int(round(float(capabilities.min_absorb_w))),
                 max_absorb_w=int(round(float(capabilities.max_absorb_w))),
+                min_produce_w=int(round(float(capabilities.min_produce_w or 0))),
                 max_produce_w=int(round(float(capabilities.max_produce_w or 0))),
                 step_w=step_w,
                 priority=int(round(float(policy.priority))),
+                producing_priority=int(round(float(policy.producing_priority))),
             )
         )
     return tuple(mapped)
@@ -60,18 +62,6 @@ def build_device_configs(cfg: CoreConfig) -> tuple[EmsDeviceConfig, ...]:
 def _battery_heartbeat_timeout_s(cfg):
     global_config = getattr(cfg, 'global_config', None)
     return float(getattr(global_config, 'battery_heartbeat_timeout_s', 360.0))
-
-
-def _v3_battery_device_id(cfg):
-    if hasattr(cfg, 'v3_battery_device_id'):
-        return str(cfg.v3_battery_device_id() or '')
-    if hasattr(cfg, 'device_ids_by_kind'):
-        battery_ids = tuple(cfg.device_ids_by_kind('BATTERY') or ())
-        return str(battery_ids[0]) if battery_ids else ''
-    if hasattr(cfg, 'devices_by_kind'):
-        batteries = tuple(cfg.devices_by_kind('BATTERY') or ())
-        return str(batteries[0].device_id) if batteries else ''
-    return ''
 
 
 def _ev_adapter_int(value, default):
@@ -107,25 +97,28 @@ def build_device_states(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDev
     return _build_device_states_from_core_config(cfg, m)
 
 
-def build_device_measured_power_w_by_id(cfg: CoreConfig, m: RuntimeMeasurements) -> dict[str, float]:
-    measured = {}
+def build_device_control_target_w_by_id(cfg: CoreConfig, m: RuntimeMeasurements) -> dict[str, float]:
+    """Return explicit current control targets by device_id.
+
+    Values are controller/actuator state, not a generic physical measurement:
+    battery current setpoint W, EV current target converted to W, and relay
+    nominal configured contribution while active.
+    """
+    targets = {}
     devices = getattr(cfg, 'devices', {}) or {}
     if not hasattr(devices, 'values'):
-        return measured
+        return targets
     for device in devices.values():
         device_id = str(device.device_id)
         kind = str(device.kind)
         if kind == 'BATTERY':
-            measured[device_id] = (
-                float(m.current_battery_setpoint_w)
-                if device_id == _v3_battery_device_id(cfg)
-                else 0.0
-            )
+            battery_runtime = dict((m.battery_states or {}).get(device_id, {}) or {})
+            targets[device_id] = float(battery_runtime.get('current_setpoint_w', 0.0) or 0.0)
             continue
         if kind == 'EV_CHARGER':
             ev_runtime = _ev_runtime_state(m, device_id)
             ev_current_a = int(ev_runtime.get('current_a', 0) or 0)
-            measured[device_id] = float(
+            targets[device_id] = float(
                 ev_current_a_to_power_w(
                     ev_current_a,
                     _ev_adapter_int(getattr(device.adapter, 'phases', None), 1),
@@ -135,40 +128,31 @@ def build_device_measured_power_w_by_id(cfg: CoreConfig, m: RuntimeMeasurements)
             continue
         if kind == 'RELAY':
             relay_runtime = _relay_runtime_state(m, device_id)
-            measured[device_id] = float(
+            targets[device_id] = float(
                 _relay_nominal_absorb_w(cfg, device_id) if relay_runtime.get('active') else 0
             )
             continue
-        measured[device_id] = 0.0
-    return measured
-
+        targets[device_id] = 0.0
+    return targets
 
 def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDeviceState, ...]:
-    battery_target_w = int(round(float(m.current_battery_setpoint_w)))
-    battery_available = (
-        m.soc is not None
-        and float(m.battery_heartbeat_age_s) <= _battery_heartbeat_timeout_s(cfg)
-    )
-
     states = []
-    v3_battery_device_id = _v3_battery_device_id(cfg)
     for device in cfg.devices.values():
         device_id = str(device.device_id)
         kind = str(device.kind)
         if kind == 'BATTERY':
-            owns_v3_channel = device_id == v3_battery_device_id
+            battery_runtime = dict((m.battery_states or {}).get(device_id, {}) or {})
+            target_w = int(round(float(battery_runtime.get('current_setpoint_w', 0.0) or 0.0)))
+            heartbeat_age_s = float(battery_runtime.get('heartbeat_age_s', float('inf')))
+            soc = battery_runtime.get('soc')
+            available = soc is not None and heartbeat_age_s <= _battery_heartbeat_timeout_s(cfg)
             states.append(
                 EmsDeviceState(
                     device_id=device_id,
-                    available=bool(battery_available and owns_v3_channel),
-                    active=bool(owns_v3_channel and battery_target_w != 0),
-                    measured_power_w=battery_target_w if owns_v3_channel else 0,
-                    current_target_w=battery_target_w if owns_v3_channel else 0,
-                    guard_state=(
-                        ('OK' if battery_available else 'STALE')
-                        if owns_v3_channel
-                        else 'UNWIRED'
-                    ),
+                    available=bool(available),
+                    active=bool(target_w != 0),
+                    current_target_w=target_w,
+                    guard_state='OK' if available else 'STALE',
                 )
             )
             continue
@@ -176,19 +160,16 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
             ev_runtime = _ev_runtime_state(m, device_id)
             ev_enabled = bool(ev_runtime.get('enabled', False))
             ev_current_a = int(ev_runtime.get('current_a', 0) or 0)
-            ev_phases = _ev_adapter_int(getattr(device.adapter, 'phases', None), 1)
-            ev_voltage_v = _ev_adapter_float(getattr(device.adapter, 'voltage_v', None), 230.0)
             ev_target_w = ev_current_a_to_power_w(
                 ev_current_a if ev_enabled else 0,
-                ev_phases,
-                ev_voltage_v,
+                _ev_adapter_int(getattr(device.adapter, 'phases', None), 1),
+                _ev_adapter_float(getattr(device.adapter, 'voltage_v', None), 230.0),
             )
             states.append(
                 EmsDeviceState(
                     device_id=device_id,
                     available=bool(ev_runtime),
                     active=bool(ev_enabled and ev_current_a > 0),
-                    measured_power_w=ev_target_w,
                     current_target_w=ev_target_w,
                     guard_state='OK' if ev_runtime else 'UNWIRED',
                 )
@@ -206,7 +187,6 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
                     device_id=device_id,
                     available=relay_available,
                     active=bool(relay_on),
-                    measured_power_w=relay_target_w,
                     current_target_w=relay_target_w,
                     guard_state='OK' if relay_available else 'UNWIRED',
                 )
@@ -217,13 +197,11 @@ def _build_device_states_from_core_config(cfg: CoreConfig, m: RuntimeMeasurement
                 device_id=device_id,
                 available=False,
                 active=False,
-                measured_power_w=0,
                 current_target_w=0,
                 guard_state='UNWIRED',
             )
         )
     return tuple(states)
-
 
 def build_devices(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDevice, ...]:
     state_by_id = {}
@@ -237,7 +215,6 @@ def build_devices(cfg: CoreConfig, m: RuntimeMeasurements) -> tuple[EmsDevice, .
                 device_id=device_config.device_id,
                 available=False,
                 active=False,
-                measured_power_w=0,
                 current_target_w=0,
                 guard_state='UNWIRED',
             )

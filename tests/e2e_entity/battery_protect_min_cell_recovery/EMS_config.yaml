@@ -14,7 +14,8 @@ ems:
     haeo_stale_timeout_s: input_number.ems_haeo_stale_timeout_s
     nz_battery_floor_default_w: input_number.ems_nz_battery_floor_default_w
     nz_battery_floor_ev_active_w: input_number.ems_nz_battery_floor_ev_active_w
-    primary_device_id: input_select.ems_adjustable_primary_load
+    primary_consuming_device_ids:
+      - input_select.ems_adjustable_primary_load
   role_constraints:
     EV_PRIMARY:
       HOME_BATTERY:
@@ -26,17 +27,19 @@ ems:
         can_absorb_w: true
         can_produce_w: true
         uses_hard_off_lifecycle: false
-        supports_primary_regulation: true
-        supports_residual_regulation: true
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: true
         min_absorb_w: input_number.ems_home_battery_min_absorb_w
         max_absorb_w: input_number.ems_max_battery_charge_w
         max_produce_w: input_number.ems_max_battery_discharge_w
         step_w: input_number.ems_deadband_w
+        min_produce_w: 0
       policy:
         priority: input_number.ems_adjustable_surplus_load_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
         surplus_allowed: false
         surplus_dispatch_mode: max_absorb
+        producing_priority: 100
       guard:
         soc: sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc
         min_cell_voltage_v: sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage
@@ -47,18 +50,18 @@ ems:
         protect_min_absorb_w: input_number.ems_battery_protect_charge_floor_w
       adapter:
         target_w: number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point
-        measured_power_w: sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
     EV_CHARGER:
       kind: EV_CHARGER
       capabilities:
         can_absorb_w: true
         can_produce_w: false
         uses_hard_off_lifecycle: true
-        supports_primary_regulation: true
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: false
         min_absorb_w: input_number.ems_ev_min_power_w
         max_absorb_w: input_number.ems_ev_max_power_w
         step_w: input_number.ems_ev_power_step_w
+        min_produce_w: 0
       policy:
         priority: input_number.ems_surplus_ev_priority
         surplus_allowed: true
@@ -67,6 +70,7 @@ ems:
         hard_off_low_pv_cycles: input_number.ems_ev_hard_off_low_pv_cycles
         hard_off_release_cycles: input_number.ems_ev_hard_off_release_cycles
         surplus_dispatch_mode: max_absorb
+        producing_priority: 0
       adapter:
         enabled: switch.charger_control
         current_a: number.charger_current_level
@@ -79,16 +83,18 @@ ems:
         can_absorb_w: true
         can_produce_w: false
         uses_hard_off_lifecycle: false
-        supports_primary_regulation: false
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false
         min_absorb_w: input_number.ems_relay1_nominal_absorb_w
         max_absorb_w: input_number.ems_relay1_power_kw
         step_w: input_number.ems_relay1_power_kw
+        min_produce_w: 0
       policy:
         priority: input_number.ems_surplus_relay1_priority
         surplus_allowed: input_boolean.ems_relay1_enabled_import_zero
         force_on: input_boolean.ems_relay1_force_on
         surplus_dispatch_mode: fixed
+        producing_priority: 0
       adapter:
         enabled: switch.relay_1_2
     RELAY2:
@@ -97,16 +103,18 @@ ems:
         can_absorb_w: true
         can_produce_w: false
         uses_hard_off_lifecycle: false
-        supports_primary_regulation: false
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false
         min_absorb_w: input_number.ems_relay2_nominal_absorb_w
         max_absorb_w: input_number.ems_relay2_power_kw
         step_w: input_number.ems_relay2_power_kw
+        min_produce_w: 0
       policy:
         priority: input_number.ems_surplus_relay2_priority
         surplus_allowed: input_boolean.ems_relay2_enabled_import_zero
         force_on: input_boolean.ems_relay2_force_on
         surplus_dispatch_mode: fixed
+        producing_priority: 0
       adapter:
         enabled: switch.relay_2_2
   runtime:
@@ -114,10 +122,13 @@ ems:
     quarter_energy_balance_kwh: sensor.hourly_energy_balance
     pv_power_w: sensor.pv_instant_power_2
   haeo:
-    battery_power_active: sensor.haeo_battery_power_active
-    ev_power_active: sensor.haeo_ev_battery_power_active
-    battery_fresh_source: sensor.battery_active_power
-    ev_fresh_source: sensor.ev_akut_active_power
+    devices:
+      HOME_BATTERY:
+        power_active: sensor.haeo_battery_power_active
+        fresh_source: sensor.battery_active_power
+      EV_CHARGER:
+        power_active: sensor.haeo_ev_battery_power_active
+        fresh_source: sensor.ev_akut_active_power
   state:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices

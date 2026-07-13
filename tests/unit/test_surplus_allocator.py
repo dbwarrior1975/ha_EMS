@@ -85,3 +85,62 @@ def test_active_priority_zero_target_is_released_as_ineligible(device_id):
 
     assert decision.release == device_id
     assert decision.explanation == f'{device_id} no longer eligible -> release dispatch state'
+
+
+@pytest.mark.unit
+def test_unavailable_inactive_surplus_candidate_is_skipped_for_next_eligible_device():
+    inp = SurplusDispatchInput(
+        policy_active=True,
+        freeze_until_ts=None,
+        rpc_kw=3.0,
+        rpnz_w=3000.0,
+        targets=(
+            SurplusDeviceTarget(
+                device_id='EV_CHARGER',
+                priority=4,
+                rank=1,
+                threshold_w=2000,
+                active=False,
+                activation_allowed=False,
+            ),
+            SurplusDeviceTarget(
+                device_id='RELAY1',
+                priority=3,
+                rank=2,
+                threshold_w=2500,
+                active=False,
+                activation_allowed=True,
+            ),
+        ),
+    )
+
+    decision = compute_surplus_device_dispatch(inp, now_ts=0.0)
+
+    assert decision.activate == 'RELAY1'
+    assert decision.release is None
+
+
+@pytest.mark.unit
+def test_active_surplus_candidate_that_becomes_unavailable_is_released():
+    inp = SurplusDispatchInput(
+        policy_active=True,
+        freeze_until_ts=None,
+        rpc_kw=5.0,
+        rpnz_w=5000.0,
+        targets=(
+            SurplusDeviceTarget(
+                device_id='EV_CHARGER',
+                priority=4,
+                rank=1,
+                threshold_w=2000,
+                active=True,
+                activation_allowed=False,
+            ),
+        ),
+    )
+
+    decision = compute_surplus_device_dispatch(inp, now_ts=0.0)
+
+    assert decision.release == 'EV_CHARGER'
+    assert decision.activate is None
+    assert decision.explanation == 'EV_CHARGER no longer eligible -> release dispatch state'

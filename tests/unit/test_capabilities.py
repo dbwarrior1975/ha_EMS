@@ -13,9 +13,11 @@ def _device(**overrides):
         can_produce_w=True,
         min_absorb_w=0,
         max_absorb_w=3000,
+        min_produce_w=0,
         max_produce_w=4000,
         step_w=50,
         priority=1,
+        producing_priority=1,
     )
     data.update(overrides)
     return EmsDeviceConfig(**data)

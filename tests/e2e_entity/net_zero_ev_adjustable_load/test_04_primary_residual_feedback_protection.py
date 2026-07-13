@@ -38,10 +38,10 @@ def test_primary_absorber_residual_producer_feedback_protection_progresses_lifec
         ev_lifecycle = policy_trace['device_lifecycle_states']['EV_CHARGER']
 
         assert policy_trace['feedback_protection_active'] is True
-        assert policy_trace['feedback_protection_primary_device_id'] == 'EV_CHARGER'
-        assert policy_trace['feedback_protection_residual_device_id'] == 'HOME_BATTERY'
-        assert policy_trace['feedback_protection_residual_producing'] is True
-        assert policy_trace['activation_block_reason'] == 'primary_residual_feedback_protection'
+        assert policy_trace['feedback_protection_primary_consuming_device_id'] == 'EV_CHARGER'
+        assert policy_trace['feedback_protection_producing_device_id'] == 'HOME_BATTERY'
+        assert policy_trace['feedback_protection_producer_active'] is True
+        assert policy_trace['activation_block_reason'] == 'primary_producer_feedback_protection'
         assert 'battery_to_ev_loop_risk' not in policy_trace
         assert ev_lifecycle['low_pv_cycles'] == expected_low_cycles
         assert ev_lifecycle['hard_off_active'] is expected_hard_off
@@ -54,9 +54,13 @@ def test_primary_absorber_residual_producer_feedback_protection_progresses_lifec
             assert writer_ev['action'] == 'hard_off'
             assert h.get(E['actuator_ev_enabled']) is False
         else:
-            assert policies['EV_CHARGER']['target_w'] > 0
-            assert policies['EV_CHARGER']['enabled'] is True
+            # Feedback protection makes the EV unrealizable for this tick.
+            # The canonical resolver skips it instead of restoring a positive
+            # minimum that would reinforce the battery-to-EV control loop.
+            assert policies['EV_CHARGER']['target_w'] == 0
+            assert policies['EV_CHARGER']['enabled'] is False
             assert policies['EV_CHARGER']['mode'] == 'restore_min'
-            assert policies['EV_CHARGER']['reason'] == 'primary_residual_feedback_protection'
-            assert writer_ev['action'] == 'enable_and_set_current'
-            assert h.get(E['actuator_ev_enabled']) is True
+            assert policies['EV_CHARGER']['reason'] == 'ev_policy_inactive'
+            assert policy_trace['primary_consuming_skipped_by_id']['EV_CHARGER'] == 'producer_feedback_protection'
+            assert writer_ev['action'] == 'restore_min_current'
+            assert h.get(E['actuator_ev_enabled']) is False

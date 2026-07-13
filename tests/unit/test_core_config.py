@@ -150,15 +150,18 @@ def test_build_core_config_from_grouped_config_keeps_extra_devices_in_registry(p
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': False,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': False,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': False,
             'min_absorb_w': 'input_number.ems_relay3_power_kw',
             'max_absorb_w': 'input_number.ems_relay3_power_kw',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ems_relay3_power_kw',
         },
         'policy': {
             'priority': 'input_number.ems_surplus_relay3_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ems_relay3_enabled_import_zero',
             'activation_threshold_w': 'input_number.ems_relay3_power_kw',
             'surplus_dispatch_mode': 'fixed',
@@ -194,7 +197,7 @@ def test_build_core_config_from_grouped_config_maps_optional_sections(project_ro
     core = build_core_config_from_grouped_config(config, _core_entity_values())
 
     assert core.haeo is not None
-    assert core.haeo.battery_power_active == 'sensor.haeo_battery_power_active'
+    assert core.haeo.devices['HOME_BATTERY']['power_active'] == 'sensor.haeo_battery_power_active'
     assert 'activation_threshold_w' not in core.role_constraints.default
     assert core.role_constraints.by_role['EV_PRIMARY']['HOME_BATTERY']['min_absorb_w'] == 0
     assert 'HOME_BATTERY_PRIMARY' not in core.role_constraints.by_role

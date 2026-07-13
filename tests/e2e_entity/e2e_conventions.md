@@ -1,78 +1,70 @@
-# E2E conventions
+# EMS E2E entity conventions
 
-Paivays: 2026-06-29
+## Purpose
 
-Tama tiedosto kokoaa nykyiset e2e-kaytannot yhteen.
-Historiallinen suunnitelmamateriaali on poistettu, mutta seuraavat nykyiset
-saannot ja guardit jaavat voimaan.
+E2E scenarios execute the same canonical policy -> dispatch applier -> writer path
+as production. Scenario YAML is a human-readable fixture definition; the harness
+materializes strict runtime schema version 5 packets for:
 
-NET_ZERO raw runtime fixtureiden ja `expect_derived`-kaytannon kuvaus:
-`tests/e2e_entity/net_zero_fixture_conventions.md`.
+```text
+policy_config
+measurements
+policy_state
+```
 
-## Canonical e2e contract
-
-E2E-testien tulee todistaa nykyista tuotantoketjua:
-
-1. policy engine julkaisee `device_policies`-payloadin ja device-id dispatch
-   tracekentat
-2. dispatch state applier lukee canonical device trace -komennon
-3. writerit lukevat device-policyja
-4. HA-actuatorit ja state-entityt paattyvat odotettuun lopputilaan
-
-Skenaario-YAML on vain ihmisluettava fixture-maarittely. Harness materialisoi
-jokaisella policy-ajolla kolme strict schema-v3 -pakettia (`policy_config`,
-`measurements`, `policy_state`) ja ajaa ne oikeiden
-`parse_policy_config_cached()`- ja `parse_tick_frame_v3()`-parserien kautta.
-Canonical output- ja diagnostics-sensorit ovat kiinteita koodissa.
+The policy loop then consumes them through the production runtime context.
 
 ## Scenario and harness rules
 
-1. Rakenna harness aina skenaarion omasta `EMS_config.yaml`:sta, ellei testi
-   ole nimenomaan root-config contract -testi.
-2. Hae globaalit entityt `h.ent`-registrysta.
-3. Hae laitekohtaiset entityt `h.device_entity(device_id, field)`-helperilla.
-4. Ala importtaa `tests.entity_ids.ENT`:a e2e-polkuun.
-5. Yksi harness-step rakentaa strict v3 -paketit, kutsuu
-   `ems_policy_engine_loop(trigger_reason='e2e')` ja jatkaa samaan
-   dispatch-applier -> writer -ketjuun kuin tuotanto.
-6. `policy_diagnostics.runtime_input_contract` on aina
-   `direct_tick_frame_v3` aktiivisissa E2E-skenaarioissa.
-7. E2E-triggeri julkaisee `policy_diagnostics`-payloadin aina, vaikka
-   tuotannon timer-ajossa diagnostiikka olisi throttlatty.
+1. Build the harness from the scenario's own `EMS_config.yaml` unless the test is
+   explicitly a root-config contract test.
+2. Resolve global entities from `h.ent`.
+3. Resolve device entities with `h.device_entity(device_id, field)`.
+4. Do not import hard-coded entity registries into the E2E execution path.
+5. One harness step calls `ems_policy_engine_loop(trigger_reason='e2e')` and then
+   continues through the same dispatch-applier and writer chain as production.
+6. `policy_diagnostics.runtime_input_contract` must be `direct_tick_frame_v5`.
+7. E2E runs publish diagnostics on every step even when timer production would
+   throttle an unchanged diagnostics payload.
 
 ## Preferred assertions
 
-Policy trace:
+Policy diagnostics / canonical outputs:
 
 - `device_policies`
 - `surplus_dispatch_action`
-- `surplus_device_dispatch_target`
 - `surplus_dispatch_device_id`
 - `surplus_dispatch_contract == 'device_id_primary'`
+- `producer_request_source == 'grid_feedback'` in active NET_ZERO producer cases
+- `producer_allocated_w_by_id`
+- `producer_effective_hard_ceiling_w_by_id`
+- `unserved_production_w`
 
 Dispatch state applier trace:
 
-- `decision_source == 'device_trace'`
-- `device_dispatch_action`
-- `device_dispatch_target`
-- `device_dispatch_device_id`
-- `dispatch_state_contract == 'device_id_primary'`
-- `active_surplus_device_ids`
-- `writes`
-- `freeze_written`
+- source entity and command version are current
+- active surplus IDs match the canonical command
+- invalid command paths fail closed
 
 Writer trace:
 
-- `writer_policy_contract == 'device_policy_primary'`
-- per-laite `action`, `reason`, `written`
-- EV-polussa `target_current_a`, kun selector-muunnos halutaan todistaa
+- battery actions from `batteries[device_id]`
+- EV/relay actions from `devices[device_id]`
+- `policy_target_w` matches canonical `DevicePolicy`
+- invalid entity registry mappings fail closed
 
-## Guardrails
+## Directional scenarios
 
-Naita ei kayteta e2e-kansion behavioral assert -pintana:
+E2E coverage should include:
 
-- vanhat policy mirror -kentat
-- vanhat standalone dispatch mirror -kentat
-
-Jos jokin arvo kuuluu vain alias- tai contract-pintaan, testaa se
-siella, ei `tests/e2e_entity/`-kansiossa.
+1. measured grid feedback changes producer request in the correct direction
+2. EV `FORCE_ON` does not get added as a second producer feed-forward term
+3. producer hard ceiling limits allocation and exposes unserved demand
+4. `BATTERY_PROTECT` forces producer ceiling to zero
+5. lower-priority producer opens only after higher-priority hard ceiling
+6. ramp transient alone does not open a lower-priority producer
+7. 0-primary topology remains valid
+8. multiple devices receive independent final `DevicePolicy` values
+9. RPNZ and RPC use the same second-based `control_horizon_s`
+10. whole-minute boundaries do not create RPC step changes
+11. primary fallback skip/effective/unserved diagnostics match the selected device

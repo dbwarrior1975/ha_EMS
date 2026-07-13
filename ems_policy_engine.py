@@ -1,6 +1,6 @@
 from ems_core.domain.models import ControlProfile, GoalProfile, ForecastProfile, GuardProfile, Profiles, RuntimeMeasurements, HaeoTargets, NetZeroState, CoreConfig
 from ems_adapter.direct_runtime import PolicyResult, RuntimePacketSchemaError
-from ems_adapter.device_read_model import build_device_measured_power_w_by_id
+from ems_adapter.device_read_model import build_device_control_target_w_by_id
 from ems_core.domain.constants import CANONICAL_DIAGNOSTICS_OUTPUTS
 from ems_core.guard.evaluator import evaluate_guard
 from ems_core.net_zero.derived_inputs import derive_net_zero_inputs
@@ -10,7 +10,6 @@ from ems_core.net_zero.engine import (
     effective_forecast,
     net_zero_compute_metrics_attrs,
 )
-from ems_core.integrations.haeo_horizon import latest_forecast_value_at_or_before
 from ems_core.integrations.haeo_net_zero_plan import compute_haeo_net_zero_plan
 from ems_core.diagnostics.policy_diagnostics import net_zero_attrs
 from ems_adapter.ha_adapter import get_float, get_int, get_bool, get_str, age_seconds, get_attr, get_attrs, parse_input_datetime_ts, publish_sensor
@@ -136,7 +135,7 @@ def _cfg_attr(obj, name, default=None):
 
 
 def read_profiles(cfg, entities=None):
-    # Direct schema-v2 ticks use RuntimePolicyConfig.profiles without this projection.
+    # Direct schema-v4 ticks use RuntimePolicyConfig.profiles without this projection.
     entities = entities or {}
     return Profiles(
         control=_enum(ControlProfile, get_str(entities.get('control_profile', ''), 'AUTOMATIC'), ControlProfile.AUTOMATIC),
@@ -156,62 +155,6 @@ def _ev_state_payload(device):
         'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
         'active': bool(get_bool(enabled_entity) and current_a > 0),
     }
-
-
-def read_measurements(now_ts, cfg, entities):
-    # Direct schema-v2 ticks pass TickFrame straight into guard/NET_ZERO and never call this function.
-    entities = entities or {}
-    device_entities = entities.get('devices', {}) or {}
-    active_surplus_device_ids = set(_read_active_surplus_device_ids(entities))
-    relay_states = {}
-    ev_states = {}
-    for device_id, device in device_entities.items():
-        if not isinstance(device, dict):
-            continue
-        kind = str(device.get('kind') or '')
-        if kind == 'RELAY':
-            relay_states[str(device_id)] = {
-                'enabled': get_bool(device.get('enabled', '')),
-                'surplus_allowed': get_bool(device.get('surplus_allowed', '')),
-                'force_on': get_bool(device.get('force_on', '')),
-                'active': str(device_id) in active_surplus_device_ids,
-            }
-        elif kind == 'EV_CHARGER':
-            ev_states[str(device_id)] = _ev_state_payload(device)
-    return RuntimeMeasurements(
-        now_ts=now_ts,
-        soc=get_float(entities.get('soc', ''), None),
-        min_cell_voltage_v=get_float(entities.get('min_cell_voltage_v', ''), None),
-        battery_heartbeat_age_s=age_seconds(entities.get('battery_heartbeat', ''), now_ts),
-        grid_power_w=get_float(entities.get('grid_power_w', ''), 0),
-        current_battery_setpoint_w=get_float(entities.get('current_battery_sp', ''), 100),
-        quarter_energy_balance_kwh=get_float(entities.get('quarter_energy_balance_kwh', ''), 0),
-        pv_power_w=get_float(entities.get('pv_power_w', ''), None),
-        relay_states=relay_states,
-        ev_states=ev_states,
-    )
-
-
-def read_haeo(now_ts, profiles, cfg, entities):
-    # Direct schema-v2 ticks derive HaeoTargets from TickFrame and never call this function.
-    entities = entities or {}
-    configured = configured_forecast(profiles.control, profiles.forecast)
-    batt_age = age_seconds(entities.get('haeo_battery_active_power_fresh_source', ''), now_ts)
-    ev_age = age_seconds(entities.get('haeo_ev_active_power_fresh_source', ''), now_ts)
-    fresh = (
-        batt_age < float(cfg.global_config.haeo_stale_timeout_s)
-        and ev_age < float(cfg.global_config.haeo_stale_timeout_s)
-    )
-    eff = effective_forecast(configured, fresh)
-    batt_forecast = get_attr(entities.get('haeo_battery_power_active', ''), 'forecast', []) or []
-    ev_forecast = get_attr(entities.get('haeo_ev_battery_power_active', ''), 'forecast', []) or []
-    return HaeoTargets(
-        effective_forecast=eff,
-        configured_forecast=configured,
-        fresh=fresh,
-        battery_target_kw=latest_forecast_value_at_or_before(batt_forecast, now_ts, 0),
-        ev_target_kw=max(latest_forecast_value_at_or_before(ev_forecast, now_ts, 0), 0),
-    )
 
 
 def _trace_state(profiles, outputs):
@@ -354,7 +297,7 @@ def _dispatch_command_attrs(attrs, version=0):
 def _policy_state_key(attrs, previous_force_on_device_ids=()):
     return (
         str(attrs.get('haeo_nz_quarter_key', '') or ''),
-        str(attrs.get('haeo_nz_primary_device_id', '') or ''),
+        str(attrs.get('haeo_nz_primary_consuming_device_id', '') or ''),
         tuple(_parse_active_device_ids(attrs.get('prev_force_on_device_ids', previous_force_on_device_ids))),
         _stable_key(attrs.get('previous_device_states', {})),
     )
@@ -368,7 +311,7 @@ def _policy_state_payload(attrs, previous_force_on_device_ids=(), version=0):
         'policy_state_state_kind': 'monotonic_version',
         'policy_state_version': int(version),
         'haeo_nz_quarter_key': attrs.get('haeo_nz_quarter_key', ''),
-        'haeo_nz_primary_device_id': attrs.get('haeo_nz_primary_device_id', ''),
+        'haeo_nz_primary_consuming_device_id': attrs.get('haeo_nz_primary_consuming_device_id', ''),
         'prev_force_on_device_ids': prev_force_on_device_ids,
         'previous_device_states': attrs.get('previous_device_states', {}),
     }
@@ -475,7 +418,7 @@ def _timed_read_runtime_context():
 
 
 def _read_surplus_freeze_until_ts(cfg, entities):
-    # Direct schema-v2 ticks read this from TickFrame.
+    # Direct schema-v4 ticks read this from TickFrame.
     return parse_input_datetime_ts((entities or {}).get('surplus_freeze_until', ''))
 
 
@@ -521,18 +464,12 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     timing.setdefault('policy_engine_read_runtime_context_ms', 0)
 
     direct_frame = (entities or {}).get('_direct_tick_frame')
+    if direct_frame is None:
+        raise RuntimePacketSchemaError('runtime_context._direct_tick_frame', 'canonical runtime requires direct tick frame v4')
     phase_started_ts = time.time()
-    if direct_frame is not None:
-        profiles = cfg.profiles
-        m = direct_frame
-        timing['policy_engine_read_measurements_ms'] = 0
-    else:
-        try:
-            profiles = read_profiles(cfg, entities)
-        except TypeError:
-            profiles = read_profiles(entities)
-        m = read_measurements(now_ts, cfg, entities)
-        timing['policy_engine_read_measurements_ms'] = _elapsed_ms(phase_started_ts, time.time())
+    profiles = cfg.profiles
+    m = direct_frame
+    timing['policy_engine_read_measurements_ms'] = 0
 
     phase_started_ts = time.time()
     guard_decision = evaluate_guard(profiles.guard, m, cfg)
@@ -541,23 +478,13 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     timing['policy_engine_policy_compute_ms'] = timing['policy_engine_guard_compute_ms']
 
     phase_started_ts = time.time()
-    if direct_frame is not None:
-        haeo = direct_frame.haeo_targets(profiles, cfg)
-        previous_quarter_key = direct_frame.previous_quarter_key
-        previous_primary_device_id = direct_frame.previous_primary_device_id
-        previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
-        previous_device_states = direct_frame.previous_device_states
-        freeze_until_ts = direct_frame.surplus_freeze_until_ts
-        active_surplus_device_ids = tuple(direct_frame.active_surplus_device_ids)
-    else:
-        haeo = read_haeo(now_ts, profiles, cfg, entities)
-        previous_quarter_key = _policy_state_attr(entities, 'haeo_nz_quarter_key', '')
-        previous_primary_device_id = _policy_state_attr(entities, 'haeo_nz_primary_device_id', '')
-        previous_force_on_device_ids = _read_previous_force_on_device_ids(entities)
-        previous_device_states = _read_previous_device_states(entities)
-        freeze_until_ts = _read_surplus_freeze_until_ts(cfg, entities)
-        active_surplus_device_ids = _read_active_surplus_device_ids(cfg, entities)
-        timing['policy_engine_read_measurements_ms'] += _elapsed_ms(phase_started_ts, time.time())
+    haeo = direct_frame.haeo_targets(profiles, cfg)
+    previous_quarter_key = direct_frame.previous_quarter_key
+    previous_primary_consuming_device_id = direct_frame.previous_primary_consuming_device_id
+    previous_force_on_device_ids = direct_frame.previous_force_on_device_ids
+    previous_device_states = direct_frame.previous_device_states
+    freeze_until_ts = direct_frame.surplus_freeze_until_ts
+    active_surplus_device_ids = tuple(direct_frame.active_surplus_device_ids)
 
     phase_started_ts = time.time()
     derived = derive_net_zero_inputs(
@@ -580,7 +507,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         now_ts,
         previous_quarter_key=previous_quarter_key,
         previous_primary_load='',
-        previous_primary_device_id=previous_primary_device_id,
+        previous_primary_consuming_device_id=previous_primary_consuming_device_id,
     )
     timing['policy_engine_haeo_plan_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
     phase_started_ts = time.time()
@@ -592,7 +519,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         previous_device_states=previous_device_states,
         previous_force_on_device_ids=previous_force_on_device_ids,
         haeo_nz_plan=haeo_nz_plan,
-        current_device_power_w_by_id=build_device_measured_power_w_by_id(cfg, m),
+        current_device_control_target_w_by_id=build_device_control_target_w_by_id(cfg, m),
         active_surplus_device_ids=active_surplus_device_ids,
     )
     timing['policy_engine_net_zero_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())
@@ -606,7 +533,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
     attrs.update(config_trace_attrs())
     attrs.update(
         {
-            'runtime_input_contract': 'direct_tick_frame_v3' if direct_frame is not None else 'raw_measurements_only',
+            'runtime_input_contract': 'direct_tick_frame_v5',
             'runtime_policy_config_revision': int(getattr(cfg, 'revision', 0) or 0),
             'net_zero_derived_source': 'internal',
             'net_zero_input_quality': derived.input_quality,
@@ -617,6 +544,7 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
             'pv_power_kw': pv_power_kw,
             'remaining_quarter_s': derived.remaining_quarter_s,
             'remaining_quarter_min': derived.remaining_quarter_min,
+            'control_horizon_s': derived.control_horizon_s,
             'rpnz_w': derived.rpnz_w,
             'required_power_w': derived.required_power_w,
             'required_power_consumption_kw': derived.required_power_consumption_kw,
@@ -740,7 +668,7 @@ def _publish_runtime_schema_error(exc, trigger_reason):
             'error_path': getattr(exc, 'path', ''),
             'error_message': str(exc),
             'policy_engine_last_run_reason': str(trigger_reason or ''),
-            'policy_engine_runtime_schema_version': 3,
+            'policy_engine_runtime_schema_version': 5,
             'actuator_writes_suppressed': True,
         },
     )

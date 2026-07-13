@@ -11,7 +11,7 @@ import yaml
 from tests.e2e_entity.entity_registry import build_scenario_entity_registry
 from tests.e2e_entity.scenario_runner import seed_active_surplus_devices
 from tests.e2e_entity.net_zero_inputs import runtime_inputs_for_net_zero_intent
-from tests.e2e_entity.direct_runtime_packets import ScenarioDirectRuntimeV3
+from tests.e2e_entity.direct_runtime_packets import ScenarioDirectRuntimeV5
 
 
 class FakeEntityStore:
@@ -84,7 +84,7 @@ class QuarterScenarioHarness:
                 raise ValueError(f'scenario config root must be a mapping: {self.scenario_config_path}')
             self.scenario_config = loaded
             self.ent = build_scenario_entity_registry(self.scenario_config)
-            self.direct_runtime = ScenarioDirectRuntimeV3(
+            self.direct_runtime = ScenarioDirectRuntimeV5(
                 self.scenario_config,
                 self.store,
                 lambda: self.now,
@@ -502,7 +502,7 @@ class QuarterScenarioHarness:
         exec(code, ns)
 
         # Production-parity E2E bridge: every policy tick is built as the same
-        # strict three-packet direct_tick_frame_v3 contract used by production.
+        # strict three-packet direct_tick_frame_v5 contract used by production.
         if self.direct_runtime is not None:
             if kind == 'policy':
                 ns['read_runtime_context'] = self.direct_runtime.read_runtime_context

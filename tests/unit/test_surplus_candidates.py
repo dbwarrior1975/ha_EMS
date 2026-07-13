@@ -102,15 +102,18 @@ def test_core_config_second_ev_enters_generic_candidate_context(project_root):
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ems_ev_garage_power_step_w',
         },
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
@@ -146,7 +149,7 @@ def test_core_config_second_ev_enters_generic_candidate_context(project_root):
         cfg,
         active_device_ids=(),
         lifecycle_transitions_by_id={},
-        primary_device_id='HOME_BATTERY',
+        primary_consuming_device_id='HOME_BATTERY',
     )
     by_id = {item['device_id']: item for item in contexts}
 

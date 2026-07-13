@@ -19,7 +19,7 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
                 'ev_device_ids': (),
-                'primary_device_id': '',
+                'primary_consuming_device_id': '',
                 'primary_surplus_combo_valid': True,
                 'primary_surplus_combo_reason': 'surplus_only_topology',
                 'surplus_dispatch_action': 'NOOP',
@@ -47,11 +47,11 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
                 'surplus_dispatch_device_id': 'HOME_BATTERY',
                 },
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 1000},
+                'HOME_BATTERY': {'target_w': 100},
                 'RELAY1': {'enabled': False},
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 1000,
+                E['actuator_battery_setpoint_w']: 100,
             },
         },
         {
@@ -66,11 +66,11 @@ def test_01_relays_only_boundary_runs_without_ev_policy(project_root):
                 'surplus_active_device_ids': ('HOME_BATTERY',),
             },
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 2000},
+                'HOME_BATTERY': {'target_w': 1100},
                 'RELAY1': {'enabled': False},
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 2000,
+                E['actuator_battery_setpoint_w']: 1100,
             },
         },
     ]

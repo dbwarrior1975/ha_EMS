@@ -20,15 +20,18 @@ def _write_scenario_config_with_second_ev(project_root, tmp_path):
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': False,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': False,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': False,
             'uses_hard_off_lifecycle': True,
             'min_absorb_w': 'input_number.ems_ev_garage_min_power_w',
             'max_absorb_w': 'input_number.ems_ev_garage_max_power_w',
+            'min_produce_w': 0,
+            'max_produce_w': 0,
             'step_w': 'input_number.ems_ev_garage_power_step_w',
         },
         'policy': {
             'priority': 'input_number.ems_surplus_ev_garage_priority',
+            'producing_priority': 0,
             'surplus_allowed': 'input_boolean.ems_ev_garage_surplus_allowed',
             'surplus_dispatch_mode': 'max_absorb',
             'force_on': 'input_boolean.ems_ev_garage_force_on',
@@ -56,7 +59,10 @@ def _write_scenario_config_without_ev(project_root, tmp_path):
         for device_id, device in config['ems']['devices'].items()
         if device.get('kind') != 'EV_CHARGER'
     }
-    config['ems']['global_config']['primary_device_id'] = 'input_select.ems_adjustable_primary_load'
+    config['ems']['global_config']['primary_consuming_device_id'] = 'input_select.ems_adjustable_primary_load'
+    haeo_devices = config['ems'].get('haeo', {}).get('devices', {})
+    if isinstance(haeo_devices, dict):
+        haeo_devices.pop('EV_CHARGER', None)
     path = tmp_path / 'scenario_no_ev.yaml'
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')
     return path, config
@@ -234,7 +240,7 @@ def test_direct_v3_two_ev_candidate_pool_uses_canonical_device_id_routing(projec
     harness = QuarterScenarioHarness(project_root, scenario_config_path=scenario_path)
     harness.set_entities(
         {
-            ENT['primary_device_id']: 'HOME_BATTERY',
+            ENT['primary_consuming_device_id']: 'HOME_BATTERY',
             **runtime_inputs_for_net_zero_intent(
                 harness.ent,
                 rpnz_w=4000,
@@ -294,7 +300,7 @@ def test_direct_v3_zero_ev_config_runs_policy_without_ev_policy(project_root, tm
     harness = QuarterScenarioHarness(project_root, scenario_config_path=scenario_path)
     harness.set_entities(
         {
-            ENT['primary_device_id']: '',
+            ENT['primary_consuming_device_id']: '',
             **runtime_inputs_for_net_zero_intent(
                 harness.ent,
                 rpnz_w=2400,
@@ -469,7 +475,7 @@ def test_policy_state_sensor_uses_monotonic_version_and_carries_previous_state_f
     assert third_state == third_attrs['policy_state_version']
     assert third_state > second_state
     assert 'haeo_nz_quarter_key' in second_attrs
-    assert 'haeo_nz_primary_device_id' in second_attrs
+    assert 'haeo_nz_primary_consuming_device_id' in second_attrs
     assert 'prev_force_on_device_ids' in second_attrs
 
 
@@ -480,7 +486,7 @@ def test_policy_state_helpers_prefer_canonical_sensor_over_trace(project_root):
         ENT['policy_state'],
         {
             'haeo_nz_quarter_key': 'canonical-quarter',
-            'haeo_nz_primary_device_id': 'HOME_BATTERY',
+            'haeo_nz_primary_consuming_device_id': 'HOME_BATTERY',
             'prev_force_on_device_ids': ('RELAY2',),
         },
     )
@@ -488,18 +494,18 @@ def test_policy_state_helpers_prefer_canonical_sensor_over_trace(project_root):
         ENT['policy_diagnostics'],
         {
             'haeo_nz_quarter_key': 'trace-quarter',
-            'haeo_nz_primary_device_id': 'EV_CHARGER',
+            'haeo_nz_primary_consuming_device_id': 'EV_CHARGER',
             'prev_force_on_device_ids': ('RELAY1',),
         },
     )
 
     assert harness.policy_mod['_policy_state_attr'](harness.ent, 'haeo_nz_quarter_key', '') == 'canonical-quarter'
-    assert harness.policy_mod['_policy_state_attr'](harness.ent, 'haeo_nz_primary_device_id', '') == 'HOME_BATTERY'
+    assert harness.policy_mod['_policy_state_attr'](harness.ent, 'haeo_nz_primary_consuming_device_id', '') == 'HOME_BATTERY'
     assert harness.policy_mod['_read_previous_force_on_device_ids'](harness.ent) == ('RELAY2',)
 
 
 @pytest.mark.unit
-def test_e2e_harness_executes_strict_direct_tick_frame_v3_contract(project_root):
+def test_e2e_harness_executes_strict_direct_tick_frame_v5_contract(project_root):
     scenario_dir = project_root / 'tests' / 'e2e_entity' / 'net_zero_priority_order_quarter_3_relays'
     harness = QuarterScenarioHarness(project_root, scenario_dir=scenario_dir)
 
@@ -515,12 +521,12 @@ def test_e2e_harness_executes_strict_direct_tick_frame_v3_contract(project_root)
     )
 
     diagnostics = snap['attrs'][ENT['policy_diagnostics']]
-    assert diagnostics['config_source'] == 'direct_tick_frame_v3_e2e'
-    assert diagnostics['runtime_input_contract'] == 'direct_tick_frame_v3'
+    assert diagnostics['config_source'] == 'direct_tick_frame_v5_e2e'
+    assert diagnostics['runtime_input_contract'] == 'direct_tick_frame_v5'
     packet_snapshot = harness.direct_runtime.snapshot()
-    assert packet_snapshot.policy_config['schema_version'] == 3
-    assert packet_snapshot.measurements['schema_version'] == 3
-    assert packet_snapshot.policy_state['schema_version'] == 3
+    assert packet_snapshot.policy_config['schema_version'] == 5
+    assert packet_snapshot.measurements['schema_version'] == 5
+    assert packet_snapshot.policy_state['schema_version'] == 5
     assert packet_snapshot.tick_frame.policy_config_revision == packet_snapshot.policy_config['revision']
 
 

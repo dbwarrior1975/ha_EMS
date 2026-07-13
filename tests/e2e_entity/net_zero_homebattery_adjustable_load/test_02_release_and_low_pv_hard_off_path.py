@@ -34,7 +34,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=11.0, required_power_consumption_kw=-6.4, at_s=120),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True},
-                'HOME_BATTERY': {'target_w': 100},
+                'HOME_BATTERY': {'target_w': 0},
             },
             'expect_policy': {
                 'surplus_next_device_id': 'RELAY1',
@@ -53,7 +53,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=-6.4, at_s=135),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True},
-                'HOME_BATTERY': {'target_w': -900},
+                'HOME_BATTERY': {'target_w': -1000},
             },
             'expect_policy': {
                 'surplus_next_device_id': 'RELAY1',
@@ -70,7 +70,7 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=120.0, required_power_consumption_kw=-4.0, at_s=150),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 100},
+                'HOME_BATTERY': {'target_w': -2000},
             },
             'expect_policy': {
                 'surplus_next_device_id': 'EV_CHARGER',
@@ -87,77 +87,77 @@ def test_02_release_and_low_pv_hard_off_path(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-20.0, required_power_consumption_kw=-4.0, at_s=160),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': -900},
+                'HOME_BATTERY': {'target_w': -3000},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_next_device_id': 'RELAY1',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
             },
             'expect_values': {},
         },
         {
             'at_s': 180,
-            'note': 't180 small PV recovery is still insufficient; low-PV stress persists, EV stays locked out, and battery discharge deepens further.',
+            'note': 't180 EV stays locked out; canonical producer authority follows measured grid feedback from the current signed control target.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-50.0, required_power_consumption_kw=-0.5, at_s=180, pv_power_kw=1.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-50.0, required_power_consumption_kw=-0.5, at_s=180),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': -1100},
+                'HOME_BATTERY': {'target_w': -3200},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_next_device_id': 'RELAY1',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: -1100,
+                E['actuator_battery_setpoint_w']: -3200,
             },
         },
         {
             'at_s': 210,
-            'note': 't210 deficit intensifies again, no surplus path qualifies, and battery discharge is pushed toward a stronger defensive target.',
+            'note': 't210 deficit intensifies again, no surplus path qualifies, and producer authority follows measured grid feedback.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-100.0, required_power_consumption_kw=-0.4, at_s=210, pv_power_kw=1.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-100.0, required_power_consumption_kw=-0.4, at_s=210),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': -1300},
+                'HOME_BATTERY': {'target_w': -3400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: -1300,
+                E['actuator_battery_setpoint_w']: -3400,
             },
         },
         {
             'at_s': 226,
-            'note': 't226 prolonged low-PV stress reaches a trough, keeping EV unavailable while battery discharge is driven to its steepest support level in this segment.',
+            'note': 't226 prolonged low-PV stress reaches a trough, keeping EV unavailable while producer authority follows measured grid feedback.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-150.0, required_power_consumption_kw=0.0, at_s=226, pv_power_kw=1.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-150.0, required_power_consumption_kw=0.0, at_s=226),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': -1300},
+                'HOME_BATTERY': {'target_w': -3400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: -1300,
+                E['actuator_battery_setpoint_w']: -3400,
             },
         },
     ]

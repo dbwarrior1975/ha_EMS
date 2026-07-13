@@ -45,17 +45,18 @@ def test_03_post_hard_off_recovery(project_root):
             ),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 500},
+                'HOME_BATTERY': {'target_w': 1200},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
-                'battery_min_floor_w': 0.0,
-                'battery_min_floor_reason': 'activation_gate_hold',
+                'battery_min_floor_w': 100.0,
+                'battery_min_floor_reason': 'not_applicable',
+                'effective_primary_consuming_device_id': 'HOME_BATTERY',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 500,
+                E['actuator_battery_setpoint_w']: 1200,
             },
         },
         {
@@ -74,13 +75,14 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=270,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
+                'HOME_BATTERY': {'target_w': 1200},
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
-                'battery_min_floor_reason': 'ev_active_floor_override',
-                'primary_power_envelope_w': None,
+                'battery_min_floor_reason': 'not_applicable',
+                'effective_primary_consuming_device_id': 'HOME_BATTERY',
+                'primary_power_envelope_w': 1200.0,
             },
             'expect_values': {},
         },
@@ -103,22 +105,23 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=275,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
+                'HOME_BATTERY': {'target_w': 1900},
                 'EV_CHARGER': {'enabled': False},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,                
                 'surplus_freeze_until_ts': 104,
-                'battery_min_floor_reason': 'ev_active_floor_override',
-                'primary_power_envelope_w': None,
+                'battery_min_floor_reason': 'not_applicable',
+                'effective_primary_consuming_device_id': 'HOME_BATTERY',
+                'primary_power_envelope_w': 1900.0,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_battery_setpoint_w']: 1900,
             },
         },
         {
             'at_s': 280,
-            'note': 't280 PV 2.5 kW',
+            'note': 't280 PV 2.5 kW: EV completes release recovery and regains primary authority; battery keeps its existing target',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=-10,
@@ -132,23 +135,24 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=280,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
+                'HOME_BATTERY': {'target_w': 1900},
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'primary_consuming_authority_hold',
                 'primary_power_envelope_w': 2380,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_battery_setpoint_w']: 1900,
                 E['actuator_ev_enabled']: True,
+                E['actuator_ev_current_a']: 10,
             },
         },
 
         {
             'at_s': 285,
-            'note': 't285 PV 2.5 kW',
+            'note': 't285 EV request is below its minimum; HOME_BATTERY becomes the explicit fallback primary',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=-15,
@@ -162,15 +166,17 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=285,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
-                'EV_CHARGER': {'enabled': True},
+                'HOME_BATTERY': {'target_w': 900},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
             },
             'expect_policy': {
-                'battery_min_floor_reason': 'ev_active_floor_override',
-                'primary_power_envelope_w': None,
+                'battery_min_floor_reason': 'not_applicable',
+                'effective_primary_consuming_device_id': 'HOME_BATTERY',
+                'primary_consuming_skipped_by_id.EV_CHARGER': 'below_min_absorb_w',
+                'primary_power_envelope_w': 900.0,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_battery_setpoint_w']: 900,
                 E['actuator_ev_enabled']: True,                
                 E['actuator_ev_current_a']: 6,
             },
@@ -178,7 +184,7 @@ def test_03_post_hard_off_recovery(project_root):
 
         {
             'at_s': 295,
-            'note': 't295 PV 5.5 kW',
+            'note': 't295 EV request is realizable again and EV regains primary authority',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=45,
@@ -192,16 +198,16 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=295,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
+                'HOME_BATTERY': {'target_w': 900},
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'primary_consuming_authority_hold',
                 'primary_power_envelope_w': 2380,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_battery_setpoint_w']: 900,
                 E['actuator_ev_current_a']: 10,
             },
         }, 
@@ -222,16 +228,16 @@ def test_03_post_hard_off_recovery(project_root):
                 at_s=300,
             ),
             'expect_device_policies': {
-                'HOME_BATTERY': {'target_w': 0},
+                'HOME_BATTERY': {'target_w': 900},
                 'EV_CHARGER': {'enabled': True},
             },
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
-                'battery_min_floor_reason': 'ev_active_floor_override',
+                'battery_min_floor_reason': 'primary_consuming_authority_hold',
                 'primary_power_envelope_w': 3300,
             },
             'expect_values': {
-                E['actuator_battery_setpoint_w']: 0,
+                E['actuator_battery_setpoint_w']: 900,
                 E['actuator_ev_current_a']: 14,
             },
         },         

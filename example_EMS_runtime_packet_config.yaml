@@ -1,4 +1,4 @@
-# EMS direct runtime v3 configuration.
+# EMS direct runtime v5 static topology configuration.
 #
 # Ownership rule:
 # - This file owns only static topology, physical direction capabilities,
@@ -22,9 +22,7 @@ ems:
     diagnostics_interval_seconds: 30
 
   role_constraints:
-    default:
-      primary: HOME_BATTERY
-      adjustable: EV_CHARGER
+    default: {}
 
   devices:
     HOME_BATTERY:
@@ -32,29 +30,29 @@ ems:
       capabilities:
         can_absorb_w: true
         can_produce_w: true
-        supports_primary_regulation: true
-        supports_residual_regulation: true
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: true
 
     EV_CHARGER:
       kind: EV_CHARGER
       capabilities:
         can_absorb_w: true
         can_produce_w: false
-        supports_primary_regulation: true
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: false
 
     RELAY1:
       kind: RELAY
       capabilities:
         can_absorb_w: true
         can_produce_w: false
-        supports_primary_regulation: false
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false
 
     RELAY2:
       kind: RELAY
       capabilities:
         can_absorb_w: true
         can_produce_w: false
-        supports_primary_regulation: false
-        supports_residual_regulation: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false

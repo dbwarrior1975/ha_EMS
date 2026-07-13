@@ -64,7 +64,7 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
     attrs.setdefault('surplus_freeze_until_ts', None)
     attrs.setdefault('surplus_state_clear_reason', '')
     attrs.setdefault('haeo_nz_quarter_key', '2026-07-02T10:00')
-    attrs.setdefault('haeo_nz_primary_device_id', 'HOME_BATTERY')
+    attrs.setdefault('haeo_nz_primary_consuming_device_id', 'HOME_BATTERY')
 
     mod['read_profiles'] = lambda _entities: SimpleNamespace(
         control='AUTOMATIC',
@@ -81,6 +81,7 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
     mod['evaluate_guard'] = lambda *_args, **_kwargs: SimpleNamespace(guard='NORMAL_LIMITS')
     mod['read_haeo'] = lambda *_args, **_kwargs: None
     mod['compute_haeo_net_zero_plan'] = lambda *_args, **_kwargs: None
+    mod['build_device_control_target_w_by_id'] = lambda *_args, **_kwargs: {}
     mod['_read_active_surplus_device_ids'] = lambda *_args, **_kwargs: ()
     mod['_read_previous_device_states'] = lambda *_args, **_kwargs: {}
     mod['_read_previous_force_on_device_ids'] = lambda *_args, **_kwargs: ()
@@ -92,6 +93,7 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
         input_warnings=(),
         remaining_quarter_s=900,
         remaining_quarter_min=15,
+        control_horizon_s=900,
     )
     mod['compute_net_zero_engine_outputs'] = lambda *_args, **_kwargs: SimpleNamespace(
         attrs={'previous_device_states': {}}
@@ -103,12 +105,26 @@ def _install_minimal_policy_loop_stubs(mod, attrs=None):
 
 
 def _minimal_entities():
+    direct_frame = SimpleNamespace(
+        quarter_energy_balance_kwh=0.0,
+        grid_power_w=0.0,
+        pv_power_w=0.0,
+        relay_states={},
+        previous_quarter_key='',
+        previous_primary_consuming_device_id='',
+        previous_force_on_device_ids=(),
+        previous_device_states={},
+        surplus_freeze_until_ts=None,
+        active_surplus_device_ids=(),
+        haeo_targets=lambda *_args, **_kwargs: None,
+    )
     return {
         'surplus_freeze_until': 'input_datetime.freeze',
         'device_policies': 'sensor.device_policies',
         'dispatch_command': 'sensor.dispatch_command',
         'policy_state': 'sensor.policy_state',
         'policy_diagnostics': 'sensor.policy_diagnostics',
+        '_direct_tick_frame': direct_frame,
     }
 
 
@@ -226,7 +242,7 @@ def test_policy_engine_tick_skip_does_not_read_runtime_context(project_root):
 def test_policy_engine_manual_run_updates_cached_intervals(project_root):
     mod = _load_policy_module(project_root)
     state = mod['_POLICY_ENGINE_TIMER_STATE']
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=8, diagnostics_interval_seconds=40))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=8, diagnostics_interval_seconds=40), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
 
     mod['read_runtime_context'] = lambda *_args, **_kwargs: (cfg, {})
     mod['run_policy_loop'] = lambda *_args, **_kwargs: None
@@ -315,7 +331,7 @@ def test_unchanged_canonical_payloads_are_not_republished_while_diagnostics_are_
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
     state = mod['_POLICY_ENGINE_TIMER_STATE']
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -337,7 +353,7 @@ def test_unchanged_canonical_payloads_are_not_republished_while_diagnostics_are_
 def test_canonical_changed_forces_diagnostics_publish_before_interval(project_root):
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -362,7 +378,7 @@ def test_canonical_changed_forces_diagnostics_publish_before_interval(project_ro
 def test_policy_diagnostics_contains_phase_timing_fields(project_root):
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -433,7 +449,7 @@ def test_policy_diagnostics_contains_phase_timing_fields(project_root):
 def test_previous_diagnostics_publish_ms_reports_last_completed_publish(project_root):
     mod = _load_policy_module(project_root)
     _install_minimal_policy_loop_stubs(mod)
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -477,7 +493,7 @@ def test_policy_diagnostics_contains_context_cache_timing_fields(project_root):
         'policy_engine_net_zero_cfg_device_adapter_value_calls': 4,
         'policy_engine_net_zero_cfg_device_policy_value_calls': 5,
     }
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -537,7 +553,7 @@ def test_phase_timing_fields_do_not_change_canonical_keys(project_root):
         'surplus_freeze_until_ts': 130.0,
         'surplus_state_clear_reason': '',
         'haeo_nz_quarter_key': '2026-07-02T10:00',
-        'haeo_nz_primary_device_id': 'HOME_BATTERY',
+        'haeo_nz_primary_consuming_device_id': 'HOME_BATTERY',
         'prev_force_on_device_ids': ('EV_CHARGER',),
     }
     first_device_key = mod['_device_policies_key'](attrs)
@@ -615,7 +631,7 @@ def test_dispatch_command_key_keeps_activate_freeze_until_ts(project_root):
 def test_policy_diagnostics_throttled_for_repeated_policy_inactive_clear_all(project_root):
     mod = _load_policy_module(project_root)
     state = mod['_POLICY_ENGINE_TIMER_STATE']
-    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30))
+    cfg = SimpleNamespace(policy_engine=SimpleNamespace(interval_seconds=5, diagnostics_interval_seconds=30), profiles=SimpleNamespace(control='AUTOMATIC', goal='NET_ZERO', forecast='NONE', guard='NORMAL_LIMITS'), revision=1)
     entities = _minimal_entities()
     published = []
 
@@ -668,7 +684,7 @@ def test_public_policy_diagnostics_projection_preserves_all_canonical_fields_aft
         'surplus_dispatch_device_id': 'EV_CHARGER',
         'surplus_dispatch_contract': 'device_id_primary',
         'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
-        'primary_device_id': 'HOME_BATTERY',
+        'primary_consuming_device_id': 'HOME_BATTERY',
     }
     projected = mod['_diagnostic_projection_attrs'](canonical)
 
@@ -677,4 +693,4 @@ def test_public_policy_diagnostics_projection_preserves_all_canonical_fields_aft
     assert projected['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert projected['surplus_dispatch_contract'] == 'device_id_primary'
     assert projected['previous_device_states'] == canonical['previous_device_states']
-    assert projected['primary_device_id'] == 'HOME_BATTERY'
+    assert projected['primary_consuming_device_id'] == 'HOME_BATTERY'

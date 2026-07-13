@@ -26,7 +26,7 @@ def test_03_recovery_and_reactivation(project_root):
     steps = [
         {
             'at_s': 210,
-            'note': 't210 deficit intensifies again, no surplus path qualifies, and battery discharge is pushed toward a stronger defensive target.',
+            'note': 't210 no surplus path qualifies; producer authority updates from the seeded signed target using measured grid feedback.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-100.0, required_power_consumption_kw=-0.4, at_s=210, pv_power_kw=1.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-100.0, required_power_consumption_kw=-0.4, at_s=210),
             'expect_device_policies': {
@@ -34,8 +34,8 @@ def test_03_recovery_and_reactivation(project_root):
                 'HOME_BATTERY': {'target_w': -1400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
@@ -47,7 +47,7 @@ def test_03_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 226,
-            'note': 't226 prolonged low-PV stress reaches a trough, keeping EV unavailable while battery discharge is driven to its steepest support level in this segment.',
+            'note': 't226 prolonged low-PV stress reaches a trough, keeping EV unavailable while producer authority follows measured grid feedback.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-150.0, required_power_consumption_kw=0.0, at_s=226, pv_power_kw=1.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-150.0, required_power_consumption_kw=0.0, at_s=226),
             'expect_device_policies': {
@@ -55,8 +55,8 @@ def test_03_recovery_and_reactivation(project_root):
                 'HOME_BATTERY': {'target_w': -1400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
@@ -68,7 +68,7 @@ def test_03_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 240,
-            'note': 't240 balance flips back positive and control posture relaxes, returning battery targeting toward neutral floor behavior.',
+            'note': 't240 balance flips back positive and control posture relaxes, ending producer authority while preserving the current canonical target.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=200.0, required_power_consumption_kw=0.0, at_s=240, pv_power_kw=0.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=200.0, required_power_consumption_kw=0.0, at_s=240),
             'expect_device_policies': {
@@ -76,8 +76,8 @@ def test_03_recovery_and_reactivation(project_root):
                 'HOME_BATTERY': {'target_w': -1400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
@@ -89,7 +89,7 @@ def test_03_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 270,
-            'note': 't270 the system holds a stable wait state with EV still off, preserving margin until surplus conditions are clearly sustained.',
+            'note': 't270 the system holds a stable wait state with EV still off, holding the canonical target until surplus conditions are clearly sustained.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=380.0, required_power_consumption_kw=0.0, at_s=270, pv_power_kw=2.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=380.0, required_power_consumption_kw=0.0, at_s=270),
             'expect_device_policies': {
@@ -97,8 +97,8 @@ def test_03_recovery_and_reactivation(project_root):
                 'HOME_BATTERY': {'target_w': -1400},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
-                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'RELAY1',
+                'surplus_explanation': 'Waiting for RELAY1; raw RPC below threshold',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
             },
@@ -118,11 +118,11 @@ def test_03_recovery_and_reactivation(project_root):
                 'HOME_BATTERY': {'target_w': 100},
             },
             'expect_policy': {
-                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_next_device_id': 'RELAY1',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_freeze_until_ts': 290.0,
-                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY1 threshold 2.500 kW',
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
@@ -132,16 +132,16 @@ def test_03_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 280,
-            'note': 't280 recovery is now established: EV burn current is restored, battery support rises, and freeze logic holds stability against rapid re-flapping.',
+            'note': 't280 recovery is now established: EV burn current is restored, battery target moves into consuming authority, and freeze logic holds stability against rapid re-flapping.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=400.0, required_power_consumption_kw=0.1, at_s=280, pv_power_kw=5.0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=0.1, at_s=280),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 100},
+                'HOME_BATTERY': {'target_w': -400},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 290.0,
-                'surplus_next_device_id': 'RELAY1',
+                'surplus_next_device_id': 'RELAY2',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
@@ -151,7 +151,7 @@ def test_03_recovery_and_reactivation(project_root):
             'expect_values': {
                 E['actuator_ev_enabled']: False,
                 E['actuator_ev_current_a']: 6,
-                E['actuator_battery_setpoint_w']: 100,
+                E['actuator_battery_setpoint_w']: -400,
             },
         },
         {
@@ -161,11 +161,11 @@ def test_03_recovery_and_reactivation(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=7.0, at_s=285),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False},
-                'HOME_BATTERY': {'target_w': 1100},
+                'HOME_BATTERY': {'target_w': 600},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 290.0,
-                'surplus_next_device_id': 'RELAY1',
+                'surplus_next_device_id': 'RELAY2',
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,
@@ -178,12 +178,12 @@ def test_03_recovery_and_reactivation(project_root):
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=400.0, required_power_consumption_kw=7.0, at_s=290),
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': True},
-                'HOME_BATTERY': {'target_w': 2000},
+                'HOME_BATTERY': {'target_w': 1600},
             },
             'expect_policy': {
                 'surplus_freeze_until_ts': 305.0,
-                'surplus_next_device_id': 'RELAY1',
-                'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY1 threshold 2.500 kW',
+                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
             },

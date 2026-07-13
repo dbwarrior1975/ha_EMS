@@ -20,7 +20,7 @@ def build_harness(project_root):
         # Deliberately opposite to the expected HAEO plan. The future EMS-internal
         # HAEO NET_ZERO path should choose the combo from the forecast, not from
         # these config helpers.
-        E['primary_device_id']: 'EV_CHARGER',
+        E['primary_consuming_device_id']: 'EV_CHARGER',
         E['devices']['HOME_BATTERY']['priority']: 3,
         E['ev_min_absorb_w']: 920,
         E['ev_current_step_a']: 4,

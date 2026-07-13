@@ -11,7 +11,7 @@ from ems_core.domain.models import (
 )
 
 
-RUNTIME_SCHEMA_VERSION = 3
+RUNTIME_SCHEMA_VERSION = 5
 
 
 class RuntimePacketSchemaError(ValueError):
@@ -56,9 +56,8 @@ class RuntimePolicyConfig:
 
         Global configuration remains authoritative at ``global_config`` and
         device configuration remains authoritative in the per-device maps.
-        The v3 runtime packet still carries one scalar battery measurement
-        channel; its explicit first-BATTERY ownership is isolated behind
-        ``v3_battery_device_id`` until the planned L4 schema migration.
+        Runtime schema v5 carries ordered primary-consuming fallback IDs, battery state by device_id, and
+        producer membership/order directly in the canonical device maps.
         """
         self.devices = {}
         for device_id in self.device_kind_by_id:
@@ -75,36 +74,30 @@ class RuntimePolicyConfig:
             'device_adapter_by_id': self.device_adapter_config_by_id,
         }
 
-    def v3_battery_device_id(self):
-        """Return the BATTERY device owning direct_tick_frame_v3 battery scalars.
+    def primary_consuming_device_ids(self):
+        return tuple(getattr(self.global_config, 'primary_consuming_device_ids', ()) or ())
 
-        This first-BATTERY rule is a deliberate, visible wire-contract limitation
-        retained for L4. It is not a domain singleton and must not be used to infer
-        general battery roles.
-        """
-        battery_ids = self.device_ids_by_kind('BATTERY')
-        return str(battery_ids[0]) if battery_ids else ''
+    def producing_device_ids(self):
+        candidates = []
+        for rank, device_id in enumerate(self.device_kind_by_id):
+            caps = self.device_capabilities_by_id.get(str(device_id), {}) or {}
+            if not bool(caps.get('supports_producing_regulation', False)):
+                continue
+            policy = self.device_policy_by_id.get(str(device_id), {}) or {}
+            candidates.append((
+                -int(policy.get('producing_priority', 0) or 0),
+                rank,
+                str(device_id),
+            ))
+        candidates.sort()
+        result = []
+        for item in candidates:
+            result.append(item[2])
+        return tuple(result)
 
-    def unsupported_v3_battery_device_ids(self):
-        owner = self.v3_battery_device_id()
-        unsupported = []
-        for device_id in self.device_ids_by_kind('BATTERY'):
-            if str(device_id) != str(owner):
-                unsupported.append(str(device_id))
-        return tuple(unsupported)
-
-    def v3_battery_guard_value(self, field: str, default=None):
-        battery_id = self.v3_battery_device_id()
-        if not battery_id:
-            return default
-        guard = self.device_policy_by_id.get(battery_id, {}).get('_guard', {}) or {}
+    def battery_guard_value(self, device_id: str, field: str, default=None):
+        guard = self.device_policy_by_id.get(str(device_id), {}).get('_guard', {}) or {}
         return guard.get(str(field), default)
-
-    def v3_battery_capability(self, field: str, default=None):
-        battery_id = self.v3_battery_device_id()
-        if not battery_id:
-            return default
-        return self.device_capability(battery_id, field, default)
 
     def _device_namespace(self, device_id: str):
         kind = self.device_kind_by_id.get(device_id, '')
@@ -152,40 +145,41 @@ class TickFrame:
     grid_power_w: float
     quarter_energy_balance_kwh: float
     pv_power_w: float
-    soc: float
-    min_cell_voltage_v: float
-    battery_heartbeat: object
-    battery_heartbeat_age_s: float
-    current_battery_setpoint_w: float
-    battery_measured_power_w: float
+    battery_states: dict[str, dict]
     relay_states: dict[str, dict]
     ev_states: dict[str, dict]
     surplus_freeze_until_ts: Optional[float]
     active_surplus_device_ids: tuple[str, ...]
     previous_device_states: dict[str, dict]
-    haeo_battery_state_kw: float
-    haeo_ev_state_kw: float
-    haeo_battery_age_s: float
-    haeo_ev_age_s: float
+    haeo_device_state_kw_by_id: dict[str, float]
+    haeo_device_age_s_by_id: dict[str, float]
     previous_quarter_key: str
-    previous_primary_device_id: str
+    previous_primary_consuming_device_id: str
     previous_force_on_device_ids: tuple[str, ...]
     policy_config_revision: int
+
+    def battery_state(self, device_id: str) -> dict:
+        return dict((self.battery_states or {}).get(str(device_id), {}) or {})
 
     def haeo_targets(self, profiles: Profiles, runtime_config: RuntimePolicyConfig) -> HaeoTargets:
         from ems_core.net_zero.engine import configured_forecast, effective_forecast
 
         configured = configured_forecast(profiles.control, profiles.forecast)
-        fresh = bool(
-            self.haeo_battery_age_s < float(runtime_config.global_config.haeo_stale_timeout_s)
-            and self.haeo_ev_age_s < float(runtime_config.global_config.haeo_stale_timeout_s)
-        )
+        timeout_s = float(runtime_config.global_config.haeo_stale_timeout_s)
+        fresh_targets = {}
+        fresh_ages = {}
+        for device_id, target_kw in (self.haeo_device_state_kw_by_id or {}).items():
+            age_s = float((self.haeo_device_age_s_by_id or {}).get(str(device_id), float('inf')))
+            if age_s < timeout_s:
+                fresh_targets[str(device_id)] = float(target_kw)
+                fresh_ages[str(device_id)] = age_s
+        fresh = bool(fresh_targets)
         return HaeoTargets(
             effective_forecast=effective_forecast(configured, fresh),
             configured_forecast=configured,
             fresh=fresh,
-            battery_target_kw=float(self.haeo_battery_state_kw),
-            ev_target_kw=max(float(self.haeo_ev_state_kw), 0.0),
+            device_target_kw_by_id=fresh_targets,
+            device_age_s_by_id=fresh_ages,
         )
 
 
@@ -374,7 +368,7 @@ def _profile_value(profiles: dict, key: str, allowed: tuple[str, ...]) -> str:
     return value
 
 
-def _parse_policy_config_v2(
+def _parse_policy_config_v5(
     topology: StaticTopology,
     packet: dict,
     policy_engine: Optional[CorePolicyEngineConfig],
@@ -397,7 +391,7 @@ def _parse_policy_config_v2(
         if removed_field in cfg_raw:
             _fail(
                 f'policy_config.config.{removed_field}',
-                'legacy field removed; surplus eligibility is device-owned and activation threshold derives from capabilities.max_absorb_w',
+                'field removed; surplus eligibility is device-owned and activation threshold derives from capabilities.max_absorb_w',
             )
     number_fields = (
         'deadband_w',
@@ -413,15 +407,23 @@ def _parse_policy_config_v2(
     cfg_values = {}
     for field in number_fields:
         cfg_values[field] = _number(_required(cfg_raw, field, 'policy_config.config'), f'policy_config.config.{field}')
-    cfg_values['primary_device_id'] = _text(
-        _required(cfg_raw, 'primary_device_id', 'policy_config.config'),
-        'policy_config.config.primary_device_id',
-        allow_empty=True,
+    cfg_values['primary_consuming_device_ids'] = _string_tuple(
+        _required(cfg_raw, 'primary_consuming_device_ids', 'policy_config.config'),
+        'policy_config.config.primary_consuming_device_ids',
     )
-    for field in ('primary_device_id',):
-        device_id = cfg_values[field]
-        if device_id and device_id not in topology.device_kind_by_id:
-            _fail(f'policy_config.config.{field}', f'unknown device id {device_id}')
+    seen_primary_ids = set()
+    for index, device_id in enumerate(cfg_values['primary_consuming_device_ids']):
+        if device_id not in topology.device_kind_by_id:
+            _fail(
+                f'policy_config.config.primary_consuming_device_ids[{index}]',
+                f'unknown device id {device_id}',
+            )
+        if device_id in seen_primary_ids:
+            _fail(
+                f'policy_config.config.primary_consuming_device_ids[{index}]',
+                f'duplicate device id {device_id}',
+            )
+        seen_primary_ids.add(device_id)
 
     devices_raw = _mapping(_required(packet, 'devices', 'policy_config'), 'policy_config.devices')
     packet_device_ids = set()
@@ -449,16 +451,16 @@ def _parse_policy_config_v2(
                 _required(caps_raw, 'uses_hard_off_lifecycle', f'{device_path}.capabilities'),
                 f'{device_path}.capabilities.uses_hard_off_lifecycle',
             ),
-            'supports_primary_regulation': _strict_boolean(
-                _required(caps_raw, 'supports_primary_regulation', f'{device_path}.capabilities'),
-                f'{device_path}.capabilities.supports_primary_regulation',
+            'supports_primary_consuming_regulation': _strict_boolean(
+                _required(caps_raw, 'supports_primary_consuming_regulation', f'{device_path}.capabilities'),
+                f'{device_path}.capabilities.supports_primary_consuming_regulation',
             ),
-            'supports_residual_regulation': _strict_boolean(
-                _required(caps_raw, 'supports_residual_regulation', f'{device_path}.capabilities'),
-                f'{device_path}.capabilities.supports_residual_regulation',
+            'supports_producing_regulation': _strict_boolean(
+                _required(caps_raw, 'supports_producing_regulation', f'{device_path}.capabilities'),
+                f'{device_path}.capabilities.supports_producing_regulation',
             ),
         }
-        for field in ('min_absorb_w', 'max_absorb_w', 'max_produce_w', 'step_w'):
+        for field in ('min_absorb_w', 'max_absorb_w', 'min_produce_w', 'max_produce_w', 'step_w'):
             caps[field] = _number(_required(caps_raw, field, f'{device_path}.capabilities'), f'{device_path}.capabilities.{field}')
         capabilities_by_id[device_id] = caps
 
@@ -468,7 +470,10 @@ def _parse_policy_config_v2(
                 f'{device_path}.policy.activation_threshold_w',
                 'field removed; surplus activation threshold derives from capabilities.max_absorb_w',
             )
-        policy = {'priority': _integer(_required(policy_raw, 'priority', f'{device_path}.policy'), f'{device_path}.policy.priority')}
+        policy = {
+            'priority': _integer(_required(policy_raw, 'priority', f'{device_path}.policy'), f'{device_path}.policy.priority'),
+            'producing_priority': _integer(_required(policy_raw, 'producing_priority', f'{device_path}.policy'), f'{device_path}.policy.producing_priority'),
+        }
         policy['surplus_allowed'] = _strict_boolean(
             _required(policy_raw, 'surplus_allowed', f'{device_path}.policy'),
             f'{device_path}.policy.surplus_allowed',
@@ -529,38 +534,33 @@ def _parse_policy_config_v2(
         policy_by_id[device_id] = policy
         adapter_by_id[device_id] = adapter
 
-    requested_primary_device_id = str(cfg_values['primary_device_id'] or '')
-    if requested_primary_device_id:
-        primary_device_id = requested_primary_device_id
-    else:
-        primary_device_id = ''
-        for candidate_device_id in topology.device_order:
-            candidate_caps = capabilities_by_id.get(str(candidate_device_id), {}) or {}
-            if bool(candidate_caps.get('supports_primary_regulation', False)):
-                primary_device_id = str(candidate_device_id)
-                break
-    primary_caps = capabilities_by_id.get(primary_device_id, {}) or {}
-    if not bool(primary_caps.get('supports_primary_regulation', False)):
-        _fail(
-            'policy_config.config.primary_device_id',
-            f'{primary_device_id} does not support primary regulation',
-        )
-    residual_regulator_device_id = ''
-    if bool(primary_caps.get('supports_residual_regulation', False)):
-        residual_regulator_device_id = primary_device_id
-    else:
-        for candidate_device_id in topology.device_order:
-            if str(candidate_device_id) == primary_device_id:
-                continue
-            candidate_caps = capabilities_by_id.get(str(candidate_device_id), {}) or {}
-            if bool(candidate_caps.get('supports_residual_regulation', False)):
-                residual_regulator_device_id = str(candidate_device_id)
-                break
-    if not residual_regulator_device_id:
-        _fail(
-            'policy_config.config.primary_device_id',
-            'selected primary configuration has no residual regulator capability',
-        )
+    primary_consuming_device_ids = tuple(cfg_values['primary_consuming_device_ids'])
+    for index, primary_consuming_device_id in enumerate(primary_consuming_device_ids):
+        primary_caps = capabilities_by_id.get(primary_consuming_device_id, {}) or {}
+        if not bool(primary_caps.get('supports_primary_consuming_regulation', False)):
+            _fail(
+                f'policy_config.config.primary_consuming_device_ids[{index}]',
+                f'{primary_consuming_device_id} does not support primary consuming regulation',
+            )
+        if not bool(primary_caps.get('can_absorb_w', False)):
+            _fail(
+                f'policy_config.config.primary_consuming_device_ids[{index}]',
+                f'{primary_consuming_device_id} cannot absorb power',
+            )
+
+    for device_id, caps in capabilities_by_id.items():
+        if bool(caps.get('supports_producing_regulation', False)) and not bool(caps.get('can_produce_w', False)):
+            _fail(
+                f'policy_config.devices.{device_id}.capabilities.supports_producing_regulation',
+                'requires can_produce_w=true',
+            )
+        min_produce_w = float(caps.get('min_produce_w', 0.0) or 0.0)
+        max_produce_w = float(caps.get('max_produce_w', 0.0) or 0.0)
+        if min_produce_w < 0.0 or max_produce_w < min_produce_w:
+            _fail(
+                f'policy_config.devices.{device_id}.capabilities.max_produce_w',
+                'must be >= min_produce_w >= 0',
+            )
 
     parsed = RuntimePolicyConfig(
         revision=revision,
@@ -595,7 +595,7 @@ def parse_policy_config_cached(
     ):
         return _POLICY_CONFIG_CACHE['config'], True
 
-    parsed = _parse_policy_config_v2(topology, packet, policy_engine)
+    parsed = _parse_policy_config_v5(topology, packet, policy_engine)
     _POLICY_CONFIG_CACHE.update(
         {
             'entity_id': topology.policy_config_entity_id,
@@ -620,7 +620,7 @@ def _normalize_previous_device_state(value: dict, path: str) -> dict:
     }
 
 
-def parse_tick_frame_v3(
+def parse_tick_frame_v5(
     topology: StaticTopology,
     runtime_config: RuntimePolicyConfig,
     measurements_packet: dict,
@@ -632,32 +632,37 @@ def parse_tick_frame_v3(
     _require_runtime_schema(measurements, 'measurements')
     _require_runtime_schema(state_packet, 'policy_state')
 
-    battery = _mapping(_required(measurements, 'battery', 'measurements'), 'measurements.battery')
     grid_power_w = _number(_required(measurements, 'grid_power_w', 'measurements'), 'measurements.grid_power_w')
     quarter_balance = _number(
         _required(measurements, 'quarter_energy_balance_kwh', 'measurements'),
         'measurements.quarter_energy_balance_kwh',
     )
     pv_power_w = _number(_required(measurements, 'pv_power_w', 'measurements'), 'measurements.pv_power_w')
-    soc = _number(_required(battery, 'soc', 'measurements.battery'), 'measurements.battery.soc')
-    min_cell_voltage_v = _number(
-        _required(battery, 'min_cell_voltage_v', 'measurements.battery'),
-        'measurements.battery.min_cell_voltage_v',
-    )
-    heartbeat = _required(battery, 'heartbeat', 'measurements.battery')
-    if heartbeat in (None, '', 'unknown', 'unavailable', 'none'):
-        _fail('measurements.battery.heartbeat', 'must be available')
-    heartbeat_age_s = _number(
-        _required(battery, 'heartbeat_age_s', 'measurements.battery'),
-        'measurements.battery.heartbeat_age_s',
-    )
-    if heartbeat_age_s < 0:
-        _fail('measurements.battery.heartbeat_age_s', 'must be non-negative')
-    target_w = _number(_required(battery, 'target_w', 'measurements.battery'), 'measurements.battery.target_w')
-    measured_power_w = _number(
-        _required(battery, 'measured_power_w', 'measurements.battery'),
-        'measurements.battery.measured_power_w',
-    )
+
+    batteries_packet = _mapping(_required(measurements, 'batteries', 'measurements'), 'measurements.batteries')
+    battery_states = {}
+    for device_id in topology.battery_device_ids:
+        path = f'measurements.batteries.{device_id}'
+        item = _mapping(_required(batteries_packet, device_id, 'measurements.batteries'), path)
+        heartbeat = _required(item, 'heartbeat', path)
+        if heartbeat in (None, '', 'unknown', 'unavailable', 'none'):
+            _fail(f'{path}.heartbeat', 'must be available')
+        heartbeat_age_s = _number(_required(item, 'heartbeat_age_s', path), f'{path}.heartbeat_age_s')
+        if heartbeat_age_s < 0:
+            _fail(f'{path}.heartbeat_age_s', 'must be non-negative')
+        battery_states[device_id] = {
+            'soc': _number(_required(item, 'soc', path), f'{path}.soc'),
+            'min_cell_voltage_v': _number(
+                _required(item, 'min_cell_voltage_v', path),
+                f'{path}.min_cell_voltage_v',
+            ),
+            'heartbeat': heartbeat,
+            'heartbeat_age_s': heartbeat_age_s,
+            'current_setpoint_w': _number(
+                _required(item, 'current_setpoint_w', path),
+                f'{path}.current_setpoint_w',
+            ),
+        }
 
     surplus = _mapping(_required(state_packet, 'surplus', 'policy_state'), 'policy_state.surplus')
     active_ids = _string_tuple(
@@ -679,11 +684,25 @@ def parse_tick_frame_v3(
                 raw_state,
                 f'policy_state.surplus.previous_device_states.{text_id}',
             )
+
     haeo = _mapping(_required(state_packet, 'haeo', 'policy_state'), 'policy_state.haeo')
-    haeo_battery_state_kw = _number(_required(haeo, 'battery_state_kw', 'policy_state.haeo'), 'policy_state.haeo.battery_state_kw')
-    haeo_ev_state_kw = _number(_required(haeo, 'ev_state_kw', 'policy_state.haeo'), 'policy_state.haeo.ev_state_kw')
-    haeo_battery_age_s = _number(_required(haeo, 'battery_age_s', 'policy_state.haeo'), 'policy_state.haeo.battery_age_s')
-    haeo_ev_age_s = _number(_required(haeo, 'ev_age_s', 'policy_state.haeo'), 'policy_state.haeo.ev_age_s')
+    haeo_devices = _mapping(_required(haeo, 'devices', 'policy_state.haeo'), 'policy_state.haeo.devices')
+    haeo_device_state_kw_by_id = {}
+    haeo_device_age_s_by_id = {}
+    for raw_device_id, raw_item in haeo_devices.items():
+        device_id = str(raw_device_id)
+        if device_id not in topology.device_kind_by_id:
+            _fail(f'policy_state.haeo.devices.{device_id}', 'unknown device id')
+        path = f'policy_state.haeo.devices.{device_id}'
+        item = _mapping(raw_item, path)
+        age_s = _number(_required(item, 'age_s', path), f'{path}.age_s')
+        if age_s < 0:
+            _fail(f'{path}.age_s', 'must be non-negative')
+        haeo_device_state_kw_by_id[device_id] = _number(
+            _required(item, 'state_kw', path),
+            f'{path}.state_kw',
+        )
+        haeo_device_age_s_by_id[device_id] = age_s
 
     policy_state = _mapping(_required(state_packet, 'policy', 'policy_state'), 'policy_state.policy')
     previous_quarter_key = _text(
@@ -691,9 +710,9 @@ def parse_tick_frame_v3(
         'policy_state.policy.haeo_nz_quarter_key',
         allow_empty=True,
     )
-    previous_primary_device_id = _text(
-        _required(policy_state, 'haeo_nz_primary_device_id', 'policy_state.policy'),
-        'policy_state.policy.haeo_nz_primary_device_id',
+    previous_primary_consuming_device_id = _text(
+        _required(policy_state, 'haeo_nz_primary_consuming_device_id', 'policy_state.policy'),
+        'policy_state.policy.haeo_nz_primary_consuming_device_id',
         allow_empty=True,
     )
     previous_force_on_ids = _string_tuple(
@@ -737,26 +756,16 @@ def parse_tick_frame_v3(
         grid_power_w=grid_power_w,
         quarter_energy_balance_kwh=quarter_balance,
         pv_power_w=pv_power_w,
-        soc=soc,
-        min_cell_voltage_v=min_cell_voltage_v,
-        battery_heartbeat=heartbeat,
-        # Heartbeat freshness is computed once in the HA measurement packet from
-        # the real source entity's last_updated timestamp. This preserves stale
-        # transport protection without adding a fourth HA read in the Pyscript hot path.
-        battery_heartbeat_age_s=heartbeat_age_s,
-        current_battery_setpoint_w=target_w,
-        battery_measured_power_w=measured_power_w,
+        battery_states=battery_states,
         relay_states=relay_states,
         ev_states=ev_states,
         surplus_freeze_until_ts=freeze_until,
         active_surplus_device_ids=active_ids,
         previous_device_states=previous_device_states,
-        haeo_battery_state_kw=haeo_battery_state_kw,
-        haeo_ev_state_kw=haeo_ev_state_kw,
-        haeo_battery_age_s=haeo_battery_age_s,
-        haeo_ev_age_s=haeo_ev_age_s,
+        haeo_device_state_kw_by_id=haeo_device_state_kw_by_id,
+        haeo_device_age_s_by_id=haeo_device_age_s_by_id,
         previous_quarter_key=previous_quarter_key,
-        previous_primary_device_id=previous_primary_device_id,
+        previous_primary_consuming_device_id=previous_primary_consuming_device_id,
         previous_force_on_device_ids=previous_force_on_ids,
         policy_config_revision=runtime_config.revision,
     )

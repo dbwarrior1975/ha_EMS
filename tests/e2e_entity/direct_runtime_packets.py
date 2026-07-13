@@ -9,7 +9,7 @@ from ems_adapter.direct_runtime import (
     RUNTIME_SCHEMA_VERSION,
     build_static_topology,
     parse_policy_config_cached,
-    parse_tick_frame_v3,
+    parse_tick_frame_v5,
     reset_direct_runtime_cache,
 )
 from ems_adapter.runtime_context import build_runtime_entities_from_policy_config_packet
@@ -67,12 +67,12 @@ class ScenarioPacketSnapshot:
     runtime_entities: dict
 
 
-class ScenarioDirectRuntimeV3:
-    """Test-only materializer for production-parity direct_tick_frame_v3 E2E execution.
+class ScenarioDirectRuntimeV5:
+    """Test-only materializer for production-parity direct_tick_frame_v5 E2E execution.
 
     Scenario YAML is only a human-readable fixture definition. Runtime execution never
     builds a PolicyContext/CoreConfigView from it. Every policy tick is materialized as
-    the same three strict v3 packets used by production and parsed by the real direct
+    the same three strict v5 packets used by production and parsed by the real direct
     runtime parser.
     """
 
@@ -126,8 +126,8 @@ class ScenarioDirectRuntimeV3:
                 'capabilities': {
                     'can_absorb_w': bool(caps.get('can_absorb_w', False)),
                     'can_produce_w': bool(caps.get('can_produce_w', False)),
-                    'supports_primary_regulation': bool(caps.get('supports_primary_regulation', False)),
-                    'supports_residual_regulation': bool(caps.get('supports_residual_regulation', False)),
+                    'supports_primary_consuming_regulation': bool(caps.get('supports_primary_consuming_regulation', False)),
+                    'supports_producing_regulation': bool(caps.get('supports_producing_regulation', False)),
                 },
             }
         return {
@@ -163,7 +163,13 @@ class ScenarioDirectRuntimeV3:
             'haeo_stale_timeout_s': self._read(cfg.get('haeo_stale_timeout_s'), 300.0),
             'nz_battery_floor_default_w': self._read(cfg.get('nz_battery_floor_default_w'), 100.0),
             'nz_battery_floor_ev_active_w': self._read(cfg.get('nz_battery_floor_ev_active_w'), 0.0),
-            'primary_device_id': str(self._read(cfg.get('primary_device_id'), '') or ''),
+            'primary_consuming_device_ids': tuple(
+                dict.fromkeys(
+                    str(self._read(item, '') or '')
+                    for item in tuple(cfg.get('primary_consuming_device_ids') or ())
+                    if str(self._read(item, '') or '')
+                )
+            ),
         }
 
     def _device_policy_packet(self):
@@ -177,15 +183,17 @@ class ScenarioDirectRuntimeV3:
             packet_device = {
                 'capabilities': {
                     'uses_hard_off_lifecycle': bool(self._read(caps.get('uses_hard_off_lifecycle'), kind == 'EV_CHARGER')),
-                    'supports_primary_regulation': bool(self._read(caps.get('supports_primary_regulation'), False)),
-                    'supports_residual_regulation': bool(self._read(caps.get('supports_residual_regulation'), False)),
+                    'supports_primary_consuming_regulation': bool(self._read(caps.get('supports_primary_consuming_regulation'), False)),
+                    'supports_producing_regulation': bool(self._read(caps.get('supports_producing_regulation'), False)),
                     'min_absorb_w': self._read(caps.get('min_absorb_w'), 0.0),
                     'max_absorb_w': self._read(caps.get('max_absorb_w'), 0.0),
+                    'min_produce_w': self._read(caps.get('min_produce_w'), 0.0),
                     'max_produce_w': self._read(caps.get('max_produce_w'), 0.0),
                     'step_w': self._read(caps.get('step_w'), 1.0),
                 },
                 'policy': {
                     'priority': self._read(policy.get('priority'), 0),
+                    'producing_priority': self._read(policy.get('producing_priority'), 0),
                     'surplus_allowed': bool(self._read(policy.get('surplus_allowed'), False)),
                     'surplus_dispatch_mode': str(self._read(policy.get('surplus_dispatch_mode'), 'fixed' if kind == 'RELAY' else 'max_absorb')),
                 },
@@ -255,12 +263,20 @@ class ScenarioDirectRuntimeV3:
 
     def build_measurements_packet(self):
         runtime = _mapping(self.ems.get('runtime'))
-        battery_id = self.topology.battery_device_ids[0]
-        battery = _mapping(self.devices.get(battery_id))
-        guard = _mapping(battery.get('guard'))
-        adapter = _mapping(battery.get('adapter'))
+        batteries = {}
         ev = {}
         relays = {}
+        for device_id in self.topology.battery_device_ids:
+            battery = _mapping(self.devices.get(device_id))
+            guard = _mapping(battery.get('guard'))
+            adapter = _mapping(battery.get('adapter'))
+            batteries[device_id] = {
+                'soc': self._read(guard.get('soc'), 50.0),
+                'min_cell_voltage_v': self._read(guard.get('min_cell_voltage_v'), 3.2),
+                'heartbeat': self._read(guard.get('heartbeat'), 0.0),
+                'heartbeat_age_s': self._age(guard.get('heartbeat')),
+                'current_setpoint_w': self._read(adapter.get('target_w'), 100.0),
+            }
         for device_id in self.topology.ev_device_ids:
             dev_adapter = _mapping(_mapping(self.devices.get(device_id)).get('adapter'))
             ev[device_id] = {
@@ -275,14 +291,7 @@ class ScenarioDirectRuntimeV3:
             'grid_power_w': self._read(runtime.get('grid_power_w'), 0.0),
             'quarter_energy_balance_kwh': self._read(runtime.get('quarter_energy_balance_kwh'), 0.0),
             'pv_power_w': self._read(runtime.get('pv_power_w'), 0.0),
-            'battery': {
-                'soc': self._read(guard.get('soc'), 50.0),
-                'min_cell_voltage_v': self._read(guard.get('min_cell_voltage_v'), 3.2),
-                'heartbeat': self._read(guard.get('heartbeat'), 0.0),
-                'heartbeat_age_s': self._age(guard.get('heartbeat')),
-                'target_w': self._read(adapter.get('target_w'), 100.0),
-                'measured_power_w': self._read(adapter.get('measured_power_w'), self._read(guard.get('heartbeat'), 0.0)),
-            },
+            'batteries': batteries,
             'ev': ev,
             'relays': relays,
         }
@@ -299,6 +308,13 @@ class ScenarioDirectRuntimeV3:
         policy_state_entity = 'sensor.ems_policy_state_pyscript'
         policy_attrs = self.store.get_attr(policy_state_entity, None, {}) or {}
         haeo = _mapping(self.ems.get('haeo'))
+        haeo_devices = {}
+        for device_id, mapping in _mapping(haeo.get('devices')).items():
+            mapping = _mapping(mapping)
+            haeo_devices[str(device_id)] = {
+                'state_kw': self._read(mapping.get('power_active'), 0.0),
+                'age_s': self._age(mapping.get('fresh_source')),
+            }
         return {
             'schema_version': RUNTIME_SCHEMA_VERSION,
             'surplus': {
@@ -307,17 +323,15 @@ class ScenarioDirectRuntimeV3:
                 'previous_device_states': policy_attrs.get('previous_device_states', {}) or {},
             },
             'haeo': {
-                'battery_state_kw': self._read(haeo.get('battery_power_active'), 0.0),
-                'ev_state_kw': self._read(haeo.get('ev_power_active'), 0.0),
-                'battery_age_s': self._age(haeo.get('battery_fresh_source')),
-                'ev_age_s': self._age(haeo.get('ev_fresh_source')),
+                'devices': haeo_devices,
             },
             'policy': {
                 'haeo_nz_quarter_key': str(policy_attrs.get('haeo_nz_quarter_key', '') or ''),
-                'haeo_nz_primary_device_id': str(policy_attrs.get('haeo_nz_primary_device_id', '') or ''),
+                'haeo_nz_primary_consuming_device_id': str(policy_attrs.get('haeo_nz_primary_consuming_device_id', '') or ''),
                 'prev_force_on_device_ids': list(policy_attrs.get('prev_force_on_device_ids', []) or []),
             },
         }
+
 
     def snapshot(self):
         policy = self.build_policy_config_packet()
@@ -328,7 +342,7 @@ class ScenarioDirectRuntimeV3:
             policy,
             self.policy_engine_config,
         )
-        frame = parse_tick_frame_v3(
+        frame = parse_tick_frame_v5(
             self.topology,
             runtime_config,
             measurements,
@@ -357,7 +371,7 @@ class ScenarioDirectRuntimeV3:
     @staticmethod
     def config_trace_attrs():
         return {
-            'config_source': 'direct_tick_frame_v3_e2e',
+            'config_source': 'direct_tick_frame_v5_e2e',
             'config_runtime_enabled': True,
             'config_runtime_ok': True,
             'config_runtime_reason': 'e2e_direct_packet_fixture',

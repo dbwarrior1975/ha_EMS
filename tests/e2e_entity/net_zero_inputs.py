@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ems_core.net_zero.derived_inputs import remaining_template_minutes
+from ems_core.net_zero.derived_inputs import control_horizon_s
 from ems_core.net_zero.derived_inputs import seconds_until_next_quarter
 
 
@@ -8,16 +8,22 @@ EXPORT_BALANCE_STOP_KWH = 0.130
 
 
 def balance_for_rpnz_w(rpnz_w, remaining_s):
-    return -(float(rpnz_w) / 1000.0) * float(remaining_s) / 3600.0
+    horizon_s = control_horizon_s(remaining_s)
+    return -(float(rpnz_w) / 1000.0) * horizon_s / 3600.0
 
 
 def grid_power_for_required_power_kw(
     required_power_consumption_kw,
     quarter_energy_balance_kwh,
-    remaining_min,
+    remaining_s,
 ):
     required_power_w = float(required_power_consumption_kw) * 1000.0
-    return -required_power_w - float(quarter_energy_balance_kwh) * 60000.0 / float(remaining_min)
+    target_grid_w = -(
+        float(quarter_energy_balance_kwh)
+        * 3_600_000.0
+        / control_horizon_s(remaining_s)
+    )
+    return target_grid_w - required_power_w
 
 
 def runtime_inputs_for_net_zero_intent(
@@ -46,7 +52,6 @@ def runtime_inputs_for_net_zero_intent(
     NET_ZERO intent as the shorthand RPNZ/RPC arguments.
     """
     remaining_s = seconds_until_next_quarter(at_s)
-    remaining_min = float(remaining_template_minutes(at_s))
     quarter_energy_balance_kwh = balance_for_rpnz_w(rpnz_w, remaining_s)
     if (
         float(required_power_consumption_kw) != 0.0
@@ -62,7 +67,7 @@ def runtime_inputs_for_net_zero_intent(
         entity_ids['grid_power_w']: grid_power_for_required_power_kw(
             required_power_consumption_kw,
             quarter_energy_balance_kwh,
-            remaining_min,
+            remaining_s,
         ),
     }
     if pv_power_w is not None and pv_power_kw is not None:
@@ -93,5 +98,6 @@ def expect_derived_for_net_zero_intent(
         'required_power_w': int(round(float(required_power_consumption_kw) * 1000.0)),
         'required_power_consumption_kw': float(required_power_consumption_kw),
         'remaining_quarter_s': seconds_until_next_quarter(at_s),
-        'remaining_quarter_min': float(remaining_template_minutes(at_s)),
+        'remaining_quarter_min': seconds_until_next_quarter(at_s) / 60.0,
+        'control_horizon_s': control_horizon_s(seconds_until_next_quarter(at_s)),
     }

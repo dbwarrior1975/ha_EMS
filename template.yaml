@@ -1,4 +1,4 @@
-
+template:
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -12,7 +12,7 @@
         state: "{{ states('input_select.ems_control_profile') }}"
   
         attributes:
-          schema_version: "{{ 3 }}"
+          schema_version: "{{ 5 }}"
 
           entity_registry: >-
             {{
@@ -100,7 +100,7 @@
               {%- endif -%}
             {%- endfor -%}
   
-            {{ ((ns.latest * 1000000) | int) + 2 }}
+            {{ ((ns.latest * 1000000) | int) + 3 }}
   
           profiles: >-
             {{
@@ -142,8 +142,14 @@
                 'nz_battery_floor_ev_active_w':
                   states('input_number.ems_nz_battery_floor_ev_active_w'),
   
-                'primary_device_id':
-                  states('input_select.ems_adjustable_primary_load'),
+                'primary_consuming_device_ids': (
+                  ([states('input_select.ems_adjustable_primary_load')]
+                    if states('input_select.ems_adjustable_primary_load') in ['HOME_BATTERY', 'EV_CHARGER']
+                    else [])
+                  + (['HOME_BATTERY']
+                    if states('input_select.ems_adjustable_primary_load') != 'HOME_BATTERY'
+                    else [])
+                ),
   
               }
             }}
@@ -185,15 +191,17 @@
                 'HOME_BATTERY': {
                   'capabilities': {
                     'uses_hard_off_lifecycle': false,
-                    'supports_primary_regulation': true,
-                    'supports_residual_regulation': true,
+                    'supports_primary_consuming_regulation': true,
+                    'supports_producing_regulation': true,
                     'min_absorb_w': 0,
   
                     'max_absorb_w':
                       states('input_number.ems_max_battery_charge_w'),
-  
+
+                    'min_produce_w': 0,
+
                     'max_produce_w': (
-                      -1 * ((discharge_raw | float) | abs)
+                      ((discharge_raw | float) | abs)
                     ) if (
                       has_value(
                         'input_number.ems_max_battery_discharge_w'
@@ -209,6 +217,9 @@
                       states(
                         'input_number.ems_adjustable_surplus_load_priority'
                       ),
+
+                    'producing_priority': 100,
+
 
                     'surplus_allowed': true,
 
@@ -244,14 +255,16 @@
                 'EV_CHARGER': {
                   'capabilities': {
                     'uses_hard_off_lifecycle': true,
-                    'supports_primary_regulation': true,
-                    'supports_residual_regulation': false,
+                    'supports_primary_consuming_regulation': true,
+                    'supports_producing_regulation': false,
                     'min_absorb_w':
                       states('input_number.ems_ev_min_power_w'),
                 
                     'max_absorb_w':
                       states('input_number.ems_ev_max_power_w'),
-                
+
+                    'min_produce_w': 0,
+
                     'max_produce_w':
                       0,
                 
@@ -262,7 +275,10 @@
                   'policy': {
                     'priority':
                       states('input_number.ems_surplus_ev_priority'),
+
+                    'producing_priority': 0,
                 
+
                     'surplus_allowed': true,
 
                     'surplus_dispatch_mode': 'max_absorb',
@@ -323,12 +339,13 @@
                 'RELAY1': {
                   'capabilities': {
                     'uses_hard_off_lifecycle': false,
-                    'supports_primary_regulation': false,
-                    'supports_residual_regulation': false,
+                    'supports_primary_consuming_regulation': false,
+                    'supports_producing_regulation': false,
                     'min_absorb_w':
                       states('input_number.ems_relay1_power_w'),
                     'max_absorb_w':
                       states('input_number.ems_relay1_power_w'),
+                    'min_produce_w': 0,                      
                     'max_produce_w': 0,
                     'step_w':
                       states('input_number.ems_relay1_power_w')
@@ -339,6 +356,8 @@
                       states(
                         'input_number.ems_surplus_relay1_priority'
                       ),
+
+                    'producing_priority': 0,
   
                     'surplus_allowed':
                       true
@@ -354,7 +373,8 @@
                       else states(
                         'input_boolean.ems_relay1_enabled_import_zero'
                       ),
-                    'surplus_dispatch_mode': 'fixed',  
+  
+                    'surplus_dispatch_mode': 'fixed',
 
                     'force_on':
                       true
@@ -376,12 +396,13 @@
                 'RELAY2': {
                   'capabilities': {
                     'uses_hard_off_lifecycle': false,
-                    'supports_primary_regulation': false,
-                    'supports_residual_regulation': false,
+                    'supports_primary_consuming_regulation': false,
+                    'supports_producing_regulation': false,
                     'min_absorb_w':
                       states('input_number.ems_relay2_power_w'),
                     'max_absorb_w':
                       states('input_number.ems_relay2_power_w'),
+                    'min_produce_w': 0,                      
                     'max_produce_w': 0,
                     'step_w':
                       states('input_number.ems_relay2_power_w')
@@ -392,6 +413,8 @@
                       states(
                         'input_number.ems_surplus_relay2_priority'
                       ),
+
+                    'producing_priority': 0,
   
                     'surplus_allowed':
                       true
@@ -408,7 +431,7 @@
                         'input_boolean.ems_relay2_enabled_import_zero'
                       ),
   
-                    'surplus_dispatch_mode': 'fixed',                                                     
+                    'surplus_dispatch_mode': 'fixed',
 
                     'force_on':
                       true
@@ -441,7 +464,7 @@
         state: "{{ states('sensor.average_active_power_2') }}"
   
         attributes:
-          schema_version: "{{ 3 }}"
+          schema_version: "{{ 5 }}"
   
           grid_power_w: >-
             {%- set raw =
@@ -494,17 +517,17 @@
               else raw
             }}
   
-          battery: >-
+          batteries: >-
             {%- set heartbeat_entity =
               states.sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
             -%}
-  
+
             {%- set target_raw =
               states(
                 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
               )
             -%}
-  
+
             {%- set target_unit =
               state_attr(
                 'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
@@ -513,72 +536,50 @@
               | default('', true)
               | lower
             -%}
-  
-            {%- set measured_raw =
-              states(
-                'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
-              )
-            -%}
-  
-            {%- set measured_unit =
-              state_attr(
-                'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
-                'unit_of_measurement'
-              )
-              | default('', true)
-              | lower
-            -%}
-  
+
             {{
               {
-                'soc':
-                  states(
-                    'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc'
-                  ),
-  
-                'min_cell_voltage_v':
-                  states(
-                    'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage'
-                  ),
-  
-                'heartbeat':
-                  states(
-                    'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
-                  ),
-  
-                'heartbeat_age_s': (
-                  as_timestamp(now())
-                  - as_timestamp(
-                      heartbeat_entity.last_updated,
-                      0
+                'HOME_BATTERY': {
+                  'soc':
+                    states(
+                      'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc'
+                    ),
+
+                  'min_cell_voltage_v':
+                    states(
+                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage'
+                    ),
+
+                  'heartbeat':
+                    states(
+                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
+                    ),
+
+                  'heartbeat_age_s': (
+                    as_timestamp(now())
+                    - as_timestamp(
+                        heartbeat_entity.last_updated,
+                        0
+                      )
+                  ) if (
+                    heartbeat_entity is not none
+                    and has_value(
+                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
                     )
-                ) if (
-                  heartbeat_entity is not none
-                  and has_value(
-                    'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
-                  )
-                ) else 999999,
-  
-                'target_w': (
-                  (target_raw | float) * 1000
-                ) if (
-                  has_value(
-                    'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
-                  )
-                  and target_unit == 'kw'
-                ) else target_raw,
-  
-                'measured_power_w': (
-                  (measured_raw | float) * 1000
-                ) if (
-                  has_value(
-                    'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
-                  )
-                  and measured_unit == 'kw'
-                ) else measured_raw
+                  ) else 999999,
+
+                  'current_setpoint_w': (
+                    (target_raw | float) * 1000
+                  ) if (
+                    has_value(
+                      'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                    )
+                    and target_unit == 'kw'
+                  ) else target_raw
+                }
               }
             }}
-  
+
           ev: >-
             {{
               {
@@ -660,7 +661,7 @@
           }}
   
         attributes:
-          schema_version: "{{ 3 }}"
+          schema_version: "{{ 5 }}"
   
           surplus: >-
             {{
@@ -678,6 +679,7 @@
                     'sensor.ems_active_surplus_devices',
                     'device_ids'
                   ) or [],
+  
                 'previous_device_states':
                   state_attr(
                     'sensor.ems_policy_state_pyscript',
@@ -687,100 +689,50 @@
             }}
   
           haeo: >-
-            {%- set battery_fresh_entity =
-              states.sensor.battery_active_power
-            -%}
-  
-            {%- set ev_fresh_entity =
-              states.sensor.ev_akut_active_power
-            -%}
-  
-            {%- set battery_state_raw =
-              states(
-                'sensor.haeo_battery_power_active'
-              )
-            -%}
-  
-            {%- set ev_state_raw =
-              states(
-                'sensor.haeo_ev_battery_power_active'
-              )
-            -%}
-  
-            {%- set battery_state_unit =
-              state_attr(
-                'sensor.haeo_battery_power_active',
-                'unit_of_measurement'
-              )
-              | default('', true)
-              | lower
-            -%}
-  
-            {%- set ev_state_unit =
-              state_attr(
-                'sensor.haeo_ev_battery_power_active',
-                'unit_of_measurement'
-              )
-              | default('', true)
-              | lower
-            -%}
-  
+            {%- set battery_fresh_entity = states.sensor.battery_active_power -%}
+            {%- set ev_fresh_entity = states.sensor.ev_akut_active_power -%}
+            {%- set battery_state_raw = states('sensor.haeo_battery_power_active') -%}
+            {%- set ev_state_raw = states('sensor.haeo_ev_battery_power_active') -%}
+            {%- set battery_state_unit = state_attr('sensor.haeo_battery_power_active', 'unit_of_measurement') | default('', true) | lower -%}
+            {%- set ev_state_unit = state_attr('sensor.haeo_ev_battery_power_active', 'unit_of_measurement') | default('', true) | lower -%}
+
             {{
               {
-                'battery_state_kw': (
-                  (battery_state_raw | float) / 1000
-                ) if (
-                  has_value(
-                    'sensor.haeo_battery_power_active'
-                  )
-                  and battery_state_unit == 'w'
-                ) else (
-                  states(
-                    'sensor.haeo_battery_power_active'
-                  ) | float(0)
-                ),
-  
-                'ev_state_kw': (
-                  (ev_state_raw | float) / 1000
-                ) if (
-                  has_value(
-                    'sensor.haeo_ev_battery_power_active'
-                  )
-                  and ev_state_unit == 'w'
-                ) else (
-                  states(
-                    'sensor.haeo_ev_battery_power_active'
-                  ) | float(0)
-                ),
-  
-                'battery_age_s': (
-                  as_timestamp(now())
-                  - as_timestamp(
-                      battery_fresh_entity.last_updated,
-                      0
-                    )
-                ) if (
-                  battery_fresh_entity is not none
-                  and has_value(
-                    'sensor.battery_active_power'
-                  )
-                ) else 999999,
-  
-                'ev_age_s': (
-                  as_timestamp(now())
-                  - as_timestamp(
-                      ev_fresh_entity.last_updated,
-                      0
-                    )
-                ) if (
-                  ev_fresh_entity is not none
-                  and has_value(
-                    'sensor.ev_akut_active_power'
-                  )
-                ) else 999999
+                'devices': {
+                  'HOME_BATTERY': {
+                    'state_kw': (
+                      (battery_state_raw | float) / 1000
+                    ) if (
+                      has_value('sensor.haeo_battery_power_active')
+                      and battery_state_unit == 'w'
+                    ) else (battery_state_raw | float(0)),
+                    'age_s': (
+                      as_timestamp(now())
+                      - as_timestamp(battery_fresh_entity.last_updated, 0)
+                    ) if (
+                      battery_fresh_entity is not none
+                      and has_value('sensor.battery_active_power')
+                    ) else 999999
+                  },
+                  'EV_CHARGER': {
+                    'state_kw': (
+                      (ev_state_raw | float) / 1000
+                    ) if (
+                      has_value('sensor.haeo_ev_battery_power_active')
+                      and ev_state_unit == 'w'
+                    ) else (ev_state_raw | float(0)),
+                    'age_s': (
+                      as_timestamp(now())
+                      - as_timestamp(ev_fresh_entity.last_updated, 0)
+                    ) if (
+                      ev_fresh_entity is not none
+                      and has_value('sensor.ev_akut_active_power')
+                    ) else 999999
+                  }
+                }
               }
             }}
-  
+
           policy: >-
             {{
               {
@@ -790,10 +742,10 @@
                     'haeo_nz_quarter_key'
                   ) or '',
   
-                'haeo_nz_primary_device_id':
+                'haeo_nz_primary_consuming_device_id':
                   state_attr(
                     'sensor.ems_policy_state_pyscript',
-                    'haeo_nz_primary_device_id'
+                    'haeo_nz_primary_consuming_device_id'
                   ) or '',
   
                 'prev_force_on_device_ids':
@@ -904,7 +856,7 @@
         unit_of_measurement: "kWh"
         state: |-
           {{
-            (states('sensor.heater_on_today')|float(0) * 3)|round(2)
+            (states('sensor.heater_on_today')|float * 3)|round(2)
           }}
 
 # EM340 mittarin kahdesta rekisteristä luetut arvot yhdistetään. 
@@ -1529,5 +1481,4 @@
               {{ out.items }}
             {% endif %}
 
-# Legacy YAML EMS status/policy/writer-input/suicide-burn template sections removed.
-# Pyscript EMS now publishes authoritative policy, decision trace, surplus dispatch and writer outputs.
+# Pyscript EMS publishes authoritative policy, diagnostics, surplus dispatch and writer outputs.

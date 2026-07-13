@@ -696,7 +696,7 @@ def test_build_core_config_from_grouped_config_uses_canonical_grouped_values(pro
     assert cfg.device_by_id('HOME_BATTERY').capabilities.max_produce_w == 4600
     assert cfg.device_by_id('EV_CHARGER').policy.low_pv_threshold_w == 1.8
     assert not hasattr(cfg, 'adjustable_surplus_load')
-    assert cfg.global_config.primary_device_id == 'HOME_BATTERY'
+    assert cfg.global_config.primary_consuming_device_ids == ('HOME_BATTERY',)
 
 
 @pytest.mark.unit
@@ -738,7 +738,7 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
 
     plan = compile_core_config_plan_from_grouped_config(config)
     deadband_ref = plan.grouped_config_plan['ems']['global_config']['deadband_w']
-    primary_ref = plan.grouped_config_plan['ems']['global_config']['primary_device_id']
+    primary_refs = plan.grouped_config_plan['ems']['global_config']['primary_consuming_device_ids']
     ev_force_on_ref = plan.grouped_config_plan['ems']['devices']['EV_CHARGER']['policy']['force_on']
 
     assert isinstance(deadband_ref, DynamicConfigRef)
@@ -747,9 +747,11 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
     assert deadband_ref.value_type == 'int'
     assert deadband_ref.default == 50
 
-    assert isinstance(primary_ref, DynamicConfigRef)
-    assert primary_ref.value_type == 'str'
-    assert primary_ref.default == ''
+    assert isinstance(primary_refs, tuple)
+    assert isinstance(primary_refs[0], DynamicConfigRef)
+    assert primary_refs[0].value_type == 'str'
+    assert primary_refs[0].default == ''
+    assert primary_refs[1] == 'HOME_BATTERY'
 
     assert isinstance(ev_force_on_ref, DynamicConfigRef)
     assert ev_force_on_ref.path == 'ems.devices.EV_CHARGER.policy.force_on'
@@ -923,8 +925,8 @@ def test_runtime_packet_config_allows_multiple_generic_battery_devices(project_r
         'capabilities': {
             'can_absorb_w': True,
             'can_produce_w': True,
-            'supports_primary_regulation': True,
-            'supports_residual_regulation': True,
+            'supports_primary_consuming_regulation': True,
+            'supports_producing_regulation': True,
         },
     }
     config['ems']['role_constraints']['default']['primary'] = 'BATTERY_30KWH'

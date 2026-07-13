@@ -7,6 +7,7 @@ from tests.helpers import ev_w, make_profiles, make_cfg, make_haeo
 
 def _ev_context(*, force_on=False, min_absorb_w=0.0, max_absorb_w=0.0):
     return SimpleNamespace(
+        device_id='EV_CHARGER',
         force_on=bool(force_on),
         min_absorb_w=float(min_absorb_w),
         max_absorb_w=float(max_absorb_w),

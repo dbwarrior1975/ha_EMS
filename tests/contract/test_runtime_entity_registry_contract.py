@@ -15,7 +15,7 @@ def _topology(project_root, config=None):
 
 def _packet_registry():
     return {
-        'schema_version': 3,
+        'schema_version': 5,
         'entity_registry': {
             'state': {
                 'surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',

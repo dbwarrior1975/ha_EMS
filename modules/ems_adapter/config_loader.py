@@ -102,7 +102,7 @@ ALLOWED_GLOBAL_CONFIG_KEYS = frozenset(
         'haeo_stale_timeout_s',
         'nz_battery_floor_default_w',
         'nz_battery_floor_ev_active_w',
-        'primary_device_id',
+        'primary_consuming_device_ids',
     )
 )
 ALLOWED_RUNTIME_KEYS = frozenset(
@@ -142,7 +142,7 @@ PACKET_DEFAULT_GLOBAL_CONFIG = {
     'haeo_stale_timeout_s': 300.0,
     'nz_battery_floor_default_w': 100.0,
     'nz_battery_floor_ev_active_w': 0.0,
-    'primary_device_id': '',
+    'primary_consuming_device_ids': (),
 }
 PACKET_DEFAULT_RUNTIME = {
     'grid_power_w': 0.0,
@@ -154,18 +154,16 @@ PACKET_DEFAULT_STATE = {
     'active_surplus_devices': (),
 }
 PACKET_DEFAULT_HAEO = {
-    'battery_power_active': {},
-    'ev_power_active': {},
-    'battery_fresh_source': False,
-    'ev_fresh_source': False,
+    'devices': {},
 }
 
-PACKET_STATIC_CAPABILITY_FIELDS = frozenset(('can_absorb_w', 'can_produce_w', 'supports_primary_regulation', 'supports_residual_regulation'))
+PACKET_STATIC_CAPABILITY_FIELDS = frozenset(('can_absorb_w', 'can_produce_w', 'supports_primary_consuming_regulation', 'supports_producing_regulation'))
 PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
     'BATTERY': {
         'uses_hard_off_lifecycle': False,
-        'supports_primary_regulation': True,
-        'supports_residual_regulation': True,
+        'supports_primary_consuming_regulation': True,
+        'supports_producing_regulation': True,
+        'min_produce_w': 0.0,
         'min_absorb_w': 0.0,
         'max_absorb_w': 0.0,
         'max_produce_w': 0.0,
@@ -173,8 +171,9 @@ PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
     },
     'EV_CHARGER': {
         'uses_hard_off_lifecycle': True,
-        'supports_primary_regulation': True,
-        'supports_residual_regulation': False,
+        'supports_primary_consuming_regulation': True,
+        'supports_producing_regulation': False,
+        'min_produce_w': 0.0,
         'min_absorb_w': 0.0,
         'max_absorb_w': 0.0,
         'max_produce_w': 0.0,
@@ -182,8 +181,9 @@ PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
     },
     'RELAY': {
         'uses_hard_off_lifecycle': False,
-        'supports_primary_regulation': False,
-        'supports_residual_regulation': False,
+        'supports_primary_consuming_regulation': False,
+        'supports_producing_regulation': False,
+        'min_produce_w': 0.0,
         'min_absorb_w': 0.0,
         'max_absorb_w': 0.0,
         'max_produce_w': 0.0,
@@ -193,12 +193,14 @@ PACKET_RUNTIME_CAPABILITY_FIELDS_BY_KIND = {
 PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     'BATTERY': {
         'priority': 0,
+        'producing_priority': 0,
         'surplus_allowed': False,
         'surplus_dispatch_mode': 'max_absorb',
         'default_min_absorb_w': 0.0,
     },
     'EV_CHARGER': {
         'priority': 0,
+        'producing_priority': 0,
         'surplus_allowed': False,
         'surplus_dispatch_mode': 'max_absorb',
         'force_on': False,
@@ -208,6 +210,7 @@ PACKET_RUNTIME_POLICY_FIELDS_BY_KIND = {
     },
     'RELAY': {
         'priority': 0,
+        'producing_priority': 0,
         'surplus_allowed': False,
         'surplus_dispatch_mode': 'fixed',
         'force_on': False,
@@ -227,7 +230,6 @@ PACKET_RUNTIME_GUARD_FIELDS_BY_KIND = {
 PACKET_RUNTIME_ADAPTER_FIELDS_BY_KIND = {
     'BATTERY': {
         'target_w': 0.0,
-        'measured_power_w': 0.0,
     },
     'EV_CHARGER': {
         'enabled': False,
@@ -248,13 +250,14 @@ ALLOWED_CAPABILITIES_KEYS = frozenset(
         'min_absorb_w',
         'max_absorb_w',
         'step_w',
+        'min_produce_w',
         'max_produce_w',
         'uses_hard_off_lifecycle',
-        'supports_primary_regulation',
-        'supports_residual_regulation',
+        'supports_primary_consuming_regulation',
+        'supports_producing_regulation',
     )
 )
-ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'surplus_dispatch_mode', 'default_min_absorb_w'))
+ALLOWED_BATTERY_POLICY_KEYS = frozenset(('priority', 'producing_priority', 'surplus_allowed', 'surplus_dispatch_mode', 'default_min_absorb_w'))
 ALLOWED_BATTERY_GUARD_KEYS = frozenset(
     (
         'soc',
@@ -266,10 +269,11 @@ ALLOWED_BATTERY_GUARD_KEYS = frozenset(
         'protect_min_absorb_w',
     )
 )
-ALLOWED_BATTERY_ADAPTER_KEYS = frozenset(('target_w', 'measured_power_w'))
+ALLOWED_BATTERY_ADAPTER_KEYS = frozenset(('target_w',))
 ALLOWED_EV_POLICY_KEYS = frozenset(
     (
         'priority',
+        'producing_priority',
         'surplus_allowed',
         'surplus_dispatch_mode',
         'force_on',
@@ -279,7 +283,7 @@ ALLOWED_EV_POLICY_KEYS = frozenset(
     )
 )
 ALLOWED_EV_ADAPTER_KEYS = frozenset(('enabled', 'current_a', 'current_step_a', 'phases', 'voltage_v'))
-ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'surplus_allowed', 'surplus_dispatch_mode', 'force_on'))
+ALLOWED_RELAY_POLICY_KEYS = frozenset(('priority', 'producing_priority', 'surplus_allowed', 'surplus_dispatch_mode', 'force_on'))
 ALLOWED_RELAY_ADAPTER_KEYS = frozenset(('enabled',))
 
 
@@ -555,7 +559,7 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         _validate_required_entities(
             ems['global_config'],
             'ems.global_config',
-            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s', 'primary_device_id'),
+            ('deadband_w', 'ramp_w', 'strict_limit_w', 'surplus_freeze_s', 'haeo_stale_timeout_s'),
             issues,
         )
 
@@ -612,12 +616,19 @@ def validate_grouped_ems_config(config: dict) -> ConfigValidationResult:
         )
 
     if isinstance(ems.get('haeo'), dict) and not runtime_packet_mode:
-        _validate_required_entities(
-            ems['haeo'],
-            'ems.haeo',
-            ('battery_power_active', 'ev_power_active', 'battery_fresh_source', 'ev_fresh_source'),
-            issues,
-        )
+        haeo_devices = ems['haeo'].get('devices')
+        if not isinstance(haeo_devices, dict):
+            issues.append(_issue('ems.haeo.devices', SEVERITY_ERROR, 'missing or not a mapping'))
+        else:
+            for device_id, mapping in haeo_devices.items():
+                path = f'ems.haeo.devices.{device_id}'
+                if str(device_id) not in devices:
+                    issues.append(_issue(path, SEVERITY_ERROR, 'references unknown device id'))
+                    continue
+                if not isinstance(mapping, dict):
+                    issues.append(_issue(path, SEVERITY_ERROR, 'must be a mapping'))
+                    continue
+                _validate_required_entities(mapping, path, ('power_active', 'fresh_source'), issues)
 
     if isinstance(ems.get('role_constraints'), dict) and not runtime_packet_mode:
         _validate_role_constraints(ems['role_constraints'], devices, issues)
@@ -763,14 +774,14 @@ def _compile_core_capabilities_plan(
             f'{device_path}.capabilities.uses_hard_off_lifecycle',
             False,
         ),
-        'supports_primary_regulation': _compile_dynamic_value(
-            _require_mapping_value(capabilities, 'supports_primary_regulation'),
-            f'{device_path}.capabilities.supports_primary_regulation',
+        'supports_primary_consuming_regulation': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'supports_primary_consuming_regulation'),
+            f'{device_path}.capabilities.supports_primary_consuming_regulation',
             False,
         ),
-        'supports_residual_regulation': _compile_dynamic_value(
-            _require_mapping_value(capabilities, 'supports_residual_regulation'),
-            f'{device_path}.capabilities.supports_residual_regulation',
+        'supports_producing_regulation': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'supports_producing_regulation'),
+            f'{device_path}.capabilities.supports_producing_regulation',
             False,
         ),
         'min_absorb_w': _compile_dynamic_value(
@@ -788,6 +799,11 @@ def _compile_core_capabilities_plan(
             f'{device_path}.capabilities.step_w',
             default_step_w,
         ) if 'step_w' in capabilities else default_step_w,
+        'min_produce_w': _compile_dynamic_value(
+            _require_mapping_value(capabilities, 'min_produce_w'),
+            f'{device_path}.capabilities.min_produce_w',
+            0.0,
+        ) if 'min_produce_w' in capabilities else 0.0,
         'max_produce_w': _compile_dynamic_value(
             _require_mapping_value(capabilities, 'max_produce_w'),
             f'{device_path}.capabilities.max_produce_w',
@@ -824,6 +840,11 @@ def _compile_core_battery_device_plan(
                 f'{device_path}.policy.priority',
                 default_priority,
             ),
+            'producing_priority': _compile_dynamic_value(
+                _require_mapping_value(policy, 'producing_priority'),
+                f'{device_path}.policy.producing_priority',
+                0,
+            ),
             'surplus_allowed': _compile_dynamic_value(policy.get('surplus_allowed', False), f'{device_path}.policy.surplus_allowed', False),
             'surplus_dispatch_mode': _compile_dynamic_value(policy.get('surplus_dispatch_mode', 'max_absorb'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'default_min_absorb_w': _compile_dynamic_value(
@@ -843,7 +864,6 @@ def _compile_core_battery_device_plan(
         },
         'adapter': {
             'target_w': _compile_dynamic_value(_require_mapping_value(adapter, 'target_w'), f'{device_path}.adapter.target_w', ''),
-            'measured_power_w': _compile_dynamic_value(_require_mapping_value(adapter, 'measured_power_w'), f'{device_path}.adapter.measured_power_w', ''),
         },
     }
 
@@ -865,6 +885,7 @@ def _compile_core_ev_device_plan(device_id: str, device: object) -> dict[str, ob
         ),
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', 3),
+            'producing_priority': _compile_dynamic_value(_require_mapping_value(policy, 'producing_priority'), f'{device_path}.policy.producing_priority', 0),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
             'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'max_absorb'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
@@ -901,6 +922,7 @@ def _compile_core_relay_device_plan(device_id: str, device: object) -> dict[str,
         ),
         'policy': {
             'priority': _compile_dynamic_value(_require_mapping_value(policy, 'priority'), f'{device_path}.policy.priority', relay_default),
+            'producing_priority': _compile_dynamic_value(_require_mapping_value(policy, 'producing_priority'), f'{device_path}.policy.producing_priority', 0),
             'surplus_allowed': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_allowed'), f'{device_path}.policy.surplus_allowed', ''),
             'surplus_dispatch_mode': _compile_dynamic_value(_require_mapping_value(policy, 'surplus_dispatch_mode'), f'{device_path}.policy.surplus_dispatch_mode', 'fixed'),
             'force_on': _compile_dynamic_value(_require_mapping_value(policy, 'force_on'), f'{device_path}.policy.force_on', ''),
@@ -931,12 +953,19 @@ def _compile_core_devices_plan(devices: object) -> dict[str, dict[str, object]]:
 def _compile_core_haeo_plan(haeo: object) -> Optional[dict[str, object]]:
     if not isinstance(haeo, dict):
         return None
-    return {
-        'battery_power_active': _compile_dynamic_value(_require_mapping_value(haeo, 'battery_power_active'), 'ems.haeo.battery_power_active', ''),
-        'ev_power_active': _compile_dynamic_value(_require_mapping_value(haeo, 'ev_power_active'), 'ems.haeo.ev_power_active', ''),
-        'battery_fresh_source': _compile_dynamic_value(_require_mapping_value(haeo, 'battery_fresh_source'), 'ems.haeo.battery_fresh_source', ''),
-        'ev_fresh_source': _compile_dynamic_value(_require_mapping_value(haeo, 'ev_fresh_source'), 'ems.haeo.ev_fresh_source', ''),
-    }
+    raw_devices = haeo.get('devices', {})
+    if not isinstance(raw_devices, dict):
+        return {'devices': {}}
+    devices = {}
+    for device_id, raw_mapping in raw_devices.items():
+        if not isinstance(raw_mapping, dict):
+            continue
+        path = f'ems.haeo.devices.{device_id}'
+        devices[str(device_id)] = {
+            'power_active': _compile_dynamic_value(_require_mapping_value(raw_mapping, 'power_active'), f'{path}.power_active', ''),
+            'fresh_source': _compile_dynamic_value(_require_mapping_value(raw_mapping, 'fresh_source'), f'{path}.fresh_source', ''),
+        }
+    return {'devices': devices}
 
 
 def _compile_core_role_constraints_plan(role_constraints: object) -> dict[str, object]:
@@ -1014,6 +1043,31 @@ def _build_static_device_plan(compiled_device: dict[str, object]) -> StaticDevic
     )
 
 
+
+
+def _compile_primary_consuming_device_ids(items):
+    compiled_items = []
+    for index, item in enumerate(items or ()):
+        compiled_items.append(
+            _compile_dynamic_value(
+                item,
+                f'ems.global_config.primary_consuming_device_ids[{index}]',
+                '',
+            )
+        )
+    return tuple(compiled_items)
+
+
+def _materialize_primary_consuming_device_ids(items, read_entity):
+    materialized = _materialize_dynamic_value(items, read_entity)
+    ordered = []
+    for item in materialized or ():
+        device_id = str(item or '')
+        if device_id and device_id not in ordered:
+            ordered.append(device_id)
+    return tuple(ordered)
+
+
 def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledEMSPlan:
     static_topology = build_static_topology(config) if _config_uses_runtime_packets(config) else None
     config_for_compile = _normalize_runtime_packet_config_for_compile(config)
@@ -1047,7 +1101,9 @@ def compile_core_config_plan_from_grouped_config(config: dict) -> CompiledEMSPla
                 'haeo_stale_timeout_s': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), 'ems.global_config.haeo_stale_timeout_s', 300),
                 'nz_battery_floor_default_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), 'ems.global_config.nz_battery_floor_default_w', 100.0),
                 'nz_battery_floor_ev_active_w': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), 'ems.global_config.nz_battery_floor_ev_active_w', 0.0),
-                'primary_device_id': _compile_dynamic_value(_require_mapping_value(ems.get('global_config'), 'primary_device_id'), 'ems.global_config.primary_device_id', ''),
+                'primary_consuming_device_ids': _compile_primary_consuming_device_ids(
+                    _require_mapping_value(ems.get('global_config'), 'primary_consuming_device_ids')
+                ),
             },
             'runtime': {
                 'grid_power_w': _compile_dynamic_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), 'ems.runtime.grid_power_w', 0),
@@ -1437,7 +1493,10 @@ def _materialize_core_global_from_plan(
         haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(global_config, 'haeo_stale_timeout_s'), read_entity, 300),
         nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_default_w'), read_entity, 100.0),
         nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(global_config, 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-        primary_device_id=_resolve_core_config_value(_require_mapping_value(global_config, 'primary_device_id'), read_entity, ''),
+        primary_consuming_device_ids=_materialize_primary_consuming_device_ids(
+            _require_mapping_value(global_config, 'primary_consuming_device_ids'),
+            read_entity,
+        ),
     )
 
 
@@ -1563,7 +1622,10 @@ def _build_core_config_from_grouped_value_config(config: dict) -> CoreConfig:
             haeo_stale_timeout_s=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'haeo_stale_timeout_s'), read_entity, 300),
             nz_battery_floor_default_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_default_w'), read_entity, 100.0),
             nz_battery_floor_ev_active_w=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'nz_battery_floor_ev_active_w'), read_entity, 0.0),
-            primary_device_id=_resolve_core_config_value(_require_mapping_value(ems.get('global_config'), 'primary_device_id'), read_entity, ''),
+            primary_consuming_device_ids=_materialize_primary_consuming_device_ids(
+                _require_mapping_value(ems.get('global_config'), 'primary_consuming_device_ids'),
+                read_entity,
+            ),
         ),
         runtime=CoreRuntimeConfig(
             grid_power_w=_resolve_core_config_value(_require_mapping_value(ems.get('runtime'), 'grid_power_w'), read_entity, 0),
@@ -1629,7 +1691,7 @@ def _validate_devices(devices: dict, issues: list[ConfigValidationIssue], runtim
         _validate_device(device_id, device, None, issues, runtime_packet_mode=runtime_packet_mode)
 
     if not battery_ids:
-        issues.append(_issue('ems.devices', SEVERITY_ERROR, 'at least one BATTERY device is required by direct_tick_frame_v3'))
+        issues.append(_issue('ems.devices', SEVERITY_ERROR, 'at least one BATTERY device is required by direct_tick_frame_v5'))
 
 
 def _validate_device(device_id: str, device: dict, expected_kind: Optional[str], issues: list[ConfigValidationIssue], runtime_packet_mode: bool = False) -> None:
@@ -1711,8 +1773,18 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             ALLOWED_BATTERY_POLICY_KEYS,
             issues,
         )
+        if 'producing_priority' not in device['policy']:
+            issues.append(_issue(f'{device_path}.policy.producing_priority', SEVERITY_ERROR, 'missing required field'))
+        else:
+            _validate_entity_or_number(
+                device['policy'], f'{device_path}.policy.producing_priority',
+                'producing_priority', issues, min_value=0,
+            )
         if 'surplus_allowed' in device['policy']:
-            _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
+            _validate_entity_or_bool(
+                device['policy'], f'{device_path}.policy.surplus_allowed',
+                'surplus_allowed', issues,
+            )
         if bool(device['policy'].get('surplus_allowed', False)):
             if device['policy'].get('surplus_dispatch_mode') not in ('max_absorb', 'fixed'):
                 issues.append(_issue(f'{device_path}.policy.surplus_dispatch_mode', SEVERITY_ERROR, 'must be max_absorb or fixed'))
@@ -1727,7 +1799,7 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
         _validate_required_entities(
             device['adapter'],
             f'{device_path}.adapter',
-            ('target_w', 'measured_power_w'),
+            ('target_w',),
             issues,
         )
 
@@ -1744,6 +1816,10 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
             ('priority', 'force_on', 'low_pv_threshold_w', 'hard_off_low_pv_cycles', 'hard_off_release_cycles'),
             issues,
         )
+        if 'producing_priority' not in device['policy']:
+            issues.append(_issue(f'{device_path}.policy.producing_priority', SEVERITY_ERROR, 'missing required field'))
+        else:
+            _validate_entity_or_number(device['policy'], f'{device_path}.policy.producing_priority', 'producing_priority', issues, min_value=0)
         _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
         dispatch_mode = device['policy'].get('surplus_dispatch_mode')
         if dispatch_mode not in ('max_absorb', 'fixed'):
@@ -1781,6 +1857,10 @@ def _validate_device(device_id: str, device: dict, expected_kind: Optional[str],
                 ('priority', 'force_on'),
                 issues,
             )
+            if 'producing_priority' not in device['policy']:
+                issues.append(_issue(f'{device_path}.policy.producing_priority', SEVERITY_ERROR, 'missing required field'))
+            else:
+                _validate_entity_or_number(device['policy'], f'{device_path}.policy.producing_priority', 'producing_priority', issues, min_value=0)
             _validate_entity_or_bool(device['policy'], f'{device_path}.policy.surplus_allowed', 'surplus_allowed', issues)
             dispatch_mode = device['policy'].get('surplus_dispatch_mode')
             if dispatch_mode not in ('max_absorb', 'fixed'):
@@ -1813,7 +1893,7 @@ def _validate_packet_static_capabilities(device_path: str, capabilities: dict, i
         PACKET_STATIC_CAPABILITY_FIELDS,
         issues,
     )
-    for field in ('can_absorb_w', 'can_produce_w', 'supports_primary_regulation', 'supports_residual_regulation'):
+    for field in ('can_absorb_w', 'can_produce_w', 'supports_primary_consuming_regulation', 'supports_producing_regulation'):
         if field not in capabilities:
             issues.append(_issue(f'{device_path}.capabilities.{field}', SEVERITY_ERROR, 'missing required field'))
         elif type(capabilities[field]) is not bool:
@@ -1827,7 +1907,7 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
         ALLOWED_CAPABILITIES_KEYS,
         issues,
     )
-    bool_fields = ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle', 'supports_primary_regulation', 'supports_residual_regulation')
+    bool_fields = ('can_absorb_w', 'can_produce_w', 'uses_hard_off_lifecycle', 'supports_primary_consuming_regulation', 'supports_producing_regulation')
     entity_or_number_fields = ('min_absorb_w', 'max_absorb_w')
     if not device_path.endswith('.EV_CHARGER'):
         entity_or_number_fields = entity_or_number_fields + ('step_w',)
@@ -1841,10 +1921,18 @@ def _validate_capabilities(device_path: str, capabilities: dict, issues: list[Co
     for field in entity_or_number_fields:
         _validate_entity_or_number(capabilities, f'{device_path}.capabilities.{field}', field, issues, min_value=1 if field == 'step_w' else None)
 
+    if capabilities.get('supports_producing_regulation') is True and capabilities.get('can_produce_w') is not True:
+        issues.append(_issue(f'{device_path}.capabilities.supports_producing_regulation', SEVERITY_ERROR, 'requires can_produce_w=true'))
     if capabilities.get('can_produce_w') is True and 'max_produce_w' not in capabilities:
         issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_ERROR, 'required when can_produce_w=true'))
+    if 'min_produce_w' in capabilities:
+        _validate_entity_or_number(capabilities, f'{device_path}.capabilities.min_produce_w', 'min_produce_w', issues, min_value=0)
     if 'max_produce_w' in capabilities:
         _validate_entity_or_number(capabilities, f'{device_path}.capabilities.max_produce_w', 'max_produce_w', issues, min_value=0)
+    min_produce = capabilities.get('min_produce_w', 0)
+    max_produce = capabilities.get('max_produce_w')
+    if _is_number(min_produce) and _is_number(max_produce) and float(max_produce) < float(min_produce):
+        issues.append(_issue(f'{device_path}.capabilities.max_produce_w', SEVERITY_ERROR, 'must be >= min_produce_w'))
 
     min_absorb = capabilities.get('min_absorb_w')
     max_absorb = capabilities.get('max_absorb_w')
@@ -2068,13 +2156,13 @@ def _build_core_capabilities(
     return CoreDeviceCapabilitiesConfig(
         can_absorb_w=bool(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'can_absorb_w'), read_entity, False)),
         can_produce_w=bool(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'can_produce_w'), read_entity, False)),
-        supports_primary_regulation=bool(_resolve_core_config_value(
-            _require_mapping_value(_require_mapping_value(device, 'capabilities'), 'supports_primary_regulation'),
+        supports_primary_consuming_regulation=bool(_resolve_core_config_value(
+            _require_mapping_value(_require_mapping_value(device, 'capabilities'), 'supports_primary_consuming_regulation'),
             read_entity,
             False,
         )),
-        supports_residual_regulation=bool(_resolve_core_config_value(
-            _require_mapping_value(_require_mapping_value(device, 'capabilities'), 'supports_residual_regulation'),
+        supports_producing_regulation=bool(_resolve_core_config_value(
+            _require_mapping_value(_require_mapping_value(device, 'capabilities'), 'supports_producing_regulation'),
             read_entity,
             False,
         )),
@@ -2088,6 +2176,9 @@ def _build_core_capabilities(
         step_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'step_w'), read_entity, default_step_w)
         if 'step_w' in _require_mapping_value(device, 'capabilities')
         else default_step_w,
+        min_produce_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'min_produce_w'), read_entity, 0.0)
+        if 'min_produce_w' in _require_mapping_value(device, 'capabilities')
+        else 0.0,
         max_produce_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'capabilities'), 'max_produce_w'), read_entity, default_max_produce_w)
         if 'max_produce_w' in _require_mapping_value(device, 'capabilities')
         else None,
@@ -2117,6 +2208,11 @@ def _build_core_battery_device(
                 read_entity,
                 default_priority,
             ),
+            producing_priority=_resolve_core_config_value(
+                _require_mapping_value(_require_mapping_value(device, 'policy'), 'producing_priority'),
+                read_entity,
+                0,
+            ),
             surplus_allowed=bool(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_allowed', False), read_entity, False)),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(device, 'policy').get('surplus_dispatch_mode', 'max_absorb'), read_entity, 'max_absorb')),
             default_min_absorb_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'default_min_absorb_w'), read_entity, 0.0)
@@ -2134,7 +2230,6 @@ def _build_core_battery_device(
         ),
         adapter=CoreBatteryAdapterConfig(
             target_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'target_w'), read_entity, ''),
-            measured_power_w=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'adapter'), 'measured_power_w'), read_entity, ''),
         ),
     )
 
@@ -2155,6 +2250,7 @@ def _build_core_ev_device(device_id: str, device: object, read_entity: Optional[
         ),
         policy=CoreEvPolicyConfig(
             priority=_resolve_core_config_value(_require_mapping_value(policy_section, 'priority'), read_entity, 3),
+            producing_priority=_resolve_core_config_value(_require_mapping_value(policy_section, 'producing_priority'), read_entity, 0),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_allowed'), read_entity, ''),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(policy_section, 'surplus_dispatch_mode'), read_entity, 'max_absorb')),
             force_on=_resolve_core_config_value(_require_mapping_value(policy_section, 'force_on'), read_entity, ''),
@@ -2190,6 +2286,11 @@ def _build_core_relay_device(device_id: str, device: object, read_entity: Option
                 read_entity,
                 2 if device_id == 'RELAY1' else 1,
             ),
+            producing_priority=_resolve_core_config_value(
+                _require_mapping_value(_require_mapping_value(device, 'policy'), 'producing_priority'),
+                read_entity,
+                0,
+            ),
             surplus_allowed=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_allowed'), read_entity, ''),
             surplus_dispatch_mode=str(_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'surplus_dispatch_mode'), read_entity, 'fixed')),
             force_on=_resolve_core_config_value(_require_mapping_value(_require_mapping_value(device, 'policy'), 'force_on'), read_entity, ''),
@@ -2203,12 +2304,17 @@ def _build_core_relay_device(device_id: str, device: object, read_entity: Option
 def _build_core_haeo_config(haeo: object, read_entity: Optional[Callable[[str, object], object]]) -> Optional[CoreHaeoConfig]:
     if not isinstance(haeo, dict):
         return None
-    return CoreHaeoConfig(
-        battery_power_active=_resolve_core_config_value(_require_mapping_value(haeo, 'battery_power_active'), read_entity, ''),
-        ev_power_active=_resolve_core_config_value(_require_mapping_value(haeo, 'ev_power_active'), read_entity, ''),
-        battery_fresh_source=_resolve_core_config_value(_require_mapping_value(haeo, 'battery_fresh_source'), read_entity, ''),
-        ev_fresh_source=_resolve_core_config_value(_require_mapping_value(haeo, 'ev_fresh_source'), read_entity, ''),
-    )
+    raw_devices = haeo.get('devices', {})
+    devices = {}
+    if isinstance(raw_devices, dict):
+        for device_id, raw_mapping in raw_devices.items():
+            if not isinstance(raw_mapping, dict):
+                continue
+            devices[str(device_id)] = {
+                'power_active': _resolve_core_config_value(_require_mapping_value(raw_mapping, 'power_active'), read_entity, ''),
+                'fresh_source': _resolve_core_config_value(_require_mapping_value(raw_mapping, 'fresh_source'), read_entity, ''),
+            }
+    return CoreHaeoConfig(devices=devices)
 
 
 def _build_core_role_constraints(role_constraints: object, read_entity: Optional[Callable[[str, object], object]]) -> CoreRoleConstraintsConfig:

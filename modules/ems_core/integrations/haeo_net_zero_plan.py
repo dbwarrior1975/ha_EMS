@@ -5,7 +5,6 @@ from ems_core.domain.models import (
     GuardProfile,
     HaeoNetZeroPlan,
 )
-from ems_core.domain.ev_power import ev_max_power_w
 
 
 def quarter_key_for_ts(now_ts):
@@ -30,127 +29,49 @@ def _device_kind(cfg, device_id):
     if hasattr(cfg, 'device_kind'):
         return str(cfg.device_kind(device_id) or '')
     device = _device_by_id(cfg, device_id)
-    if device is None:
-        return ''
-    return str(getattr(device, 'kind', '') or '')
+    return str(getattr(device, 'kind', '') or '') if device is not None else ''
 
 
 def _device_capability(cfg, device_id, field, default=None):
     if hasattr(cfg, 'device_capability'):
         return cfg.device_capability(device_id, field, default)
     device = _device_by_id(cfg, device_id)
-    if device is None:
-        return default
-    capabilities = getattr(device, 'capabilities', None)
-    if capabilities is None:
-        return default
-    return getattr(capabilities, field, default)
-
+    capabilities = getattr(device, 'capabilities', None) if device is not None else None
+    return getattr(capabilities, field, default) if capabilities is not None else default
 
 
 def _device_policy_value(cfg, device_id, field, default=None):
     if hasattr(cfg, 'device_policy_value'):
         return cfg.device_policy_value(device_id, field, default)
     device = _device_by_id(cfg, device_id)
-    if device is None:
-        return default
-    policy = getattr(device, 'policy', None)
-    if policy is None:
-        return default
-    return getattr(policy, field, default)
-
-def _device_ids_by_kind(cfg, kind):
-    ids = []
-    if hasattr(cfg, 'device_ids_by_kind'):
-        for device_id in (cfg.device_ids_by_kind(kind) or ()):
-            ids.append(str(device_id))
-        return tuple(ids)
-    if hasattr(cfg, 'devices_by_kind'):
-        for device in (cfg.devices_by_kind(kind) or ()):
-            ids.append(str(device.device_id))
-        return tuple(ids)
-    return ()
+    policy = getattr(device, 'policy', None) if device is not None else None
+    return getattr(policy, field, default) if policy is not None else default
 
 
-def _ev_device_ids(cfg):
-    if hasattr(cfg, 'device_ids_by_kind'):
-        ids = []
-        for device_id in cfg.device_ids_by_kind('EV_CHARGER'):
-            ids.append(str(device_id))
-        return tuple(ids)
-    if hasattr(cfg, 'devices_by_kind'):
-        ids = []
-        for device in cfg.devices_by_kind('EV_CHARGER'):
-            ids.append(str(device.device_id))
-        return tuple(ids)
-    return ()
+def _ordered_device_ids(cfg):
+    result = []
+    if hasattr(cfg, 'ordered_device_ids'):
+        for value in (cfg.ordered_device_ids() or ()):
+            result.append(str(value))
+        return tuple(result)
+    devices = getattr(cfg, 'devices', {}) or {}
+    if isinstance(devices, dict):
+        for value in devices.keys():
+            result.append(str(value))
+        return tuple(result)
+    for kind in ('BATTERY', 'EV_CHARGER', 'RELAY'):
+        if hasattr(cfg, 'device_ids_by_kind'):
+            for value in (cfg.device_ids_by_kind(kind) or ()):
+                value = str(value)
+                if value not in result:
+                    result.append(value)
+    return tuple(result)
 
 
-def _ev_devices(cfg):
-    if hasattr(cfg, 'devices_by_kind'):
-        return tuple(cfg.devices_by_kind('EV_CHARGER'))
-    return ()
-
-
-def _default_ev_device_id(cfg):
-    ev_device_ids = _ev_device_ids(cfg)
-    if ev_device_ids:
-        return str(ev_device_ids[0])
-    return 'EV_CHARGER'
-
-
-def _is_ev_device_id(cfg, device_id):
-    if _device_kind(cfg, device_id) == 'EV_CHARGER':
-        return True
-    return str(device_id or '') == 'EV_CHARGER'
-
-
-def _global_config_value(cfg, field_name, default=None):
-    global_config = getattr(cfg, 'global_config', None)
-    return getattr(global_config, field_name, default) if global_config is not None else default
-
-
-def _v3_battery_device_id(cfg):
-    if hasattr(cfg, 'v3_battery_device_id'):
-        return str(cfg.v3_battery_device_id() or '')
-    battery_ids = _device_ids_by_kind(cfg, 'BATTERY')
-    return str(battery_ids[0]) if battery_ids else ''
-
-
-# L4 boundary: HAEO still has scalar ev_target_kw state, so the plan must choose
-# one EV view. Do not reuse this helper in NET_ZERO core execution; L4 replaces
-# it with device-ID-keyed HAEO targets/state/limits.
-def _selected_ev_device_id(cfg):
-    primary_device_id = str(_global_config_value(cfg, 'primary_device_id', '') or '')
-    if _is_ev_device_id(cfg, primary_device_id):
-        return primary_device_id
-
-    best_device_id = ''
-    best_priority = None
-    for device_id in _ev_device_ids(cfg):
-        if not bool(_device_policy_value(cfg, device_id, 'surplus_allowed', False)):
-            continue
-        try:
-            priority = int(_device_policy_value(cfg, device_id, 'priority', 0) or 0)
-        except (TypeError, ValueError):
-            priority = 0
-        if best_priority is None or priority > best_priority:
-            best_device_id = str(device_id)
-            best_priority = priority
-    if best_device_id:
-        return best_device_id
-    return _default_ev_device_id(cfg)
-
-
-def _ev_plan_params(cfg, ev_device_id):
-    if _device_kind(cfg, ev_device_id) != 'EV_CHARGER':
-        return {
-            'ev_limit_w_cap': int(ev_max_power_w(cfg)),
-        }
-
-    return {
-        'ev_limit_w_cap': int(round(float(_device_capability(cfg, ev_device_id, 'max_absorb_w', 0) or 0))),
-    }
+def _target_kw(haeo, device_id):
+    if hasattr(haeo, 'target_kw'):
+        return float(haeo.target_kw(device_id, 0.0) or 0.0)
+    return float((getattr(haeo, 'device_target_kw_by_id', {}) or {}).get(str(device_id), 0.0) or 0.0)
 
 
 def compute_haeo_net_zero_plan(
@@ -161,10 +82,15 @@ def compute_haeo_net_zero_plan(
     *,
     previous_quarter_key='',
     previous_primary_load='',
-    previous_primary_device_id='',
+    previous_primary_consuming_device_id='',
 ):
+    """Build a device-owned HAEO NET_ZERO plan.
+
+    Only explicit per-device HAEO targets participate. Missing device entries mean
+    no HAEO authority for that device. No implicit device fallback is permitted
+    at this boundary.
+    """
     quarter_key = quarter_key_for_ts(now_ts)
-    selected_ev_device_id = _selected_ev_device_id(cfg)
 
     if profiles.control != ControlProfile.HORIZON_BY_HAEO:
         return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='control_not_horizon_by_haeo')
@@ -177,48 +103,71 @@ def compute_haeo_net_zero_plan(
     if haeo.effective_forecast != ForecastProfile.HAEO or not haeo.fresh:
         return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='forecast_not_effective')
 
-    v3_battery_device_id = _v3_battery_device_id(cfg)
-    battery_limit_w = min(
-        _positive_w(haeo.battery_target_kw),
-        int(round(float(_device_capability(cfg, v3_battery_device_id, 'max_absorb_w', 0) or 0))),
-    )
+    ordered_ids = _ordered_device_ids(cfg)
+    device_limits_w = {}
+    primary_candidates = []
+    for rank, device_id in enumerate(ordered_ids):
+        requested_w = _positive_w(_target_kw(haeo, device_id))
+        if requested_w <= 0:
+            continue
+        max_absorb_w = max(
+            int(round(float(_device_capability(cfg, device_id, 'max_absorb_w', 0) or 0))),
+            0,
+        )
+        limit_w = min(requested_w, max_absorb_w)
+        if limit_w <= 0:
+            continue
+        device_limits_w[str(device_id)] = int(limit_w)
+        if (
+            bool(_device_capability(cfg, device_id, 'can_absorb_w', False))
+            and bool(_device_capability(cfg, device_id, 'supports_primary_consuming_regulation', False))
+        ):
+            primary_candidates.append((int(limit_w), -rank, str(device_id)))
 
-    ev_params = _ev_plan_params(cfg, selected_ev_device_id)
-    ev_limit_w = min(_positive_w(haeo.ev_target_kw), int(ev_params['ev_limit_w_cap']))
-
-    if battery_limit_w <= 0 and ev_limit_w <= 0:
+    if not device_limits_w:
         return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='zero_forecast')
+    if not primary_candidates:
+        return HaeoNetZeroPlan(False, quarter_key=quarter_key, device_limits_w={}, reason='no_primary_consuming_candidate')
 
-    previous_primary = previous_primary_device_id or previous_primary_load
-
-    if battery_limit_w > ev_limit_w:
-        primary_device_id = v3_battery_device_id
-        reason = 'battery_forecast_larger'
-    elif ev_limit_w > battery_limit_w:
-        primary_device_id = selected_ev_device_id
-        reason = 'ev_forecast_larger'
-    elif previous_primary == v3_battery_device_id or _is_ev_device_id(cfg, previous_primary):
-        primary_device_id = previous_primary
-        reason = 'tie_keep_previous'
+    max_limit = 0
+    for item in primary_candidates:
+        if item[0] > max_limit:
+            max_limit = item[0]
+    tied_ids = []
+    for item in primary_candidates:
+        if item[0] == max_limit:
+            tied_ids.append(item[2])
+    previous_primary = str(previous_primary_consuming_device_id or previous_primary_load or '')
+    if previous_primary in tied_ids:
+        primary_consuming_device_id = previous_primary
+        reason = 'tie_keep_previous' if len(tied_ids) > 1 else 'largest_explicit_device_target'
     else:
-        primary_device_id = v3_battery_device_id
-        reason = 'tie_default_v3_battery'
+        primary_consuming_device_id = max(primary_candidates)[2]
+        reason = 'largest_explicit_device_target'
 
-    preferred_surplus_device_id = selected_ev_device_id if primary_device_id == v3_battery_device_id else v3_battery_device_id
-    device_limits_w = {
-        v3_battery_device_id: int(battery_limit_w),
-        selected_ev_device_id: int(ev_limit_w),
-    }
+    surplus_candidates = []
+    for rank, device_id in enumerate(ordered_ids):
+        device_id = str(device_id)
+        if device_id == primary_consuming_device_id or device_id not in device_limits_w:
+            continue
+        if not bool(_device_policy_value(cfg, device_id, 'surplus_allowed', False)):
+            continue
+        try:
+            priority = int(_device_policy_value(cfg, device_id, 'priority', 0) or 0)
+        except (TypeError, ValueError):
+            priority = 0
+        surplus_candidates.append((priority, -rank, device_id))
+    preferred_surplus_device_id = max(surplus_candidates)[2] if surplus_candidates else ''
+
     changed = (
-        quarter_key != (previous_quarter_key or '')
-        or primary_device_id != (previous_primary or '')
+        quarter_key != str(previous_quarter_key or '')
+        or primary_consuming_device_id != previous_primary
     )
-
     return HaeoNetZeroPlan(
         active=True,
         quarter_key=quarter_key,
-        primary_load=primary_device_id,
-        primary_device_id=primary_device_id,
+        primary_load=primary_consuming_device_id,
+        primary_consuming_device_id=primary_consuming_device_id,
         preferred_surplus_device_id=preferred_surplus_device_id,
         device_limits_w=device_limits_w,
         reason=reason,
