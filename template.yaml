@@ -1,4 +1,4 @@
-template:
+#template:
   - sensor:
       # ============================================================
       # EMS POLICY CONFIG RUNTIME
@@ -221,7 +221,7 @@ template:
                     'producing_priority': 100,
 
 
-                    'surplus_allowed': true,
+                    'surplus_allowed': false,
 
                     'surplus_dispatch_mode': 'max_absorb',
   

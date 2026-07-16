@@ -68,3 +68,5 @@ E2E coverage should include:
 9. RPNZ and RPC use the same second-based `control_horizon_s`
 10. whole-minute boundaries do not create RPC step changes
 11. primary fallback skip/effective/unserved diagnostics match the selected device
+12. n−1 surplus release uses persisted activation order, margin-adjusted device power and one release per settle freeze
+13. the remaining anchor device keeps the RPNZ deadband release rule

@@ -1,3 +1,6 @@
+# BETA EXAMPLE: replace every sensor/number/switch entity with your own Home Assistant entity.
+# The generic ems_* entity IDs below are placeholders, not automatically created entities.
+
 ems:
   profiles:
     control: input_select.ems_control_profile
@@ -43,15 +46,15 @@ ems:
         surplus_dispatch_mode: max_absorb
         producing_priority: 100
       guard:
-        soc: sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc
-        min_cell_voltage_v: sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage
-        heartbeat: sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
+        soc: sensor.ems_home_battery_soc
+        min_cell_voltage_v: sensor.ems_home_battery_min_cell_voltage_v
+        heartbeat: sensor.ems_home_battery_power_w
         protect_soc: input_number.ems_battery_protect_soc
         protect_soc_recovery_margin: input_number.ems_battery_protect_soc_recovery_margin
         protect_min_cell_voltage_v: input_number.ems_battery_protect_min_cell_voltage_v
         protect_min_absorb_w: input_number.ems_battery_protect_charge_floor_w
       adapter:
-        target_w: number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point
+        target_w: number.ems_home_battery_target_w
     EV_CHARGER:
       kind: EV_CHARGER
       capabilities:
@@ -73,8 +76,8 @@ ems:
         surplus_dispatch_mode: max_absorb
         producing_priority: 0
       adapter:
-        enabled: switch.charger_control
-        current_a: number.charger_current_level
+        enabled: switch.ems_ev_charger_enabled
+        current_a: number.ems_ev_charger_current_a
         current_step_a: input_number.ems_ev_current_step_a
         phases: input_number.ems_ev_charger_phases
         voltage_v: input_number.ems_ev_voltage_v
@@ -97,7 +100,7 @@ ems:
         surplus_dispatch_mode: fixed
         producing_priority: 0
       adapter:
-        enabled: switch.relay_1_2
+        enabled: switch.ems_relay1_enabled
     RELAY2:
       kind: RELAY
       capabilities:
@@ -117,19 +120,19 @@ ems:
         surplus_dispatch_mode: fixed
         producing_priority: 0
       adapter:
-        enabled: switch.relay_2_2
+        enabled: switch.ems_relay2_enabled
   runtime:
-    grid_power_w: sensor.average_active_power_2
+    grid_power_w: sensor.ems_grid_power_w
     quarter_energy_balance_kwh: sensor.hourly_energy_balance
-    pv_power_w: sensor.pv_instant_power_2
+    pv_power_w: sensor.ems_pv_power_w
   haeo:
     devices:
       HOME_BATTERY:
         power_active: sensor.haeo_battery_power_active
-        fresh_source: sensor.battery_active_power
+        fresh_source: sensor.ems_haeo_battery_fresh_source
       EV_CHARGER:
         power_active: sensor.haeo_ev_battery_power_active
-        fresh_source: sensor.ev_akut_active_power
+        fresh_source: sensor.ems_haeo_ev_fresh_source
   state:
     surplus_freeze_until: input_datetime.ems_surplus_freeze_until
     active_surplus_devices: sensor.ems_active_surplus_devices

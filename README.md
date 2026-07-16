@@ -45,6 +45,10 @@ surplus consumers = 0..N
 
 Jokaiselle laitteelle muodostetaan yksi lopullinen `DevicePolicy`. Positiivinen target tarkoittaa kulutusta/latausta ja negatiivinen target tuotantoa/purkua.
 
+EV:n HARD_OFF-vapautus perustuu peräkkäisiin PV-palautumistickeihin. RPC vaikuttaa vasta surplus-aktivointiin, ei lifecycle-vapautukseen.
+
+Kun surplus-laitteita on useita aktiivisena, uusimmat lisäkuormaportaat vapautetaan yksi kerrallaan negatiivisen RPC:n perusteella. Release käyttää laitteen tehoa ja marginaalia `max(100 W, 5 % tehosta)`; ensimmäisenä aktivoitu anchor-laite säilyttää konservatiivisen RPNZ-release-säännön.
+
 ## Canonical ketju
 
 ```text

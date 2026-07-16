@@ -1072,8 +1072,6 @@ def compute_hard_off_lifecycle_transition(
     requested_active,
     pv_power_w,
     low_pv_threshold_w,
-    rpc_w,
-    release_rpc_threshold_w,
     activation_blocked=False,
     hard_off_low_pv_cycles=1,
     hard_off_release_cycles=1,
@@ -1103,10 +1101,13 @@ def compute_hard_off_lifecycle_transition(
         if effective_requested_active or not low_pv
         else min(previous_low_cycles + 1, required_low_cycles)
     )
+    # HARD_OFF is a low-PV lifecycle latch. Release readiness therefore
+    # depends only on sustained PV recovery (plus explicit activation blocks).
+    # RPC and surplus activation thresholds belong to the allocator and must
+    # not prevent a device from becoming available again.
     recovery_condition = (
         pv_known
         and float(pv_power_w) >= float(low_pv_threshold_w)
-        and float(rpc_w) >= float(release_rpc_threshold_w)
         and (not bool(activation_blocked))
     )
 
@@ -1430,11 +1431,47 @@ def _ordered_device_ids(cfg, facts=None):
     return tuple(ordered)
 
 
-def _surplus_threshold_w(cfg, device_id, facts=None):
-    # Single authoritative surplus activation semantic:
-    # threshold_w == physical max_absorb_w capability.
-    max_w = float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0)
-    return max(max_w, 0.0), 'device_capabilities.max_absorb_w'
+def _surplus_threshold_w(
+    cfg,
+    device_id,
+    *,
+    current_power_w=0.0,
+    active=False,
+    facts=None,
+):
+    """Return the incremental power made available by a surplus activation.
+
+    A non-active EV that is already held at its configured minimum absorb power
+    contributes only the remaining headroom when surplus dispatch raises it to
+    max_absorb_w. Other states retain the established absolute max threshold.
+    """
+    max_w = max(
+        float(_device_capability(cfg, device_id, 'max_absorb_w', 0, facts=facts) or 0),
+        0.0,
+    )
+    min_w = max(
+        float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0),
+        0.0,
+    )
+    step_w = max(
+        float(_device_capability(cfg, device_id, 'step_w', 0, facts=facts) or 0),
+        0.0,
+    )
+    current_w = max(float(current_power_w or 0.0), 0.0)
+    min_hold_tolerance_w = max(step_w / 2.0, 1.0)
+    ev_min_hold = bool(
+        _device_kind(cfg, device_id, facts=facts) == 'EV_CHARGER'
+        and (not bool(active))
+        and min_w > 0.0
+        and max_w > min_w
+        and abs(current_w - min_w) <= min_hold_tolerance_w
+    )
+    if ev_min_hold:
+        return (
+            max(max_w - min_w, 0.0),
+            'device_capabilities.max_absorb_w-minus-min_absorb_w@ev_min_hold',
+        )
+    return max_w, 'device_capabilities.max_absorb_w'
 
 def _surplus_dispatch_mode(cfg, device_id, facts=None):
     mode = str(_device_policy_value(cfg, device_id, 'surplus_dispatch_mode', '', facts=None) or '')
@@ -1462,6 +1499,7 @@ def _generic_surplus_candidate_contexts(
     lifecycle_transitions_by_id,
     primary_consuming_device_id='',
     runtime_device_states=None,
+    current_power_by_id=None,
     facts=None,
 ):
     active_set = set()
@@ -1470,6 +1508,9 @@ def _generic_surplus_candidate_contexts(
     runtime_state_by_id = {}
     for state_device_id, state in (runtime_device_states or {}).items():
         runtime_state_by_id[str(state_device_id)] = dict(state or {})
+    current_power_map = {}
+    for state_device_id, power_w in (current_power_by_id or {}).items():
+        current_power_map[str(state_device_id)] = float(power_w or 0.0)
     contexts = []
     for device_id in _ordered_device_ids(cfg, facts=facts):
         if str(device_id) == str(primary_consuming_device_id or ''):
@@ -1498,8 +1539,16 @@ def _generic_surplus_candidate_contexts(
         # but never a missing absorb capability.
         if not is_active and (not can_absorb or ((not surplus_allowed) and (not force_on))):
             continue
+        current_positive_power_w = max(
+            float(current_power_map.get(str(device_id), 0.0) or 0.0),
+            0.0,
+        )
         threshold_w, threshold_source = _surplus_threshold_w(
-            cfg, device_id, facts=facts
+            cfg,
+            device_id,
+            current_power_w=current_positive_power_w,
+            active=is_active,
+            facts=facts,
         )
         transition = (lifecycle_transitions_by_id or {}).get(str(device_id))
         lifecycle_activation_allowed = (
@@ -1509,12 +1558,33 @@ def _generic_surplus_candidate_contexts(
         # Keep lifecycle state latched in the background, but do not expose an
         # optimizer HARD_OFF as an effective activation denial for this request.
         activation_allowed = bool(lifecycle_activation_allowed or force_on)
+        dispatch_mode = _surplus_dispatch_mode(cfg, device_id, facts=facts)
+        nominal_surplus_power_w = _surplus_target_w_for_device(
+            cfg, device_id, dispatch_mode, facts=facts
+        )
+        min_absorb_w = max(
+            float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0),
+            0.0,
+        )
+        if str(dispatch_mode) == 'fixed':
+            releasable_power_w = int(nominal_surplus_power_w)
+        elif (
+            _device_kind(cfg, device_id, facts=facts) == 'EV_CHARGER'
+            and current_positive_power_w > min_absorb_w
+        ):
+            # Releasing an EV surplus step restores its configured minimum hold;
+            # only the incremental headroom disappears from grid consumption.
+            releasable_power_w = int(round(current_positive_power_w - min_absorb_w))
+        elif current_positive_power_w > 0.0:
+            releasable_power_w = int(round(current_positive_power_w))
+        else:
+            releasable_power_w = int(nominal_surplus_power_w)
         contexts.append(
             {
                 'device_id': str(device_id),
                 'priority': int(_device_policy_value(cfg, device_id, 'priority', 0, facts=None) or 0),
                 'threshold_w': threshold_w,
-                'surplus_dispatch_mode': _surplus_dispatch_mode(cfg, device_id, facts=facts),
+                'surplus_dispatch_mode': dispatch_mode,
                 'enabled': bool(
                     can_absorb and (surplus_allowed or force_on) and threshold_w > 0.0
                 ),
@@ -1522,6 +1592,8 @@ def _generic_surplus_candidate_contexts(
                 'active': is_active,
                 'activation_allowed': activation_allowed,
                 'threshold_source': threshold_source,
+                'releasable_power_w': max(releasable_power_w, 0),
+                'incremental_surplus_threshold_w': int(round(threshold_w)),
             }
         )
     ordered = []
@@ -1595,13 +1667,6 @@ def _lifecycle_transition_maps(
         )
         raw_low_pv = float(_device_policy_value(cfg, device_id, 'low_pv_threshold_w', 0, facts=None) or 0)
         low_pv_threshold_kw = raw_low_pv / 1000.0 if raw_low_pv > 50.0 else raw_low_pv
-        threshold_w, _source = _surplus_threshold_w(
-            cfg, device_id, facts=facts
-        )
-        if device_id in primary_set:
-            # Primary lifecycle recovery preserves the established EV-minimum threshold;
-            # a surplus activation threshold is a different policy concern.
-            threshold_w = float(_device_capability(cfg, device_id, 'min_absorb_w', 0, facts=facts) or 0)
         requested_active = (
             bool(requested_active_map.get(device_id, False))
             if device_id in primary_set
@@ -1615,8 +1680,6 @@ def _lifecycle_transition_maps(
             requested_active=requested_active,
             pv_power_w=pv_power_kw,
             low_pv_threshold_w=low_pv_threshold_kw,
-            rpc_w=float(nz.required_power_consumption_kw),
-            release_rpc_threshold_w=float(max(threshold_w, 0.0)) / 1000.0,
             activation_blocked=activation_blocked,
             hard_off_low_pv_cycles=int(_device_policy_value(cfg, device_id, 'hard_off_low_pv_cycles', 1, facts=None) or 1),
             hard_off_release_cycles=int(_device_policy_value(cfg, device_id, 'hard_off_release_cycles', 1, facts=None) or 1),
@@ -2064,11 +2127,11 @@ def _ev_surplus_policy_for_device(
             )
         )
     )
-    release_allowed = bool(
-        lifecycle_transition is not None and getattr(lifecycle_transition, 'release_allowed', False)
-    )
     force_on = bool(getattr(ev_context, 'force_on', False))
-    burn_active = (active or release_allowed) and not clear_pending
+    # Lifecycle release only makes the EV eligible again. Optimizer-owned EV
+    # activation still requires persisted surplus-active state (or FORCE_ON via
+    # the strategy), so a PV-only HARD_OFF release cannot bypass RPC/priority.
+    burn_active = active and not clear_pending
 
     target_w = float(ev_strategy_target_w(profiles, ev_context, haeo, burn_active))
     if (
@@ -2383,13 +2446,22 @@ def compute_net_zero_engine_outputs(
         _note_net_zero_duration_ms('policy_engine_net_zero_state_parse_ms', state_parse_started_ts)
 
         surplus_targets_started_ts = _net_zero_profile_started_ts()
-        active_device_ids = set()
+        active_device_ids_ordered = []
+        active_device_ids_seen = set()
         for item in (active_surplus_device_ids or ()):
-            active_device_ids.add(str(item))
+            device_id = str(item or '')
+            if not device_id or device_id in active_device_ids_seen:
+                continue
+            active_device_ids_seen.add(device_id)
+            active_device_ids_ordered.append(device_id)
         if active_surplus_device_ids is None:
-            for device_id, state in (relay_device_states or {}).items():
-                if bool((state or {}).get('active', False)):
-                    active_device_ids.add(str(device_id))
+            for device_id in _ordered_device_ids(cfg, facts=policy_runtime_facts):
+                device_id = str(device_id)
+                state = (relay_device_states or {}).get(device_id, {}) or {}
+                if bool(state.get('active', False)) and device_id not in active_device_ids_seen:
+                    active_device_ids_seen.add(device_id)
+                    active_device_ids_ordered.append(device_id)
+        active_device_ids = set(active_device_ids_ordered)
 
         lifecycle_transitions_by_id, lifecycle_next_states = _lifecycle_transition_maps(
             cfg,
@@ -2473,6 +2545,7 @@ def compute_net_zero_engine_outputs(
             lifecycle_transitions_by_id=lifecycle_transitions_by_id,
             primary_consuming_device_id=effective_primary_consuming_device_id,
             runtime_device_states=relay_device_states,
+            current_power_by_id=current_power_by_id,
             facts=policy_runtime_facts,
         )
         surplus_candidates = build_surplus_candidates(candidate_contexts)
@@ -2536,10 +2609,14 @@ def compute_net_zero_engine_outputs(
             rpc_kw=nz.required_power_consumption_kw,
             rpnz_w=nz.rpnz_w,
             targets=surplus_candidates,
+            active_device_ids=tuple(active_device_ids_ordered),
         )
         surplus_device_decision = compute_surplus_device_dispatch(surplus_device_inp, now_ts, surplus_freeze_s)
         surplus_device_next = next_device_target(surplus_candidates)
-        surplus_device_release = release_device_target(surplus_candidates)
+        surplus_device_release = release_device_target(
+            surplus_candidates,
+            active_device_ids=tuple(active_device_ids_ordered),
+        )
 
         relay_active_now = False
         for relay in relay_runtime_candidates:
@@ -2846,11 +2923,21 @@ def compute_net_zero_engine_outputs(
             producing_regulator_device_ids_payload.append(str(producer.device_id))
 
         surplus_candidate_device_ids = []
-        surplus_active_device_ids_payload = []
+        active_candidate_ids = set()
         for target in surplus_candidates:
             surplus_candidate_device_ids.append(str(target.device_id))
             if bool(target.active):
-                surplus_active_device_ids_payload.append(str(target.device_id))
+                active_candidate_ids.add(str(target.device_id))
+        surplus_active_device_ids_payload = []
+        for device_id in active_device_ids_ordered:
+            if device_id in active_candidate_ids:
+                surplus_active_device_ids_payload.append(device_id)
+                active_candidate_ids.remove(device_id)
+        for target in surplus_candidates:
+            device_id = str(target.device_id)
+            if device_id in active_candidate_ids:
+                surplus_active_device_ids_payload.append(device_id)
+                active_candidate_ids.remove(device_id)
         surplus_candidate_stack = ' > '.join(surplus_candidate_device_ids) or 'NONE'
 
         result = NetZeroOutputs(
@@ -2871,6 +2958,26 @@ def compute_net_zero_engine_outputs(
             'surplus_active_device_ids': tuple(surplus_active_device_ids_payload),
             'surplus_next_device_id': surplus_next_device_id,
             'surplus_release_device_id': surplus_release_device_id,
+            'surplus_active_activation_order': tuple(surplus_active_device_ids_payload),
+            'surplus_anchor_device_id': (
+                surplus_active_device_ids_payload[0]
+                if surplus_active_device_ids_payload else ''
+            ),
+            'surplus_release_mode': str(
+                getattr(surplus_device_decision, 'release_mode', '') or ''
+            ),
+            'surplus_release_power_w': int(
+                getattr(surplus_device_decision, 'release_power_w', 0) or 0
+            ),
+            'surplus_release_margin_w': int(
+                getattr(surplus_device_decision, 'release_margin_w', 0) or 0
+            ),
+            'surplus_release_threshold_w': int(
+                getattr(surplus_device_decision, 'release_threshold_w', 0) or 0
+            ),
+            'surplus_excess_consumption_w': int(
+                getattr(surplus_device_decision, 'excess_consumption_w', 0) or 0
+            ),
             'surplus_dispatch_action': surplus_dispatch_action,
             'surplus_dispatch_device_id': surplus_dispatch_device_id,
             'surplus_dispatch_contract': 'device_id_primary',

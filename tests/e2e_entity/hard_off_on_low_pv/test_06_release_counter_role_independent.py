@@ -67,8 +67,14 @@ def test_hard_off_release_counter_applies_when_ev_is_surplus_adjustable(project_
         },
         {
             'at_s': 160,
-            'note': 'one failed RPC recovery condition resets the counter',
-            'set': recovery_inputs(160, 4.0),
+            'note': 'PV dropping below the lifecycle threshold resets the release counter',
+            'set': runtime_inputs_for_net_zero_intent(
+                E,
+                rpnz_w=25.0,
+                required_power_consumption_kw=4.0,
+                at_s=160,
+                pv_power_kw=1.0,
+            ),
             'expect_derived': recovery_derived(160, 4.0),
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
@@ -100,14 +106,19 @@ def test_hard_off_release_counter_applies_when_ev_is_surplus_adjustable(project_
         },
         {
             'at_s': 250,
-            'note': 'release occurs only when the configured third consecutive cycle is reached',
+            'note': 'the third consecutive PV-recovery cycle releases HARD_OFF; activation remains a separate dispatch step',
             'set': recovery_inputs(250, 7.0),
             'expect_derived': recovery_derived(250, 7.0),
             'expect_policy': {
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
                 'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 3,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_dispatch_action': 'ACTIVATE',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
             },
-            'expect_device_policies': {'EV_CHARGER': {'enabled': True}},
+            'expect_device_policies': {
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
+            },
         },
     ]
 

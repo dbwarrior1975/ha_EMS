@@ -1,0 +1,62 @@
+# EMS direct runtime v5 static topology configuration.
+#
+# Ownership rule:
+# - This file owns only static topology, physical direction capabilities,
+#   role constraints, and policy-engine cadence.
+# - sensor.ems_policy_config_runtime owns slow-changing runtime policy config.
+                                                 
+# - sensor.ems_measurements_runtime owns fast measurements and adapter state.
+# - sensor.ems_policy_state_runtime owns state-machine / HAEO state.
+# - Packet fields are strict: missing required data fails closed.
+                                                   
+
+ems:
+  runtime_sources:
+    policy_config:
+      entity_id: sensor.ems_policy_config_runtime
+    measurements:
+      entity_id: sensor.ems_measurements_runtime
+    policy_state:
+      entity_id: sensor.ems_policy_state_runtime
+
+  policy_engine:
+    interval_seconds: 5
+    diagnostics_interval_seconds: 30
+
+
+
+  role_constraints:
+    default: {}
+
+  devices:
+    HOME_BATTERY:
+      kind: BATTERY
+      capabilities:
+        can_absorb_w: true
+        can_produce_w: true
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: true
+
+    EV_CHARGER:
+      kind: EV_CHARGER
+      capabilities:
+        can_absorb_w: true
+        can_produce_w: false
+        supports_primary_consuming_regulation: true
+        supports_producing_regulation: false
+
+    RELAY1:
+      kind: RELAY
+      capabilities:
+        can_absorb_w: true
+        can_produce_w: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false
+
+    RELAY2:
+      kind: RELAY
+      capabilities:
+        can_absorb_w: true
+        can_produce_w: false
+        supports_primary_consuming_regulation: false
+        supports_producing_regulation: false

@@ -56,7 +56,7 @@ def test_01_activation_and_burn(project_root):
             ),
             'expect_policy': {
                 'surplus_freeze_until_ts': 45.0,
-                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
                 'surplus_next_device_id': 'EV_CHARGER',
                 'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,

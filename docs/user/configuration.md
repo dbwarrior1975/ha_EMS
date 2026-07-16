@@ -102,6 +102,8 @@ Esimerkki on rakenneote. Kopioitava täydellinen policy-paketti on `template.yam
 
 EV:n alle-minimipyyntöä ei nosteta minimiin; resolveri kokeilee seuraavaa primary-kandidaattia.
 
+`hard_off_release_cycles` tarkoittaa peräkkäisten PV-palautumistickien määrää. Release-counter ei tarkista RPC:tä tai EV:n surplus-aktivointikynnystä. Kun HARD_OFF vapautuu, EV ei käynnisty automaattisesti: primary-resolverin tai surplus-allocatorin pitää edelleen myöntää sille authority/active-state.
+
 
 ### EV:n min-hold ja inkrementaalinen SURPLUS-kynnys
 

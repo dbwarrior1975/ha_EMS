@@ -49,7 +49,7 @@ def test_activation_and_ev_burn_window(project_root):
                 'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_dispatch_contract': 'device_id_primary',
-                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
             },
             'expect_device_policies': {
                 'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},

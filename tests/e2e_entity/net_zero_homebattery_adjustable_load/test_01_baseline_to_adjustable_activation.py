@@ -215,7 +215,7 @@ def test_01_baseline_to_adjustable_activation(project_root):
                 'surplus_next_device_id': 'EV_CHARGER',
                 'battery_min_floor_w': 100.0,
                 'battery_min_floor_reason': 'not_applicable',
-                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
             },
             'expect_values': {
                 E['actuator_ev_current_a']: 6,

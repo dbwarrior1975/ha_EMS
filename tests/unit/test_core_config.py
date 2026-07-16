@@ -44,19 +44,19 @@ def _core_entity_values():
         'input_number.ems_battery_protect_charge_floor_w': 0,
         'sensor.haeo_battery_power_active': 'sensor.haeo_battery_power_active',
         'sensor.haeo_ev_battery_power_active': 'sensor.haeo_ev_battery_power_active',
-        'sensor.battery_active_power': 'sensor.battery_active_power',
-        'sensor.ev_akut_active_power': 'sensor.ev_akut_active_power',
+        'sensor.ems_haeo_battery_fresh_source': 'sensor.ems_haeo_battery_fresh_source',
+        'sensor.ems_haeo_ev_fresh_source': 'sensor.ems_haeo_ev_fresh_source',
         'input_datetime.ems_surplus_freeze_until': 'input_datetime.ems_surplus_freeze_until',
         'sensor.ems_active_surplus_devices': 'sensor.ems_active_surplus_devices',
-        'sensor.average_active_power_2': 'sensor.average_active_power_2',
+        'sensor.ems_grid_power_w': 'sensor.ems_grid_power_w',
         'sensor.hourly_energy_balance': 'sensor.hourly_energy_balance',
-        'sensor.pv_instant_power_2': 'sensor.pv_instant_power_2',
-        'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc': 55,
-        'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage': 3.2,
-        'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power': 0,
-        'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point': 100,
-        'number.charger_current_level': 4,
-        'switch.charger_control': False,
+        'sensor.ems_pv_power_w': 'sensor.ems_pv_power_w',
+        'sensor.ems_home_battery_soc': 55,
+        'sensor.ems_home_battery_min_cell_voltage_v': 3.2,
+        'sensor.ems_home_battery_power_w': 0,
+        'number.ems_home_battery_target_w': 100,
+        'number.ems_ev_charger_current_a': 4,
+        'switch.ems_ev_charger_enabled': False,
         'input_number.ems_ev_min_power_w': 4140,
         'input_number.ems_ev_max_power_w': 11040,
         'input_number.ems_ev_power_step_w': 2760,
@@ -65,8 +65,8 @@ def _core_entity_values():
         'input_number.ems_ev_hard_off_pv_threshold_kw': 1.6,
         'input_number.ems_ev_hard_off_low_pv_cycles': 2,
         'input_number.ems_ev_hard_off_release_cycles': 2,
-        'switch.charger_control': False,
-        'number.charger_current_level': 4,
+        'switch.ems_ev_charger_enabled': False,
+        'number.ems_ev_charger_current_a': 4,
         'input_number.ems_ev_current_step_a': 4,
         'input_number.ems_ev_charger_phases': 1,
         'input_number.ems_ev_voltage_v': 230,
@@ -76,8 +76,8 @@ def _core_entity_values():
         'input_boolean.ems_relay2_enabled_import_zero': True,
         'input_boolean.ems_relay1_force_on': False,
         'input_boolean.ems_relay2_force_on': False,
-        'switch.relay_1_2': False,
-        'switch.relay_2_2': False,
+        'switch.ems_relay1_enabled': False,
+        'switch.ems_relay2_enabled': False,
         'input_number.ems_relay1_power_kw': 2.5,
         'input_number.ems_relay2_power_kw': 5.0,
     }
@@ -95,7 +95,7 @@ def test_build_core_config_from_grouped_config_maps_top_level_sections(project_r
     assert core.policy_engine.interval_seconds == 5.0
     assert core.policy_engine.diagnostics_interval_seconds == 30.0
     assert core.global_config.deadband_w == 50
-    assert core.runtime.grid_power_w == 'sensor.average_active_power_2'
+    assert core.runtime.grid_power_w == 'sensor.ems_grid_power_w'
     assert core.runtime.quarter_energy_balance_kwh == 'sensor.hourly_energy_balance'
     assert core.state.surplus_freeze_until == 'input_datetime.ems_surplus_freeze_until'
     assert core.state.active_surplus_devices == 'sensor.ems_active_surplus_devices'

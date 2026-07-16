@@ -46,7 +46,7 @@ def test_01_activation_chain(project_root):
                 'surplus_dispatch_action': 'ACTIVATE',
                 'surplus_dispatch_device_id': 'EV_CHARGER',
                 'surplus_freeze_until_ts': 45.0,
-                    'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
+                    'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
                 'surplus_next_device_id': 'EV_CHARGER',
             },
             'expect_device_policies': {

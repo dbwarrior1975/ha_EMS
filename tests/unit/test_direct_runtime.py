@@ -746,53 +746,50 @@ def test_runtime_packet_sensor_example_guards_missing_haeo_entities(project_root
     haeo_template = state_sensor['attributes']['haeo']
 
     compact = ''.join(haeo_template.split())
-    assert 'states.sensor.battery_active_power' in haeo_template
-    assert 'states.sensor.ev_akut_active_power' in haeo_template
-    assert "battery_fresh_entityisnotnoneandhas_value('sensor.battery_active_power')" in compact
-    assert "ev_fresh_entityisnotnoneandhas_value('sensor.ev_akut_active_power')" in compact
+    assert 'states.sensor.ems_haeo_battery_fresh_source' in haeo_template
+    assert 'states.sensor.ems_haeo_ev_fresh_source' in haeo_template
+    assert "battery_fresh_entityisnotnoneandhas_value('sensor.ems_haeo_battery_fresh_source')" in compact
+    assert "ev_fresh_entityisnotnoneandhas_value('sensor.ems_haeo_ev_fresh_source')" in compact
     assert 'as_timestamp(battery_fresh_entity.last_updated,0)' in compact
     assert 'as_timestamp(ev_fresh_entity.last_updated,0)' in compact
-    assert 'states.sensor.battery_active_power.last_updated' not in haeo_template
-    assert 'states.sensor.ev_akut_active_power.last_updated' not in haeo_template
+    assert 'states.sensor.ems_haeo_battery_fresh_source.last_updated' not in haeo_template
+    assert 'states.sensor.ems_haeo_ev_fresh_source.last_updated' not in haeo_template
 
 
 
 @pytest.mark.unit
-def test_runtime_packet_sensor_example_uses_production_source_entity_bindings(project_root):
+def test_runtime_packet_sensor_example_uses_generic_beta_entity_bindings(project_root):
     source = (project_root / 'example_EMS_runtime_packet_sensors.yaml').read_text(encoding='utf-8')
 
     expected = (
-        'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc',
-        'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage',
-        'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power',
-        'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
-        'switch.charger_control',
-        'number.charger_current_level',
-        'switch.relay_1_2',
-        'switch.relay_2_2',
+        'sensor.ems_home_battery_soc',
+        'sensor.ems_home_battery_min_cell_voltage_v',
+        'sensor.ems_home_battery_power_w',
+        'number.ems_home_battery_target_w',
+        'switch.ems_ev_charger_enabled',
+        'number.ems_ev_charger_current_a',
+        'switch.ems_relay1_enabled',
+        'switch.ems_relay2_enabled',
         'sensor.ems_policy_state_pyscript',
         'sensor.haeo_battery_power_active',
         'sensor.haeo_ev_battery_power_active',
-        'sensor.battery_active_power',
-        'sensor.ev_akut_active_power',
+        'sensor.ems_haeo_battery_fresh_source',
+        'sensor.ems_haeo_ev_fresh_source',
     )
     for entity_id in expected:
         assert entity_id in source
 
-    forbidden_placeholders = (
-        "sensor.battery_soc'",
-        "sensor.battery_min_cell_voltage'",
-        "sensor.battery_heartbeat'",
-        "sensor.current_battery_setpoint'",
-        "sensor.battery_measured_power'",
-        "switch.ev_charger'",
-        "number.ev_charger_current'",
-        "switch.relay1'",
-        "switch.relay2'",
-        "sensor.ems_policy_state'",
+    forbidden_private_bindings = (
+        'victron_mqtt_',
+        'switch.charger_control',
+        'number.charger_current_level',
+        'switch.relay_1_2',
+        'switch.relay_2_2',
+        'sensor.average_active_power_2',
+        'sensor.pv_instant_power_2',
     )
-    for entity_id in forbidden_placeholders:
-        assert entity_id not in source
+    for value in forbidden_private_bindings:
+        assert value not in source
 
 
 @pytest.mark.unit
@@ -905,11 +902,11 @@ def test_runtime_packet_measurements_do_not_mask_missing_required_sources_with_z
     ev_compact = ''.join(ev_template.split())
     relay_compact = ''.join(relay_template.split())
 
-    assert "states('sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc')" in battery_compact
+    assert "states('sensor.ems_home_battery_soc')" in battery_compact
     assert "|float(0)" not in battery_compact
-    assert "elsestates('switch.charger_control')" in ev_compact
-    assert "elsestates('switch.relay_1_2')" in relay_compact
-    assert "elsestates('switch.relay_2_2')" in relay_compact
+    assert "elsestates('switch.ems_ev_charger_enabled')" in ev_compact
+    assert "elsestates('switch.ems_relay1_enabled')" in relay_compact
+    assert "elsestates('switch.ems_relay2_enabled')" in relay_compact
 
 
 @pytest.mark.unit

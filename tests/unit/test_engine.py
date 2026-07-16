@@ -1223,8 +1223,6 @@ def test_hard_off_low_pv_counter_saturates_at_configured_threshold():
         requested_active=False,
         pv_power_w=0,
         low_pv_threshold_w=1600,
-        rpc_w=0,
-        release_rpc_threshold_w=1840,
         hard_off_low_pv_cycles=15,
         hard_off_release_cycles=2,
     )
@@ -1235,7 +1233,7 @@ def test_hard_off_low_pv_counter_saturates_at_configured_threshold():
 
 
 @pytest.mark.unit
-def test_hard_off_low_pv_counter_remains_saturated_until_release():
+def test_hard_off_release_counter_uses_pv_recovery_without_rpc_gate():
     device = DeviceControlContext(
         device_id='EV_CHARGER',
         kind='EV',
@@ -1259,22 +1257,6 @@ def test_hard_off_low_pv_counter_remains_saturated_until_release():
         'hard_off_active': True,
     }
 
-    waiting = compute_hard_off_lifecycle_transition(
-        device,
-        previous,
-        lifecycle_enabled=True,
-        requested_active=False,
-        pv_power_w=1900,
-        low_pv_threshold_w=1600,
-        rpc_w=0,
-        release_rpc_threshold_w=1840,
-        hard_off_low_pv_cycles=15,
-        hard_off_release_cycles=2,
-    )
-    assert waiting.hard_off_active is True
-    assert waiting.low_pv_cycles == 15
-    assert waiting.hard_off_release_ready_cycles == 0
-
     release_tick_1 = compute_hard_off_lifecycle_transition(
         device,
         previous,
@@ -1282,14 +1264,13 @@ def test_hard_off_low_pv_counter_remains_saturated_until_release():
         requested_active=False,
         pv_power_w=1900,
         low_pv_threshold_w=1600,
-        rpc_w=2000,
-        release_rpc_threshold_w=1840,
         hard_off_low_pv_cycles=15,
         hard_off_release_cycles=2,
     )
     assert release_tick_1.hard_off_active is True
     assert release_tick_1.low_pv_cycles == 15
     assert release_tick_1.hard_off_release_ready_cycles == 1
+    assert release_tick_1.recovery_condition is True
 
     released = compute_hard_off_lifecycle_transition(
         device,
@@ -1302,14 +1283,91 @@ def test_hard_off_low_pv_counter_remains_saturated_until_release():
         requested_active=False,
         pv_power_w=1900,
         low_pv_threshold_w=1600,
-        rpc_w=2000,
-        release_rpc_threshold_w=1840,
         hard_off_low_pv_cycles=15,
         hard_off_release_cycles=2,
     )
     assert released.hard_off_active is False
     assert released.low_pv_cycles == 0
     assert released.hard_off_release_ready_cycles == 2
+    assert released.activation_allowed is True
+
+
+@pytest.mark.unit
+def test_hard_off_release_counter_resets_when_pv_drops_below_threshold():
+    device = DeviceControlContext(
+        device_id='EV_CHARGER',
+        kind='EV',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=1840,
+        max_absorb_w=6200,
+        min_produce_w=0,
+        max_produce_w=0,
+        step_w=460,
+        supports_primary_consuming_regulation=True,
+        supports_producing_regulation=False,
+        uses_hard_off_lifecycle=True,
+        priority=10,
+        producing_priority=0,
+        current_control_target_w=0,
+    )
+    transition = compute_hard_off_lifecycle_transition(
+        device,
+        {
+            'low_pv_cycles': 15,
+            'hard_off_release_ready_cycles': 1,
+            'hard_off_active': True,
+        },
+        lifecycle_enabled=True,
+        requested_active=False,
+        pv_power_w=1500,
+        low_pv_threshold_w=1600,
+        hard_off_low_pv_cycles=15,
+        hard_off_release_cycles=2,
+    )
+    assert transition.hard_off_active is True
+    assert transition.hard_off_release_ready_cycles == 0
+    assert transition.recovery_condition is False
+
+
+@pytest.mark.unit
+def test_hard_off_release_counter_does_not_progress_while_activation_is_blocked():
+    device = DeviceControlContext(
+        device_id='EV_CHARGER',
+        kind='EV',
+        can_absorb_w=True,
+        can_produce_w=False,
+        min_absorb_w=1840,
+        max_absorb_w=6200,
+        min_produce_w=0,
+        max_produce_w=0,
+        step_w=460,
+        supports_primary_consuming_regulation=True,
+        supports_producing_regulation=False,
+        uses_hard_off_lifecycle=True,
+        priority=10,
+        producing_priority=0,
+        current_control_target_w=0,
+    )
+    transition = compute_hard_off_lifecycle_transition(
+        device,
+        {
+            'low_pv_cycles': 15,
+            'hard_off_release_ready_cycles': 1,
+            'hard_off_active': True,
+        },
+        lifecycle_enabled=True,
+        requested_active=False,
+        pv_power_w=1900,
+        low_pv_threshold_w=1600,
+        activation_blocked=True,
+        hard_off_low_pv_cycles=15,
+        hard_off_release_cycles=2,
+    )
+    assert transition.hard_off_active is True
+    assert transition.hard_off_release_ready_cycles == 0
+    assert transition.recovery_condition is False
+
 
 @pytest.mark.unit
 def test_engine_primary_ev_feedback_protection_triggers_hard_off():
@@ -1890,13 +1948,14 @@ def test_engine_latched_hard_off_keeps_device_policy_authority_when_ev_is_not_pr
 
 
 @pytest.mark.unit
-def test_engine_hard_off_release_counters_progress_and_reset_independently_per_ev(project_root):
+def test_engine_hard_off_release_counters_follow_each_devices_pv_threshold(project_root):
     cfg = _core_cfg_with_extra_devices(
         project_root,
         extra_devices={'GARAGE_EV': _garage_ev_device_config()},
         value_overrides={
             **_garage_ev_value_overrides(),
             'input_number.garage_ev_max_power_w': 5000,
+            'input_number.garage_ev_low_pv_threshold_w': 2500,
         },
     )
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)

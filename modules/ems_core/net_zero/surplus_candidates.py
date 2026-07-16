@@ -25,6 +25,16 @@ def build_surplus_candidates(candidate_contexts=None):
                 activation_allowed=bool(candidate.get('activation_allowed', True)),
                 surplus_dispatch_mode=str(candidate.get('surplus_dispatch_mode') or ''),
                 threshold_source=str(candidate.get('threshold_source') or 'device_capabilities.max_absorb_w'),
+                releasable_power_w=(
+                    max(int(round(float(candidate.get('releasable_power_w', 0) or 0))), 0)
+                    if candidate.get('releasable_power_w') is not None
+                    else None
+                ),
+                incremental_surplus_threshold_w=(
+                    max(int(round(float(candidate.get('incremental_surplus_threshold_w', 0) or 0))), 0)
+                    if candidate.get('incremental_surplus_threshold_w') is not None
+                    else None
+                ),
             )
         )
     return tuple(targets)
@@ -48,6 +58,8 @@ def candidate_payload(targets):
                 'threshold_source': str(target.threshold_source or ''),
             }
         )
+        if target.releasable_power_w is not None:
+            payload[-1]['releasable_power_w'] = int(target.releasable_power_w)
         if target.incremental_surplus_threshold_w is not None:
             payload[-1]['incremental_surplus_threshold_w'] = int(target.incremental_surplus_threshold_w)
     return payload

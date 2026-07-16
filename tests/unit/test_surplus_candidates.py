@@ -158,3 +158,94 @@ def test_core_config_second_ev_enters_generic_candidate_context(project_root):
     assert by_id['EV_GARAGE']['threshold_w'] == 3680
     assert by_id['EV_GARAGE']['threshold_source'] == 'device_capabilities.max_absorb_w'
     assert by_id['EV_GARAGE']['surplus_dispatch_mode'] == 'max_absorb'
+
+
+@pytest.mark.unit
+def test_generic_builder_preserves_releasable_power_for_incremental_release():
+    targets = build_surplus_candidates(
+        (
+            _candidate(
+                'RELAY1',
+                threshold_w=2700,
+                surplus_dispatch_mode='fixed',
+                releasable_power_w=2700,
+            ),
+        )
+    )
+
+    assert targets[0].releasable_power_w == 2700
+
+
+@pytest.mark.unit
+def test_ev_min_hold_uses_incremental_headroom_for_activation_and_release(project_root):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    values = {
+        'input_number.ems_ev_min_power_w': 1840,
+        'input_number.ems_ev_max_power_w': 7400,
+        'input_number.ems_ev_current_step_a': 1,
+        'input_number.ems_ev_charger_phases': 1,
+        'input_number.ems_ev_voltage_v': 230,
+        'input_number.ems_surplus_ev_priority': 40,
+        'input_boolean.ems_ev_force_on': False,
+    }
+    cfg = build_core_config_from_grouped_reader(
+        grouped,
+        lambda entity_id, default: values.get(entity_id, default),
+    )
+
+    contexts = _generic_surplus_candidate_contexts(
+        cfg,
+        active_device_ids=(),
+        lifecycle_transitions_by_id={},
+        primary_consuming_device_id='HOME_BATTERY',
+        current_power_by_id={'EV_CHARGER': 1840},
+    )
+    ev = {item['device_id']: item for item in contexts}['EV_CHARGER']
+
+    assert ev['threshold_w'] == 5560
+    assert ev['incremental_surplus_threshold_w'] == 5560
+    assert ev['threshold_source'] == (
+        'device_capabilities.max_absorb_w-minus-min_absorb_w@ev_min_hold'
+    )
+
+    active_contexts = _generic_surplus_candidate_contexts(
+        cfg,
+        active_device_ids=('EV_CHARGER',),
+        lifecycle_transitions_by_id={},
+        primary_consuming_device_id='HOME_BATTERY',
+        current_power_by_id={'EV_CHARGER': 7400},
+    )
+    active_ev = {item['device_id']: item for item in active_contexts}['EV_CHARGER']
+
+    assert active_ev['threshold_w'] == 7400
+    assert active_ev['releasable_power_w'] == 5560
+
+
+@pytest.mark.unit
+def test_ev_inactive_without_min_hold_retains_absolute_max_activation_threshold(project_root):
+    grouped = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
+    values = {
+        'input_number.ems_ev_min_power_w': 1840,
+        'input_number.ems_ev_max_power_w': 7400,
+        'input_number.ems_ev_current_step_a': 1,
+        'input_number.ems_ev_charger_phases': 1,
+        'input_number.ems_ev_voltage_v': 230,
+        'input_number.ems_surplus_ev_priority': 40,
+        'input_boolean.ems_ev_force_on': False,
+    }
+    cfg = build_core_config_from_grouped_reader(
+        grouped,
+        lambda entity_id, default: values.get(entity_id, default),
+    )
+
+    contexts = _generic_surplus_candidate_contexts(
+        cfg,
+        active_device_ids=(),
+        lifecycle_transitions_by_id={},
+        primary_consuming_device_id='HOME_BATTERY',
+        current_power_by_id={'EV_CHARGER': 0},
+    )
+    ev = {item['device_id']: item for item in contexts}['EV_CHARGER']
+
+    assert ev['threshold_w'] == 7400
+    assert ev['threshold_source'] == 'device_capabilities.max_absorb_w'

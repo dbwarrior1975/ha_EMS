@@ -32,7 +32,7 @@ def test_05_recovery_and_reactivation(project_root):
     steps = [
         {
             'at_s': 224,
-            'note': 't224 recovered PV and moderate RPC reactivate RELAY1 while EV remains hard-off',
+            'note': 't224 recovered PV starts the EV release counter while moderate RPC independently activates RELAY1.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=11.0,
@@ -51,6 +51,7 @@ def test_05_recovery_and_reactivation(project_root):
                 'surplus_next_device_id': 'RELAY1',
                 'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
@@ -64,7 +65,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 238,
-            'note': 't238 RELAY1 activation is now visible at actuator level while EV remains hard-off',
+            'note': 't238 the second recovered-PV tick releases HARD_OFF even though RELAY1 is now active and RPC is below EV threshold.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=11.0,
@@ -80,13 +81,15 @@ def test_05_recovery_and_reactivation(project_root):
             'expect_policy': {
                 'surplus_freeze_until_ts': 239.0,
                 'surplus_explanation': 'Freeze active -> wait for measurements to settle',
-                'surplus_next_device_id': 'RELAY2',
-                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
-                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
                 'pv_power_kw': 1.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
+                'RELAY1': {'enabled': True},
             },
             'expect_writer_trace': {
                 'RELAY1': {
@@ -102,7 +105,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 240,
-            'note': 't240 recovered PV and RPC remain below the EV_CHARGER activation threshold',
+            'note': 't240 EV is available but remains off because RPC is below its activation threshold.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=15.0,
@@ -116,14 +119,15 @@ def test_05_recovery_and_reactivation(project_root):
                 at_s=240,
             ),
             'expect_policy': {
-                'surplus_explanation': 'Waiting for RELAY2; raw RPC below threshold',
-                'surplus_next_device_id': 'RELAY2',
-                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
-                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
+                'surplus_explanation': 'Waiting for EV_CHARGER; raw RPC below threshold',
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
@@ -132,7 +136,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 270,
-            'note': 't270 first consecutive recovery-ready cycle keeps EV hard-off',
+            'note': 't270 RPC now exceeds EV threshold, so allocator emits ACTIVATE while EV remains off until active state is applied.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=19.0,
@@ -146,15 +150,14 @@ def test_05_recovery_and_reactivation(project_root):
                 at_s=270,
             ),
             'expect_policy': {
-                'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY2 threshold 5.000 kW',
-                'surplus_next_device_id': 'RELAY2',
-                'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 2,
-                'device_lifecycle_states.EV_CHARGER.hard_off_active': True,
-                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 1,
+                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 5.060 kW',
+                'surplus_next_device_id': 'EV_CHARGER',
+                'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': False},
+                'EV_CHARGER': {'enabled': False, 'mode': 'restore_min'},
             },
             'expect_values': {
                 E['actuator_ev_enabled']: False,
@@ -163,7 +166,7 @@ def test_05_recovery_and_reactivation(project_root):
         },
         {
             'at_s': 300,
-            'note': 't300 second consecutive recovery-ready cycle releases hard-off and resumes EV activation',
+            'note': 't300 active state is visible, EV runs at its surplus target, and the next relay can be considered independently.',
             'set': runtime_inputs_for_net_zero_intent(
                 E,
                 rpnz_w=19.0,
@@ -177,15 +180,15 @@ def test_05_recovery_and_reactivation(project_root):
                 at_s=300,
             ),
             'expect_policy': {
-                'surplus_explanation': 'Raw RPC 7.000 kW >= EV_CHARGER threshold 6.440 kW',
-                'surplus_next_device_id': 'EV_CHARGER',
+                'surplus_explanation': 'Raw RPC 7.000 kW >= RELAY2 threshold 5.000 kW',
+                'surplus_next_device_id': 'RELAY2',
                 'device_lifecycle_states.EV_CHARGER.low_pv_cycles': 0,
                 'device_lifecycle_states.EV_CHARGER.hard_off_active': False,
-                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 2,
+                'device_lifecycle_states.EV_CHARGER.hard_off_release_ready_cycles': 0,
                 'pv_power_kw': 5.9,
             },
             'expect_device_policies': {
-                'EV_CHARGER': {'enabled': True},
+                'EV_CHARGER': {'enabled': True, 'target_w': 6440},
             },
             'expect_writer_trace': {
                 'EV_CHARGER': {

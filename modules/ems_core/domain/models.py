@@ -426,6 +426,7 @@ class SurplusDeviceTarget:
     activation_allowed: bool = True
     surplus_dispatch_mode: str = ''
     threshold_source: str = ''
+    releasable_power_w: Optional[int] = None
     incremental_surplus_threshold_w: Optional[int] = None
 
 
@@ -436,6 +437,7 @@ class SurplusDispatchInput:
     rpc_kw: float
     rpnz_w: float
     targets: tuple[SurplusDeviceTarget, ...]
+    active_device_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -445,6 +447,11 @@ class SurplusDispatchDecision:
     clear_all: bool = False
     freeze_until_ts: Optional[float] = None
     explanation: str = ''
+    release_mode: str = ''
+    release_power_w: int = 0
+    release_margin_w: int = 0
+    release_threshold_w: int = 0
+    excess_consumption_w: int = 0
 
 
 @dataclass

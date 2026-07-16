@@ -1,3 +1,6 @@
+# BETA EXAMPLE: replace every sensor/number/switch entity with your own Home Assistant entity.
+# The generic ems_* entity IDs below are placeholders, not automatically created entities.
+
 template:
   - sensor:
       # ============================================================
@@ -26,17 +29,17 @@ template:
                 'devices': {
                   'HOME_BATTERY': {
                     'target_w':
-                      'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                      'number.ems_home_battery_target_w'
                   },
                   'EV_CHARGER': {
-                    'enabled': 'switch.charger_control',
-                    'current_a': 'number.charger_current_level'
+                    'enabled': 'switch.ems_ev_charger_enabled',
+                    'current_a': 'number.ems_ev_charger_current_a'
                   },
                   'RELAY1': {
-                    'enabled': 'switch.relay_1_2'
+                    'enabled': 'switch.ems_relay1_enabled'
                   },
                   'RELAY2': {
-                    'enabled': 'switch.relay_2_2'
+                    'enabled': 'switch.ems_relay2_enabled'
                   }
                 }
               }
@@ -456,19 +459,19 @@ template:
         default_entity_id: sensor.ems_measurements_runtime
         unique_id: ems_measurements_runtime
   
-        state: "{{ states('sensor.average_active_power_2') }}"
+        state: "{{ states('sensor.ems_grid_power_w') }}"
   
         attributes:
           schema_version: "{{ 5 }}"
   
           grid_power_w: >-
             {%- set raw =
-              states('sensor.average_active_power_2')
+              states('sensor.ems_grid_power_w')
             -%}
   
             {%- set unit =
               state_attr(
-                'sensor.average_active_power_2',
+                'sensor.ems_grid_power_w',
                 'unit_of_measurement'
               )
               | default('', true)
@@ -478,7 +481,7 @@ template:
             {{
               (raw | float) * 1000
               if (
-                has_value('sensor.average_active_power_2')
+                has_value('sensor.ems_grid_power_w')
                 and unit == 'kw'
               )
               else raw
@@ -491,12 +494,12 @@ template:
   
           pv_power_w: >-
             {%- set raw =
-              states('sensor.pv_instant_power_2')
+              states('sensor.ems_pv_power_w')
             -%}
   
             {%- set unit =
               state_attr(
-                'sensor.pv_instant_power_2',
+                'sensor.ems_pv_power_w',
                 'unit_of_measurement'
               )
               | default('', true)
@@ -506,7 +509,7 @@ template:
             {{
               (raw | float) * 1000
               if (
-                has_value('sensor.pv_instant_power_2')
+                has_value('sensor.ems_pv_power_w')
                 and unit == 'kw'
               )
               else raw
@@ -514,18 +517,18 @@ template:
   
           batteries: >-
             {%- set heartbeat_entity =
-              states.sensor.victron_mqtt_b827eb48c929_battery_1_battery_power
+              states.sensor.ems_home_battery_power_w
             -%}
 
             {%- set target_raw =
               states(
-                'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                'number.ems_home_battery_target_w'
               )
             -%}
 
             {%- set target_unit =
               state_attr(
-                'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point',
+                'number.ems_home_battery_target_w',
                 'unit_of_measurement'
               )
               | default('', true)
@@ -537,17 +540,17 @@ template:
                 'HOME_BATTERY': {
                   'soc':
                     states(
-                      'sensor.victron_mqtt_b827eb48c929_system_0_system_dc_battery_soc'
+                      'sensor.ems_home_battery_soc'
                     ),
 
                   'min_cell_voltage_v':
                     states(
-                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_min_cell_voltage'
+                      'sensor.ems_home_battery_min_cell_voltage_v'
                     ),
 
                   'heartbeat':
                     states(
-                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
+                      'sensor.ems_home_battery_power_w'
                     ),
 
                   'heartbeat_age_s': (
@@ -559,7 +562,7 @@ template:
                   ) if (
                     heartbeat_entity is not none
                     and has_value(
-                      'sensor.victron_mqtt_b827eb48c929_battery_1_battery_power'
+                      'sensor.ems_home_battery_power_w'
                     )
                   ) else 999999,
 
@@ -567,7 +570,7 @@ template:
                     (target_raw | float) * 1000
                   ) if (
                     has_value(
-                      'number.victron_mqtt_b827eb48c929_system_0_system_ac_power_set_point'
+                      'number.ems_home_battery_target_w'
                     )
                     and target_unit == 'kw'
                   ) else target_raw
@@ -582,21 +585,21 @@ template:
                   'enabled':
                     true
                     if is_state(
-                      'switch.charger_control',
+                      'switch.ems_ev_charger_enabled',
                       'on'
                     )
                     else false
                     if is_state(
-                      'switch.charger_control',
+                      'switch.ems_ev_charger_enabled',
                       'off'
                     )
                     else states(
-                      'switch.charger_control'
+                      'switch.ems_ev_charger_enabled'
                     ),
   
                   'current_a':
                     states(
-                      'number.charger_current_level'
+                      'number.ems_ev_charger_current_a'
                     )
                 }
               }
@@ -609,16 +612,16 @@ template:
                   'enabled':
                     true
                     if is_state(
-                      'switch.relay_1_2',
+                      'switch.ems_relay1_enabled',
                       'on'
                     )
                     else false
                     if is_state(
-                      'switch.relay_1_2',
+                      'switch.ems_relay1_enabled',
                       'off'
                     )
                     else states(
-                      'switch.relay_1_2'
+                      'switch.ems_relay1_enabled'
                     )
                 },
 
@@ -626,16 +629,16 @@ template:
                   'enabled':
                     true
                     if is_state(
-                      'switch.relay_2_2',
+                      'switch.ems_relay2_enabled',
                       'on'
                     )
                     else false
                     if is_state(
-                      'switch.relay_2_2',
+                      'switch.ems_relay2_enabled',
                       'off'
                     )
                     else states(
-                      'switch.relay_2_2'
+                      'switch.ems_relay2_enabled'
                     )
                 }
               }
@@ -684,8 +687,8 @@ template:
             }}
   
           haeo: >-
-            {%- set battery_fresh_entity = states.sensor.battery_active_power -%}
-            {%- set ev_fresh_entity = states.sensor.ev_akut_active_power -%}
+            {%- set battery_fresh_entity = states.sensor.ems_haeo_battery_fresh_source -%}
+            {%- set ev_fresh_entity = states.sensor.ems_haeo_ev_fresh_source -%}
             {%- set battery_state_raw = states('sensor.haeo_battery_power_active') -%}
             {%- set ev_state_raw = states('sensor.haeo_ev_battery_power_active') -%}
             {%- set battery_state_unit = state_attr('sensor.haeo_battery_power_active', 'unit_of_measurement') | default('', true) | lower -%}
@@ -706,7 +709,7 @@ template:
                       - as_timestamp(battery_fresh_entity.last_updated, 0)
                     ) if (
                       battery_fresh_entity is not none
-                      and has_value('sensor.battery_active_power')
+                      and has_value('sensor.ems_haeo_battery_fresh_source')
                     ) else 999999
                   },
                   'EV_CHARGER': {
@@ -721,7 +724,7 @@ template:
                       - as_timestamp(ev_fresh_entity.last_updated, 0)
                     ) if (
                       ev_fresh_entity is not none
-                      and has_value('sensor.ev_akut_active_power')
+                      and has_value('sensor.ems_haeo_ev_fresh_source')
                     ) else 999999
                   }
                 }
