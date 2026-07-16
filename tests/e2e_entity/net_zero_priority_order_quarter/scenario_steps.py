@@ -11,7 +11,7 @@ def build_harness(project_root):
 
     h.set_entities({
         E['surplus_freeze_s']: 15,
-        E['primary_consuming_device_id']: 'HOME_BATTERY',
+        E['primary_consuming_device_selector']: 'HOME_BATTERY',
         E['devices']['EV_CHARGER']['priority']: 2,
         E['actuator_ev_enabled']: False,
         E['actuator_ev_current_a']: 6,

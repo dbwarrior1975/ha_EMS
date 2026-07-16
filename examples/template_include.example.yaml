@@ -59,11 +59,11 @@
             states.input_number.ems_nz_battery_floor_default_w,
             states.input_number.ems_nz_battery_floor_ev_active_w,
 
-            states.input_select.ems_adjustable_primary_load,
+            states.input_select.ems_primary_consuming_device,
 
             states.input_number.ems_max_battery_charge_w,
             states.input_number.ems_max_battery_discharge_w,
-            states.input_number.ems_adjustable_surplus_load_priority,
+            states.input_number.ems_home_battery_surplus_priority,
             states.input_number.ems_battery_protect_soc,
             states.input_number.ems_battery_protect_soc_recovery_margin,
             states.input_number.ems_battery_protect_min_cell_voltage_v,
@@ -145,11 +145,11 @@
                 states('input_number.ems_nz_battery_floor_ev_active_w'),
 
               'primary_consuming_device_ids': (
-                ([states('input_select.ems_adjustable_primary_load')]
-                  if states('input_select.ems_adjustable_primary_load') in ['HOME_BATTERY', 'EV_CHARGER']
+                ([states('input_select.ems_primary_consuming_device')]
+                  if states('input_select.ems_primary_consuming_device') in ['HOME_BATTERY', 'EV_CHARGER']
                   else [])
                 + (['HOME_BATTERY']
-                  if states('input_select.ems_adjustable_primary_load') != 'HOME_BATTERY'
+                  if states('input_select.ems_primary_consuming_device') != 'HOME_BATTERY'
                   else [])
               ),
 
@@ -219,7 +219,7 @@
                   # device-owned surplus priority, not an adjustable-role priority.
                   'priority':
                     states(
-                      'input_number.ems_adjustable_surplus_load_priority'
+                      'input_number.ems_home_battery_surplus_priority'
                     ),
 
                   'producing_priority': 100,

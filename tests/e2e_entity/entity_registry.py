@@ -69,7 +69,7 @@ def build_scenario_entity_registry(config):
         'haeo_stale_timeout_s': global_cfg.get('haeo_stale_timeout_s'),
         'nz_battery_floor_default_w': global_cfg.get('nz_battery_floor_default_w'),
         'nz_battery_floor_ev_active_w': global_cfg.get('nz_battery_floor_ev_active_w'),
-        'primary_consuming_device_id': primary_consuming_device_id_entity,
+        'primary_consuming_device_selector': primary_consuming_device_id_entity,
         'primary_consuming_device_ids': tuple(primary_consuming_device_ids),
         'max_solar_charge_w': battery_caps.get('max_absorb_w'),
         'max_battery_discharge_w': battery_caps.get('max_produce_w'),

@@ -212,7 +212,7 @@ def test_writer_ev_without_device_policy_skips_without_writing_even_without_devi
 
     assert result['written'] is False
     assert result['reason'] == 'missing_device_policy'
-    assert result['policy_source'] == 'missing_device_policy'
+    assert result['device_policy_contract'] == 'missing_device_policy'
     assert state[ENT['actuator_ev_enabled']] is False
     assert state[ENT['actuator_ev_current_a']] == 4
 
@@ -252,7 +252,7 @@ def test_writer_manual_safe_clamps_to_policy_target(project_root):
     result = mod['_write_battery_actuator']('HOME_BATTERY')
     assert result['written'] is True
     assert result['reason'] == 'manual_safe_clamp'
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert state[ENT['actuator_battery_setpoint_w']] == 0
 
 
@@ -267,7 +267,7 @@ def test_writer_ev_without_device_policy_skips_without_writing(project_root):
 
     assert result['written'] is False
     assert result['reason'] == 'missing_device_policy'
-    assert result['policy_source'] == 'missing_device_policy'
+    assert result['device_policy_contract'] == 'missing_device_policy'
     assert state[ENT['actuator_ev_enabled']] is False
     assert state[ENT['actuator_ev_current_a']] == 4
 
@@ -297,7 +297,7 @@ def test_writer_battery_can_read_device_policy_target(project_root):
     result = mod['_write_battery_actuator']('HOME_BATTERY')
 
     assert result['written'] is True
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert result['policy_target_w'] == 500
     assert state[ENT['actuator_battery_setpoint_w']] == 500
 
@@ -393,7 +393,7 @@ def test_writer_ev_can_convert_device_policy_target_w_to_current(project_root):
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert result['target_current_a'] == 16
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 16
@@ -455,7 +455,7 @@ def test_writer_ev_uses_target_w_even_if_policy_payload_has_only_watt_contract(p
     result = mod['_write_ev_actuator']()
 
     assert result['written'] is True
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert result['target_current_a'] == 24
     assert state[ENT['actuator_ev_current_a']] == 24
 
@@ -513,7 +513,7 @@ def test_writer_relay_device_policy_can_turn_off_actuator(project_root):
     result = mod['_write_relay_actuator']('relay1', device_id='RELAY1')
 
     assert result['written'] is True
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert state[ENT['actuator_relay1']] is False
 
 
@@ -565,7 +565,7 @@ def test_writer_relay_device_policy_skip_preserves_actuator_state(project_root):
 
     assert result['written'] is False
     assert result['reason'] == 'policy_skip'
-    assert result['policy_source'] == 'canonical'
+    assert result['device_policy_contract'] == 'canonical'
     assert state[ENT['actuator_relay1']] is True
 
 
@@ -619,10 +619,10 @@ def test_writer_loop_uses_device_policies_across_all_devices(project_root):
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
-    assert result['batteries']['HOME_BATTERY']['policy_source'] == 'canonical'
-    assert result['devices']['EV_CHARGER']['policy_source'] == 'canonical'
-    assert result['devices']['RELAY1']['policy_source'] == 'canonical'
-    assert result['devices']['RELAY2']['policy_source'] == 'canonical'
+    assert result['batteries']['HOME_BATTERY']['device_policy_contract'] == 'canonical'
+    assert result['devices']['EV_CHARGER']['device_policy_contract'] == 'canonical'
+    assert result['devices']['RELAY1']['device_policy_contract'] == 'canonical'
+    assert result['devices']['RELAY2']['device_policy_contract'] == 'canonical'
     assert state[ENT['actuator_battery_setpoint_w']] == 500
     assert state[ENT['actuator_ev_enabled']] is True
     assert state[ENT['actuator_ev_current_a']] == 12
@@ -697,7 +697,7 @@ def test_writer_loop_writes_third_relay_from_device_registry(project_root):
     assert result['devices']['RELAY3']['written'] is True
     assert result['devices']['RELAY3']['action'] == 'turn_on'
     assert state['switch.relay_3_2'] is True
-    assert writer_trace['attrs']['devices']['RELAY3']['policy_source'] == 'canonical'
+    assert writer_trace['attrs']['devices']['RELAY3']['device_policy_contract'] == 'canonical'
 
 
 @pytest.mark.unit
@@ -796,15 +796,15 @@ def test_writer_loop_targets_selected_second_ev_and_keeps_inactive_ev_off(projec
     result = mod['ems_actuator_writers_loop']()
     writer_trace = state['sensor.ems_actuator_writer_trace']
 
-    assert result['devices']['EV_CHARGER']['policy_source'] == 'canonical'
-    assert result['devices']['GARAGE_EV']['policy_source'] == 'canonical'
+    assert result['devices']['EV_CHARGER']['device_policy_contract'] == 'canonical'
+    assert result['devices']['GARAGE_EV']['device_policy_contract'] == 'canonical'
     assert result['devices']['GARAGE_EV']['action'] == 'enable_and_set_current'
     assert result['devices']['GARAGE_EV']['target_current_a'] == 16
     assert state[ENT['actuator_ev_enabled']] is False
     assert state[ENT['actuator_ev_current_a']] == 6
     assert state['switch.garage_ev_enabled'] is True
     assert state['number.garage_ev_current_a'] == 16
-    assert writer_trace['attrs']['devices']['EV_CHARGER']['policy_source'] == 'canonical'
+    assert writer_trace['attrs']['devices']['EV_CHARGER']['device_policy_contract'] == 'canonical'
     assert writer_trace['attrs']['devices']['GARAGE_EV']['target_current_a'] == 16
 
     
@@ -1167,7 +1167,7 @@ def test_writer_routes_v3_battery_owner_by_generic_device_id(project_root):
         devices={battery_id: battery},
         device_by_id=lambda device_id: battery if device_id == battery_id else None,
         device_ids_by_kind=lambda kind: (battery_id,) if kind == 'BATTERY' else (),
-        v3_battery_device_id=lambda: battery_id,
+        canonical_battery_device_id=lambda: battery_id,
     )
     mod['read_core_config'] = lambda *args, **kwargs: cfg
     mod['_load_core_config'] = lambda *args, **kwargs: cfg

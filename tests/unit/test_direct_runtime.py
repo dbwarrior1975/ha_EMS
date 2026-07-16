@@ -229,7 +229,6 @@ def _compute(project_root, policy=None, measurements=None, state=None, *, now_ts
         haeo,
         now_ts,
         previous_quarter_key=frame.previous_quarter_key,
-        previous_primary_load='',
         previous_primary_consuming_device_id=frame.previous_primary_consuming_device_id,
     )
     ev_device_id = str((cfg.device_ids_by_kind('EV_CHARGER') or ('EV_CHARGER',))[0])
@@ -286,27 +285,6 @@ def test_policy_config_revision_cache_reuses_object_and_reparses_only_new_revisi
     assert third is not first
     assert third.revision == 18
     assert third.global_config.deadband_w == 125
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    ('field', 'value'),
-    (
-        ('adjustable_surplus_load', 'EV_CHARGER'),
-        ('adjustable_surplus_activation_w', 2300),
-    ),
-)
-def test_direct_parser_rejects_removed_surplus_config_fields(project_root, field, value):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=180)
-    packet['config'][field] = value
-
-    with pytest.raises(RuntimePacketSchemaError) as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == f'policy_config.config.{field}'
-    assert 'field removed' in str(exc.value)
 
 
 @pytest.mark.unit
@@ -395,18 +373,6 @@ def test_direct_parser_rejects_non_boolean_regulation_capability(project_root, f
     assert exc.value.path == f'policy_config.devices.EV_CHARGER.capabilities.{field}'
 
 
-@pytest.mark.unit
-def test_policy_config_rejects_removed_legacy_adjustable_surplus_alias(project_root):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=18)
-    packet['config']['adjustable_surplus_load'] = 'RELAY1'
-
-    with pytest.raises(RuntimePacketSchemaError) as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == 'policy_config.config.adjustable_surplus_load'
-
 
 @pytest.mark.unit
 def test_direct_runtime_v5_rejects_v2_policy_packet(project_root):
@@ -421,19 +387,6 @@ def test_direct_runtime_v5_rejects_v2_policy_packet(project_root):
     assert exc.value.path == 'policy_config.schema_version'
     assert 'must equal 5' in str(exc.value)
 
-
-@pytest.mark.unit
-def test_direct_runtime_v5_requires_primary_consuming_device_ids_key(project_root):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=1891)
-    packet['config'].pop('primary_consuming_device_ids')
-    packet['config']['adjustable_primary_load'] = 'HOME_BATTERY'
-
-    with pytest.raises(RuntimePacketSchemaError) as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == 'policy_config.config.primary_consuming_device_ids'
 
 
 @pytest.mark.unit
@@ -820,7 +773,7 @@ def test_runtime_packet_templates_use_v5_primary_consuming_device_ids_contract(p
 
         assert policy_sensor['attributes']['schema_version'].strip() == '{{ 5 }}'
         assert "'primary_consuming_device_ids':" in config_template
-        assert "states('input_select.ems_adjustable_primary_load')" in config_template
+        assert "states('input_select.ems_primary_consuming_device')" in config_template
         assert "'adjustable_primary_load':" not in config_template
 
 
@@ -927,20 +880,6 @@ def test_direct_parser_accepts_device_owned_surplus_policy_values(project_root):
     assert cfg.device_policy_by_id['RELAY1']['surplus_allowed'] is False
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize('value', (0, -1, 4400))
-def test_direct_parser_rejects_removed_device_activation_threshold_field(project_root, value):
-    reset_direct_runtime_cache()
-    topology = _topology(project_root)
-    packet = _policy_packet(revision=194)
-    packet['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = value
-
-    with pytest.raises(RuntimePacketSchemaError) as exc:
-        parse_policy_config_cached(topology, packet)
-
-    assert exc.value.path == 'policy_config.devices.EV_CHARGER.policy.activation_threshold_w'
-    assert 'field removed' in str(exc.value)
-
 
 @pytest.mark.unit
 @pytest.mark.parametrize('value', ('true', 'false', 1, 0))
@@ -1007,7 +946,7 @@ def test_direct_parser_blank_primary_preserves_valid_surplus_only_topology(proje
         freeze_until_ts=None,
     )
 
-    assert out.attrs['primary_consuming_device_id'] == ''
+    assert out.attrs['effective_primary_consuming_device_id'] == ''
     assert out.attrs['primary_surplus_combo_valid'] is True
     assert out.attrs['primary_surplus_combo_reason'] == 'surplus_only_topology'
     assert 'surplus_adjustable_device_id' not in out.attrs

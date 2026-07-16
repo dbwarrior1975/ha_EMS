@@ -506,7 +506,6 @@ def run_policy_loop(now_ts, cfg, entities, trigger_reason, timing_context=None):
         haeo,
         now_ts,
         previous_quarter_key=previous_quarter_key,
-        previous_primary_load='',
         previous_primary_consuming_device_id=previous_primary_consuming_device_id,
     )
     timing['policy_engine_haeo_plan_compute_ms'] = _elapsed_ms(phase_started_ts, time.time())

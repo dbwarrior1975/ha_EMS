@@ -6,7 +6,7 @@ _FORBIDDEN_STEP_KEYS = (
     'expect_policy_values',
 )
 _FORBIDDEN_POLICY_FIELDS = (
-    'policy_source',
+    'device_policy_contract',
     'ev_policy_mode',
 )
 _FORBIDDEN_DISPATCH_FIELDS = (
@@ -20,7 +20,7 @@ _FORBIDDEN_VALUE_ENTITY_IDS = (
     'input_boolean.ems_surplus_relay2_active',
 )
 _FORBIDDEN_WRITER_FIELDS = (
-    'policy_source',
+    'device_policy_contract',
 )
 _FORBIDDEN_WRITER_BRANCHES = (
     'ev',
@@ -113,7 +113,7 @@ def _assert_no_deprecated_e2e_fields(idx, step):
         for field in expected_fields:
             assert field not in _FORBIDDEN_WRITER_FIELDS, (
                 f"step={idx} note={note} forbidden_writer_field={branch}.{field} "
-                f"writer policy_source is not allowed in e2e asserts"
+                f"writer device_policy_contract is not allowed in e2e asserts"
             )
 
 

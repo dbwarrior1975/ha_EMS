@@ -23,7 +23,7 @@ def test_battery_device_mapping_uses_current_limits_and_runtime_state():
         max_solar_charge_w=4200,
         max_battery_discharge_w=5100,
         deadband_w=25,
-        adjustable_surplus_load_priority=7,
+        home_battery_surplus_priority=7,
         battery_heartbeat_timeout_s=120,
     )
     m = make_m(
@@ -145,7 +145,7 @@ def test_ev_device_states_use_each_ev_adapter_for_control_target_power(project_r
         'input_number.ems_max_battery_charge_w': 4300,
         'input_number.ems_max_battery_discharge_w': 5100,
         'input_number.ems_deadband_w': 25,
-        'input_number.ems_adjustable_surplus_load_priority': 7,
+        'input_number.ems_home_battery_surplus_priority': 7,
         'input_number.ev_a_min_power_w': 1380,
         'input_number.ev_a_max_power_w': 3680,
         'input_number.ev_a_power_step_w': 230,
@@ -258,7 +258,7 @@ def test_core_config_device_mapping_uses_yaml_capabilities_directly(project_root
         'input_number.ems_max_battery_charge_w': 4300,
         'input_number.ems_max_battery_discharge_w': 5100,
         'input_number.ems_deadband_w': 25,
-        'input_number.ems_adjustable_surplus_load_priority': 7,
+        'input_number.ems_home_battery_surplus_priority': 7,
         'input_number.ems_ev_min_power_w': 1380,
         'input_number.ems_ev_max_power_w': 6440,
         'input_number.ems_ev_power_step_w': 920,

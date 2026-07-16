@@ -1,4 +1,17 @@
 # Changelog
+## Beta DEV cleanup — 2026-07-16
+### Canonical diagnostics, helper terminology, and legacy-remnant cleanup
+- Removed HAEO `primary_load` compatibility field; HAEO plans now expose only `primary_consuming_device_id`.
+- Removed public diagnostics alias `primary_consuming_device_id`; use `effective_primary_consuming_device_id` for the selected runtime primary.
+- Renamed writer trace key `policy_source` to `device_policy_contract`.
+- Renamed internal EV policy staging map `ev_policies_by_id` to `ev_policy_specs_by_id` and active EV mode variables from `ev_policy_mode` to `ev_device_mode`.
+- Renamed active helper usage from `input_select.ems_adjustable_primary_load` to `input_select.ems_primary_consuming_device`.
+- Renamed active home-battery surplus priority helper usage from `input_number.ems_adjustable_surplus_load_priority` to `input_number.ems_home_battery_surplus_priority`.
+- Renamed E2E/test harness selector key from `primary_consuming_device_id` to `primary_consuming_device_selector`.
+- Added `docs/dev/legacy_removed_fields.md` and `scripts/audit_legacy_remnants.py` for DEV-stage cleanup tracking.
+- Included EV min-hold incremental SURPLUS threshold semantics: non-active EV at `min_absorb_w` activates on `max_absorb_w - min_absorb_w`; release uses the same incremental step.
+- Renamed E2E scenario directories and imports from `*_adjustable_load` / `*_ev_adjustable` to `*_surplus_load` / `*_ev_surplus`.
+- Added `pytest.ini` marker declarations for `unit`, `contract`, `smoke`, and `scenario` to remove marker warnings.
 
 ## Beta 1.2 — 2026-07-13
 

@@ -95,11 +95,11 @@ def _core_cfg_with_capability_overrides(project_root, value_overrides=None, **de
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_select.ems_primary_consuming_device': 'HOME_BATTERY',
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_battery_protect_soc': 2,
         'input_number.ems_battery_protect_soc_recovery_margin': 1,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
@@ -143,11 +143,11 @@ def _core_cfg_with_extra_devices(
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_select.ems_primary_consuming_device': 'HOME_BATTERY',
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_battery_protect_soc': 2,
         'input_number.ems_battery_protect_soc_recovery_margin': 1,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
@@ -194,11 +194,11 @@ def _core_cfg_without_ev_devices(
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_primary_load': '',
+        'input_select.ems_primary_consuming_device': '',
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_battery_protect_soc': 2,
         'input_number.ems_battery_protect_soc_recovery_margin': 1,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
@@ -232,11 +232,11 @@ def _core_cfg_view_with_extra_devices(
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_select.ems_primary_consuming_device': 'HOME_BATTERY',
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_battery_protect_soc': 2,
         'input_number.ems_battery_protect_soc_recovery_margin': 1,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
@@ -299,7 +299,7 @@ def _garage_ev_device_config():
 
 def _garage_ev_value_overrides(*, primary_consuming_device_id='HOME_BATTERY'):
     return {
-        'input_select.ems_adjustable_primary_load': primary_consuming_device_id,
+        'input_select.ems_primary_consuming_device': primary_consuming_device_id,
         'input_number.garage_ev_min_power_w': 1380,
         'input_number.garage_ev_max_power_w': 3680,
         'input_number.garage_ev_power_step_w': 460,
@@ -465,7 +465,7 @@ def test_engine_primary_ev_context_uses_normalized_power_step_without_partial_cf
     )
 
     policy = _device_policy(out, 'GARAGE_EV')
-    assert out.attrs['primary_consuming_device_id'] == 'GARAGE_EV'
+    assert out.attrs['effective_primary_consuming_device_id'] == 'GARAGE_EV'
     adapter = cfg.devices['GARAGE_EV'].adapter
     assert adapter.current_step_a * adapter.phases * adapter.voltage_v == 230
     assert policy.target_w == 2380
@@ -597,7 +597,7 @@ def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         primary_consuming_device_id='HOME_BATTERY',
-        adjustable_surplus_load_priority=2,
+        home_battery_surplus_priority=2,
         ev_priority=3,
     )
     out = compute_net_zero_engine_outputs(
@@ -609,14 +609,14 @@ def test_engine_uses_device_owned_priority_without_legacy_role_scalar():
 
     target = next(item for item in out.attrs['surplus_candidates'] if item['device_id'] == 'EV_CHARGER')
     assert target['priority'] == 3
-    assert 'adjustable_surplus_load_priority' not in out.attrs
+    assert 'home_battery_surplus_priority' not in out.attrs
 
 @pytest.mark.unit
 def test_engine_haeo_role_switch_uses_device_owned_candidate_priority():
     profiles = make_profiles(control=ControlProfile.AUTOMATIC, goal=GoalProfile.NET_ZERO)
     cfg = make_cfg(
         primary_consuming_device_id='HOME_BATTERY',
-        adjustable_surplus_load_priority=2,
+        home_battery_surplus_priority=2,
         ev_priority=3,
         battery_surplus_allowed=True,
     )
@@ -1875,7 +1875,7 @@ def test_engine_exact_primary_ev_device_id_does_not_fall_back_to_first_ev(projec
     )
 
     assert out.attrs['ev_device_ids'] == ('GARAGE_EV', 'EV_CHARGER')
-    assert out.attrs['primary_consuming_device_id'] == 'EV_CHARGER'
+    assert out.attrs['effective_primary_consuming_device_id'] == 'EV_CHARGER'
 
 
 @pytest.mark.unit
@@ -1902,8 +1902,8 @@ def test_engine_primary_ev_owns_primary_target_while_other_ev_remains_surplus_ca
     )
 
     policies = {policy.device_id: policy for policy in out.device_policies}
-    assert out.attrs['primary_consuming_device_id'] == 'EV_CHARGER'
-    assert out.attrs['primary_consuming_device_id'] == 'EV_CHARGER'
+    assert out.attrs['effective_primary_consuming_device_id'] == 'EV_CHARGER'
+    assert out.attrs['effective_primary_consuming_device_id'] == 'EV_CHARGER'
     assert 'surplus_preferred_surplus_device_id' not in out.attrs
     assert 'EV_CHARGER' not in out.attrs['surplus_candidate_device_ids']
     assert 'GARAGE_EV' in out.attrs['surplus_candidate_device_ids']

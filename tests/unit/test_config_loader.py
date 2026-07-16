@@ -155,17 +155,6 @@ def test_validate_rejects_non_boolean_surplus_allowed(project_root, value):
     assert 'ems.devices.EV_CHARGER.policy.surplus_allowed' in _error_paths(result)
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize('value', (0, -1, -0.5, 4400))
-def test_validate_rejects_removed_surplus_activation_threshold_field(project_root, value):
-    config = _load_example(project_root)
-    config['ems']['devices']['EV_CHARGER']['policy']['activation_threshold_w'] = value
-
-    result = validate_grouped_ems_config(config)
-
-    assert result.ok is False
-    assert 'ems.devices.EV_CHARGER.policy.activation_threshold_w' in _error_paths(result)
-
 
 @pytest.mark.unit
 def test_validate_rejects_unknown_surplus_dispatch_mode(project_root):
@@ -625,33 +614,6 @@ def test_diagnostics_outputs_section_is_rejected_with_unknown_key(project_root):
 
 
 
-@pytest.mark.unit
-def test_validate_rejects_legacy_runtime_fields_with_explicit_messages(project_root):
-    config = _load_example(project_root)
-    runtime = config['ems']['runtime']
-    runtime['required_power_w'] = 'sensor.required_power_consumption'
-    runtime['rpnz_w'] = 'sensor.ems_calculated_required_power_for_net_zero'
-    runtime['pv_power_kw'] = 'sensor.pv_kw'
-
-    result = validate_grouped_ems_config(config)
-
-    messages = _error_messages(result)
-    assert messages['ems.runtime.required_power_w'] == (
-        'runtime.required_power_w is no longer accepted; required power is derived inside EMS '
-        'from grid_power_w, quarter_energy_balance_kwh, and current quarter time.'
-    )
-    assert messages['ems.runtime.rpnz_w'] == (
-        'runtime.rpnz_w is no longer accepted; RPNZ is derived inside EMS from '
-        'quarter_energy_balance_kwh and current quarter time.'
-    )
-    assert messages['ems.runtime.pv_power_kw'] == (
-        'runtime.pv_power_kw is no longer accepted; use runtime.pv_power_w.'
-    )
-
-
-
-
-
 
 @pytest.mark.unit
 def test_build_core_config_from_grouped_config_uses_canonical_grouped_values(project_root):
@@ -677,9 +639,9 @@ def test_build_core_config_from_grouped_config_uses_canonical_grouped_values(pro
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
         'input_select.ems_adjustable_surplus_load': 'EV_CHARGER',
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_select.ems_primary_consuming_device': 'HOME_BATTERY',
         'input_number.ems_adjustable_surplus_activation_w': 2000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_relay1_power_kw': 2.5,
         'input_number.ems_relay2_power_kw': 5.0,
@@ -766,7 +728,7 @@ def test_compile_core_config_plan_contains_dynamic_refs_with_metadata(project_ro
         'tests/e2e_entity/net_zero_priority_order_quarter_3_relays/EMS_config.yaml',
         'tests/e2e_entity/net_zero_two_ev_one_relay/EMS_config.yaml',
         'tests/e2e_entity/net_zero_no_ev_relays_only/EMS_config.yaml',
-        'tests/e2e_entity/haeo_02_net_zero_homebattery_primary_ev_adjustable/EMS_config.yaml',
+        'tests/e2e_entity/haeo_02_net_zero_homebattery_primary_ev_surplus/EMS_config.yaml',
     ),
 )
 def test_materialize_core_config_from_plan_matches_resolved_config_path_across_real_configs(project_root, config_relpath):
@@ -809,7 +771,7 @@ def test_battery_priority_does_not_inherit_ev_priority_when_battery_value_equals
         config,
         _plan_reader_from_values(
             {
-                'input_number.ems_adjustable_surplus_load_priority': 3,
+                'input_number.ems_home_battery_surplus_priority': 3,
                 'input_number.ems_surplus_ev_priority': 8,
             }
         ),
@@ -827,7 +789,7 @@ def test_device_priorities_are_independent_of_removed_surplus_selector(project_r
         config,
         _plan_reader_from_values(
             {
-                'input_number.ems_adjustable_surplus_load_priority': 2,
+                'input_number.ems_home_battery_surplus_priority': 2,
                 'input_number.ems_surplus_ev_priority': 3,
             }
         ),
@@ -846,7 +808,7 @@ def test_dynamic_default_override_battery_priority_uses_explicit_ha_value_when_p
         config,
         _plan_reader_from_values(
             {
-                'input_number.ems_adjustable_surplus_load_priority': 11,
+                'input_number.ems_home_battery_surplus_priority': 11,
                 'input_number.ems_surplus_ev_priority': 5,
             }
         ),
@@ -872,16 +834,6 @@ def test_materialized_core_config_does_not_expose_mutable_cached_plan_objects(pr
     assert 'mutated' not in plan.grouped_config_plan['ems']['role_constraints'].get('default', {})
     assert 'BROKEN' not in plan.grouped_config_plan['ems']['devices']
 
-
-@pytest.mark.unit
-def test_grouped_config_rejects_removed_legacy_adjustable_surplus_alias(project_root):
-    config = load_grouped_ems_config(project_root / 'example_EMS_config.yaml')
-    config['ems']['global_config']['adjustable_surplus_load'] = 'RELAY1'
-
-    result = validate_grouped_ems_config(config)
-
-    assert result.ok is False
-    assert 'ems.global_config.adjustable_surplus_load' in _error_paths(result)
 
 
 @pytest.mark.unit

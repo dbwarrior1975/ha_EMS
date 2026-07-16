@@ -81,7 +81,6 @@ def compute_haeo_net_zero_plan(
     now_ts,
     *,
     previous_quarter_key='',
-    previous_primary_load='',
     previous_primary_consuming_device_id='',
 ):
     """Build a device-owned HAEO NET_ZERO plan.
@@ -137,7 +136,7 @@ def compute_haeo_net_zero_plan(
     for item in primary_candidates:
         if item[0] == max_limit:
             tied_ids.append(item[2])
-    previous_primary = str(previous_primary_consuming_device_id or previous_primary_load or '')
+    previous_primary = str(previous_primary_consuming_device_id or '')
     if previous_primary in tied_ids:
         primary_consuming_device_id = previous_primary
         reason = 'tie_keep_previous' if len(tied_ids) > 1 else 'largest_explicit_device_target'
@@ -166,7 +165,6 @@ def compute_haeo_net_zero_plan(
     return HaeoNetZeroPlan(
         active=True,
         quarter_key=quarter_key,
-        primary_load=primary_consuming_device_id,
         primary_consuming_device_id=primary_consuming_device_id,
         preferred_surplus_device_id=preferred_surplus_device_id,
         device_limits_w=device_limits_w,

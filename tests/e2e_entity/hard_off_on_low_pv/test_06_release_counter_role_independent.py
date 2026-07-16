@@ -10,7 +10,7 @@ from tests.e2e_entity.scenario_runner import seed_previous_device_state
 
 @pytest.mark.scenario
 def test_hard_off_release_counter_applies_when_ev_is_surplus_adjustable(project_root):
-    """HOME_BATTERY primary / EV adjustable must not bypass release cycles."""
+    """HOME_BATTERY primary / EV surplus must not bypass release cycles."""
     h = build_harness(project_root)
     E = h.ent
 

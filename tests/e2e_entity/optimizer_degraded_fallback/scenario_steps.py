@@ -13,7 +13,7 @@ def build_harness(project_root, goal_profile):
         E['forecast_profile']: 'NONE',
         E['haeo_battery_active_power_fresh_source']: 0.0,
         E['haeo_ev_active_power_fresh_source']: 0.0,
-        E['primary_consuming_device_id']: 'HOME_BATTERY',
+        E['primary_consuming_device_selector']: 'HOME_BATTERY',
     })
     return h
 

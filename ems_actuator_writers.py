@@ -53,11 +53,11 @@ def _quantize_50w(value):
 
 
 def _device_policy_by_id(device_id, entities=None):
-    policy, _source_entity, _source_reason = _device_policy_source_for_id(device_id, entities)
+    policy, _source_entity, _source_reason = _device_device_policy_contract_for_id(device_id, entities)
     return policy
 
 
-def _device_policy_source_for_id(device_id, entities=None):
+def _device_device_policy_contract_for_id(device_id, entities=None):
     source_entity = _registry_entity('device_policies', entities)
     if not source_entity:
         return None, '', 'missing_device_policies_mapping'
@@ -131,10 +131,10 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_device_policy',
             'written': False,
-            'policy_source': 'missing_device_policy',
+            'device_policy_contract': 'missing_device_policy',
         }
 
-    policy_source = 'canonical'
+    device_policy_contract = 'canonical'
     write_enabled = _device_policy_enabled(device_policy)
     if not write_enabled:
         return {
@@ -142,7 +142,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'policy_write_disabled',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
     target_w = _device_policy_target_w(device_policy, default=0)
@@ -153,7 +153,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_device_config',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     capability_reason = capability_block_reason(capability_cfg, target_w)
     target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
@@ -166,7 +166,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_actuator_entity',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     current_w = get_float(battery_entity, 0)
     global_cfg = getattr(cfg, 'global_config', None)
@@ -183,7 +183,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
             'current_w': current_w,
             'target_w': target_w,
             'delta_w': delta,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
             'capability_reason': capability_reason,
         }
 
@@ -199,7 +199,7 @@ def _write_battery_actuator(device_id=None, entities=None, cfg=None):
         'current_w': current_w,
         'policy_target_w': target_w,
         'written_w': new_setpoint,
-        'policy_source': policy_source,
+        'device_policy_contract': device_policy_contract,
     }
 
 
@@ -214,10 +214,10 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_device_policy',
             'written': False,
-            'policy_source': 'missing_device_policy',
+            'device_policy_contract': 'missing_device_policy',
         }
 
-    policy_source = 'canonical'
+    device_policy_contract = 'canonical'
     device_runtime = _device_adapter_entities(device_id, entities)
     enabled_entity = device_runtime.get('enabled')
     current_entity = device_runtime.get('current_a')
@@ -227,7 +227,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_actuator_entity',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     current_on = get_bool(enabled_entity)
     current_level = get_int(current_entity, 0)
@@ -236,7 +236,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
     step_a = float(getattr(adapter_cfg, 'current_step_a', 4.0) or 4.0)
     phases = float(getattr(adapter_cfg, 'phases', 1.0) or 1.0)
     voltage_v = float(getattr(adapter_cfg, 'voltage_v', 230.0) or 230.0)
-    ev_policy_mode = str(device_policy.get('mode') or '')
+    ev_device_mode = str(device_policy.get('mode') or '')
     capability_reason = ''
     target_w = _device_policy_target_w(device_policy, default=0)
     capability_cfg = _capability_device_config_for_id(device_id or 'EV_CHARGER', cfg=cfg)
@@ -246,7 +246,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_device_config',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     min_absorb_w = float(capability_cfg.min_absorb_w)
     max_absorb_w = float(capability_cfg.max_absorb_w)
@@ -256,15 +256,15 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
         voltage_v=voltage_v,
         current_step_a=step_a,
     )
-    if ev_policy_mode == 'skip':
+    if ev_device_mode == 'skip':
         target_current_a = -1
     else:
         capability_reason = capability_block_reason(capability_cfg, target_w)
         target_w = clamp_target_w_for_capabilities(capability_cfg, target_w)
         if capability_reason:
-            ev_policy_mode = 'hard_off'
+            ev_device_mode = 'hard_off'
         target_current_a = 0
-        if target_w > 0 and ev_policy_mode != 'hard_off':
+        if target_w > 0 and ev_device_mode != 'hard_off':
             target_current_a = ev_power_w_to_current_a(
                 target_w,
                 phases=phases,
@@ -280,7 +280,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'action': 'skip',
             'reason': 'policy_skip',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
     if target_current_a > 0:
@@ -301,10 +301,10 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'target_current_a': target_current_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
-    if ev_policy_mode == 'restore_min':
+    if ev_device_mode == 'restore_min':
         current_changed = False
         if current_level != derived_min_a:
             set_number(current_entity, derived_min_a)
@@ -318,7 +318,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'target_current_a': derived_min_a,
             'enabled_changed': False,
             'current_changed': current_changed,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
     enabled_changed = False
@@ -329,7 +329,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
     if current_level != derived_min_a:
         set_number(current_entity, derived_min_a)
         current_changed = True
-    if ev_policy_mode == 'hard_off':
+    if ev_device_mode == 'hard_off':
         return {
             'target': 'ev',
             'action': 'hard_off',
@@ -339,7 +339,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'target_current_a': derived_min_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
     if enabled_changed or current_changed:
@@ -352,7 +352,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
             'target_current_a': derived_min_a,
             'enabled_changed': enabled_changed,
             'current_changed': current_changed,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
 
     return {
@@ -362,7 +362,7 @@ def _write_ev_actuator(device_id='EV_CHARGER', entities=None, cfg=None):
         'written': False,
         'policy_target_w': target_w,
         'current_a': current_level,
-        'policy_source': policy_source,
+        'device_policy_contract': device_policy_contract,
     }
 
 
@@ -377,10 +377,10 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_device_policy',
             'written': False,
-            'policy_source': 'missing_device_policy',
+            'device_policy_contract': 'missing_device_policy',
         }
 
-    policy_source = 'canonical'
+    device_policy_contract = 'canonical'
     device_runtime = _device_adapter_entities(device_id or '', entities)
     actuator_ent = device_runtime.get('enabled')
     if not actuator_ent:
@@ -389,7 +389,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'missing_actuator_entity',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     capability_reason = ''
     if device_id:
@@ -400,7 +400,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
                 'action': 'skip',
                 'reason': 'missing_device_config',
                 'written': False,
-                'policy_source': policy_source,
+                'device_policy_contract': device_policy_contract,
             }
         desired_target_w = _device_policy_target_w(device_policy, default=0)
         capability_reason = capability_block_reason(capability_cfg, desired_target_w)
@@ -416,7 +416,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
             'action': 'skip',
             'reason': 'policy_skip',
             'written': False,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     if strategy == 1 and not is_on:
         set_boolean(actuator_ent, True)
@@ -425,7 +425,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
             'action': 'turn_on',
             'reason': capability_reason or 'state_changed',
             'written': True,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     if strategy == 0 and is_on:
         set_boolean(actuator_ent, False)
@@ -434,7 +434,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
             'action': 'turn_off',
             'reason': capability_reason or 'state_changed',
             'written': True,
-            'policy_source': policy_source,
+            'device_policy_contract': device_policy_contract,
         }
     return {
         'target': label,
@@ -443,7 +443,7 @@ def _write_relay_actuator(label, device_id=None, entities=None, cfg=None):
         'written': False,
         'policy_command': strategy,
         'is_on': is_on,
-        'policy_source': policy_source,
+        'device_policy_contract': device_policy_contract,
     }
 
 
@@ -455,8 +455,8 @@ def _publish_writer_trace(battery_traces, device_traces, entities=None):
     attrs = {
         'writer_policy_contract': 'device_policy_primary',
         'writer_trace_canonical_contract': 'devices',
-        'policy_source_entity': device_policies_entity,
-        'policy_source_reason': 'canonical',
+        'device_policy_contract_entity': device_policies_entity,
+        'device_policy_contract_reason': 'canonical',
         'device_policies_version': get_str(device_policies_entity, ''),
         'batteries': battery_traces,
         'devices': device_traces,

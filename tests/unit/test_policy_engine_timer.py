@@ -684,7 +684,6 @@ def test_public_policy_diagnostics_projection_preserves_all_canonical_fields_aft
         'surplus_dispatch_device_id': 'EV_CHARGER',
         'surplus_dispatch_contract': 'device_id_primary',
         'previous_device_states': {'EV_CHARGER': {'mode': 'burn'}},
-        'primary_consuming_device_id': 'HOME_BATTERY',
     }
     projected = mod['_diagnostic_projection_attrs'](canonical)
 
@@ -693,4 +692,3 @@ def test_public_policy_diagnostics_projection_preserves_all_canonical_fields_aft
     assert projected['surplus_dispatch_device_id'] == 'EV_CHARGER'
     assert projected['surplus_dispatch_contract'] == 'device_id_primary'
     assert projected['previous_device_states'] == canonical['previous_device_states']
-    assert projected['primary_consuming_device_id'] == 'HOME_BATTERY'

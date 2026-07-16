@@ -48,7 +48,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'haeo_nz_primary_consuming_device_id': 'HOME_BATTERY',
                 'haeo_nz_preferred_surplus_device_id': 'EV_CHARGER',
                 'haeo_nz_device_limits_w': {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500},
-                'primary_consuming_device_id': 'HOME_BATTERY',
                 'adjustable_surplus_load': 'EV_CHARGER',
             },
             'expect_dispatch_state': {
@@ -99,7 +98,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'haeo_nz_primary_consuming_device_id': 'HOME_BATTERY',
                 'haeo_nz_preferred_surplus_device_id': 'EV_CHARGER',
                 'haeo_nz_device_limits_w': {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500},
-                'primary_consuming_device_id': 'HOME_BATTERY',
                 'adjustable_surplus_load': 'EV_CHARGER',
             },
             'expect_dispatch_state': {
@@ -158,7 +156,6 @@ def test_haeo_net_zero_internal_plan_homebattery_primary_ev_adjustable(project_r
                 'haeo_nz_primary_consuming_device_id': 'EV_CHARGER',
                 'haeo_nz_preferred_surplus_device_id': 'HOME_BATTERY',
                 'haeo_nz_device_limits_w': {'HOME_BATTERY': 1000, 'EV_CHARGER': 5000},
-                'primary_consuming_device_id': 'EV_CHARGER',
                 'adjustable_surplus_load': 'HOME_BATTERY',
                 'surplus_freeze_until_ts': 930.0,
                 'surplus_state_clear_reason': 'HAEO_COMBO_CHANGED',

@@ -355,7 +355,6 @@ class HaeoTargets:
 class HaeoNetZeroPlan:
     active: bool
     quarter_key: str = ''
-    primary_load: str = ''
     primary_consuming_device_id: str = ''
     preferred_surplus_device_id: str = ''
     device_limits_w: Optional[dict] = None

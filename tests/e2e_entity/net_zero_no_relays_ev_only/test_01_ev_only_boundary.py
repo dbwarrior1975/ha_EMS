@@ -14,7 +14,7 @@ def test_01_ev_only_boundary_runs_without_relay_policies(project_root):
     steps = [
         {
             'at_s': 0,
-            'note': 't0 no relays configured: policy exposes only EV adjustable target and battery policy.',
+            'note': 't0 no relays configured: policy exposes only EV surplus target and battery policy.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=-10.0, required_power_consumption_kw=0.0, at_s=0),
             'expect_policy': {
@@ -54,7 +54,7 @@ def test_01_ev_only_boundary_runs_without_relay_policies(project_root):
         },
         {
             'at_s': 60,
-            'note': 't60 with EV adjustable active the writer enables the charger and relay registry remains empty.',
+            'note': 't60 with EV surplus active the writer enables the charger and relay registry remains empty.',
             'set': runtime_inputs_for_net_zero_intent(E, rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=60),
             'expect_derived': expect_derived_for_net_zero_intent(rpnz_w=500.0, required_power_consumption_kw=3.0, at_s=60),
             'expect_policy': {

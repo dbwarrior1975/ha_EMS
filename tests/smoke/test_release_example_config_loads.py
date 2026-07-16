@@ -8,7 +8,7 @@ from tests.e2e_entity.scenario_harness import QuarterScenarioHarness
 
 
 @pytest.mark.smoke
-def test_release_example_config_loads_and_runs_direct_v3_smoke_step(project_root):
+def test_release_example_config_loads_and_runs_direct_runtime_v5_smoke_step(project_root):
     grouped_config_path = project_root / 'example_EMS_config.yaml'
     grouped_config = load_grouped_ems_config(grouped_config_path)
     validation = validate_grouped_ems_config(grouped_config)

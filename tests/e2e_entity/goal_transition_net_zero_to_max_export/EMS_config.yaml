@@ -15,7 +15,7 @@ ems:
     nz_battery_floor_default_w: input_number.ems_nz_battery_floor_default_w
     nz_battery_floor_ev_active_w: input_number.ems_nz_battery_floor_ev_active_w
     primary_consuming_device_ids:
-      - input_select.ems_adjustable_primary_load
+      - input_select.ems_primary_consuming_device
   role_constraints:
     EV_PRIMARY:
       HOME_BATTERY:
@@ -35,7 +35,7 @@ ems:
         step_w: input_number.ems_deadband_w
         min_produce_w: 0
       policy:
-        priority: input_number.ems_adjustable_surplus_load_priority
+        priority: input_number.ems_home_battery_surplus_priority
         default_min_absorb_w: input_number.ems_home_battery_default_min_absorb_w
         surplus_allowed: false
         surplus_dispatch_mode: max_absorb

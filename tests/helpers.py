@@ -68,7 +68,7 @@ def make_cfg(**overrides):
         nz_battery_floor_ev_active_w=0.0,
         primary_consuming_device_id='',
         primary_consuming_device_ids=None,
-        adjustable_surplus_load_priority=3,
+        home_battery_surplus_priority=3,
         ev_priority=3,
         surplus_freeze_s=30,
     )
@@ -110,7 +110,7 @@ def make_cfg(**overrides):
             uses_hard_off_lifecycle=False,
         ),
         policy=CoreBatteryPolicyConfig(
-            priority=int(data['adjustable_surplus_load_priority']),
+            priority=int(data['home_battery_surplus_priority']),
             producing_priority=100,
             surplus_allowed=battery_surplus_allowed,
             surplus_dispatch_mode='max_absorb',

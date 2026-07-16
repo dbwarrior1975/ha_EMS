@@ -1322,7 +1322,7 @@ def _battery_protect_charge_floor_w(cfg, device_id):
     return int(round(max(float(_battery_guard_value(cfg, device_id, 'protect_min_absorb_w', 0.0) or 0.0), 0.0)))
 
 def _haeo_plan_primary_consuming_device_id(plan):
-    return getattr(plan, 'primary_consuming_device_id', '') or getattr(plan, 'primary_load', '')
+    return getattr(plan, 'primary_consuming_device_id', '')
 
 
 def _haeo_plan_preferred_surplus_device_id(plan):
@@ -1441,8 +1441,8 @@ def _surplus_threshold_w(
 ):
     """Return the incremental power made available by a surplus activation.
 
-    A non-active EV that is already held at its configured minimum absorb power
-    contributes only the remaining headroom when surplus dispatch raises it to
+    A non-active EV already held at its configured minimum absorb power only
+    contributes the remaining headroom when surplus dispatch raises it to
     max_absorb_w. Other states retain the established absolute max threshold.
     """
     max_w = max(
@@ -1792,13 +1792,13 @@ def _build_device_policies(
     cfg,
     *,
     battery_policies_by_id,
-    ev_policies_by_id,
+    ev_policy_specs_by_id,
     relay_policies,
     producer_authority_by_id=None,
     facts=None,
 ):
     ev_policy_by_id = {}
-    for key, value in (ev_policies_by_id or {}).items():
+    for key, value in (ev_policy_specs_by_id or {}).items():
         ev_policy_by_id[str(key)] = dict(value or {})
     battery_policy_by_id = {}
     for key, value in (battery_policies_by_id or {}).items():
@@ -2034,7 +2034,7 @@ def net_zero_surplus_policy_active(profiles, effective_fc, haeo_nz_plan_active=F
     )
 
 
-def _ev_policy_mode_and_target_w(
+def _ev_device_mode_and_target_w(
     profiles, ev_context, haeo, *,
     role,
     burn_active,
@@ -2663,7 +2663,7 @@ def compute_net_zero_engine_outputs(
             cfg, primary_ev_device_id, facts=policy_runtime_facts
         )
         primary_ev_feedback_protection_active = bool(feedback_protection_active)
-        primary_ev_policy_mode = (
+        primary_ev_device_mode = (
             'burn' if primary_ev_device_id and primary_consuming_device_target_w > 0.0 else 'skip'
         )
         primary_ev_target_w = (
@@ -2675,7 +2675,7 @@ def compute_net_zero_engine_outputs(
             and combo_change_requires_clear
             and not bool(getattr(primary_ev, 'force_on', False))
         ):
-            primary_ev_policy_mode = 'restore_min'
+            primary_ev_device_mode = 'restore_min'
             primary_ev_target_w = 0.0
             primary_consuming_device_target_w = 0.0
         primary_ev_burn_active_for_battery = bool(
@@ -2837,7 +2837,7 @@ def compute_net_zero_engine_outputs(
             )
         _note_net_zero_duration_ms('policy_engine_net_zero_relay_policy_ms', relay_policy_started_ts)
 
-        ev_policies_by_id = {}
+        ev_policy_specs_by_id = {}
         for ev_device_id in _ev_devices(cfg, facts=policy_runtime_facts):
             ev_device_id = str(ev_device_id)
             if ev_device_id == str(effective_primary_consuming_device_id or ''):
@@ -2845,20 +2845,20 @@ def compute_net_zero_engine_outputs(
                     'ev_force_on'
                     if bool(getattr(primary_ev, 'force_on', False)) and float(primary_ev_target_w) > 0.0
                     else 'ev_lifecycle_hard_off'
-                    if primary_ev_policy_mode == 'hard_off'
+                    if primary_ev_device_mode == 'hard_off'
                     else 'primary_producer_feedback_protection'
                     if primary_ev_feedback_protection_active
                     else 'ev_primary_policy'
                 )
-                ev_policies_by_id[ev_device_id] = {
+                ev_policy_specs_by_id[ev_device_id] = {
                     'target_w': primary_ev_target_w,
                     'enabled': float(primary_ev_target_w) > 0.0,
-                    'mode': primary_ev_policy_mode,
+                    'mode': primary_ev_device_mode,
                     'reason': primary_ev_reason,
                 }
                 continue
             ev_context = _ev_context(cfg, ev_device_id, facts=policy_runtime_facts)
-            ev_policies_by_id[ev_device_id] = _ev_surplus_policy_for_device(
+            ev_policy_specs_by_id[ev_device_id] = _ev_surplus_policy_for_device(
                 profiles,
                 cfg,
                 ev_device_id,
@@ -2876,7 +2876,7 @@ def compute_net_zero_engine_outputs(
         device_policies = _build_device_policies(
             cfg,
             battery_policies_by_id=battery_policies_by_id,
-            ev_policies_by_id=ev_policies_by_id,
+            ev_policy_specs_by_id=ev_policy_specs_by_id,
             relay_policies=tuple(relay_policy_states),
             producer_authority_by_id=producer_authority_by_id,
             facts=policy_runtime_facts,
@@ -3000,7 +3000,6 @@ def compute_net_zero_engine_outputs(
             'configured_primary_consuming_device_ids': tuple(configured_primary_consuming_device_ids),
             'ordered_primary_consuming_device_ids': tuple(ordered_primary_consuming_device_ids),
             'effective_primary_consuming_device_id': effective_primary_consuming_device_id,
-            'primary_consuming_device_id': effective_primary_consuming_device_id,
             'effective_primary_consuming_reason': str(primary_resolution.get('effective_reason', '') or ''),
             'primary_consuming_requested_w_by_id': dict(primary_resolution.get('requested_w_by_id', {}) or {}),
             'primary_consuming_skipped_by_id': dict(primary_resolution.get('skipped_by_id', {}) or {}),

@@ -59,7 +59,7 @@ def _write_scenario_config_without_ev(project_root, tmp_path):
         for device_id, device in config['ems']['devices'].items()
         if device.get('kind') != 'EV_CHARGER'
     }
-    config['ems']['global_config']['primary_consuming_device_id'] = 'input_select.ems_adjustable_primary_load'
+    config['ems']['global_config']['primary_consuming_device_id'] = 'input_select.ems_primary_consuming_device'
     haeo_devices = config['ems'].get('haeo', {}).get('devices', {})
     if isinstance(haeo_devices, dict):
         haeo_devices.pop('EV_CHARGER', None)
@@ -229,7 +229,7 @@ def test_harness_device_entity_error_includes_scenario_config_path(project_root)
 
 
 @pytest.mark.unit
-def test_direct_v3_two_ev_candidate_pool_uses_canonical_device_id_routing(project_root, tmp_path, monkeypatch):
+def test_direct_runtime_v5_two_ev_candidate_pool_uses_canonical_device_id_routing(project_root, tmp_path, monkeypatch):
     scenario_path, scenario_config = _write_scenario_config_with_second_ev(project_root, tmp_path)
 
     entities = build_scenario_entity_registry(scenario_config)
@@ -240,7 +240,7 @@ def test_direct_v3_two_ev_candidate_pool_uses_canonical_device_id_routing(projec
     harness = QuarterScenarioHarness(project_root, scenario_config_path=scenario_path)
     harness.set_entities(
         {
-            ENT['primary_consuming_device_id']: 'HOME_BATTERY',
+            ENT['primary_consuming_device_selector']: 'HOME_BATTERY',
             **runtime_inputs_for_net_zero_intent(
                 harness.ent,
                 rpnz_w=4000,
@@ -283,15 +283,15 @@ def test_direct_v3_two_ev_candidate_pool_uses_canonical_device_id_routing(projec
     assert policies['EV_CHARGER']['enabled'] is False
     assert policies['EV_CHARGER']['target_w'] == 0
     assert trace_attrs['previous_device_states']['EV_GARAGE']['mode'] == policies['EV_GARAGE']['mode']
-    assert writer_attrs['devices']['EV_CHARGER']['policy_source'] == 'canonical'
-    assert writer_attrs['devices']['EV_GARAGE']['policy_source'] == 'canonical'
+    assert writer_attrs['devices']['EV_CHARGER']['device_policy_contract'] == 'canonical'
+    assert writer_attrs['devices']['EV_GARAGE']['device_policy_contract'] == 'canonical'
     assert writer_attrs['devices']['EV_GARAGE']['target_current_a'] == 16
     assert snap['values']['switch.ev_garage_enabled'] is True
     assert snap['values']['number.ev_garage_current_a'] == 16
 
 
 @pytest.mark.unit
-def test_direct_v3_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, monkeypatch):
+def test_direct_runtime_v5_zero_ev_config_runs_policy_without_ev_policy(project_root, tmp_path, monkeypatch):
     scenario_path, scenario_config = _write_scenario_config_without_ev(project_root, tmp_path)
 
     entities = build_scenario_entity_registry(scenario_config)
@@ -300,7 +300,7 @@ def test_direct_v3_zero_ev_config_runs_policy_without_ev_policy(project_root, tm
     harness = QuarterScenarioHarness(project_root, scenario_config_path=scenario_path)
     harness.set_entities(
         {
-            ENT['primary_consuming_device_id']: '',
+            ENT['primary_consuming_device_selector']: '',
             **runtime_inputs_for_net_zero_intent(
                 harness.ent,
                 rpnz_w=2400,
@@ -531,7 +531,7 @@ def test_e2e_harness_executes_strict_direct_tick_frame_v5_contract(project_root)
 
 
 @pytest.mark.unit
-def test_direct_v3_third_relay_routes_from_packet_entity_registry(project_root):
+def test_direct_runtime_v5_third_relay_routes_from_packet_entity_registry(project_root):
     scenario_dir = project_root / 'tests' / 'e2e_entity' / 'net_zero_priority_order_quarter_3_relays'
     harness = QuarterScenarioHarness(project_root, scenario_dir=scenario_dir)
 
@@ -562,7 +562,7 @@ def test_direct_v3_third_relay_routes_from_packet_entity_registry(project_root):
 
 
 @pytest.mark.unit
-def test_direct_v3_third_relay_missing_packet_mapping_fails_closed(project_root):
+def test_direct_runtime_v5_third_relay_missing_packet_mapping_fails_closed(project_root):
     scenario_dir = project_root / 'tests' / 'e2e_entity' / 'net_zero_priority_order_quarter_3_relays'
     harness = QuarterScenarioHarness(project_root, scenario_dir=scenario_dir)
     original_registry = harness.direct_runtime._entity_registry

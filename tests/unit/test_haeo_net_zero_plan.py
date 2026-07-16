@@ -77,11 +77,11 @@ def _core_cfg_with_selected_custom_ev(
         'input_number.ems_haeo_stale_timeout_s': 300,
         'input_number.ems_nz_battery_floor_default_w': 100,
         'input_number.ems_nz_battery_floor_ev_active_w': 0,
-        'input_select.ems_adjustable_primary_load': 'HOME_BATTERY',
+        'input_select.ems_primary_consuming_device': 'HOME_BATTERY',
         'input_number.ems_home_battery_min_absorb_w': 100,
         'input_number.ems_max_battery_charge_w': 3700,
         'input_number.ems_max_battery_discharge_w': 4000,
-        'input_number.ems_adjustable_surplus_load_priority': 3,
+        'input_number.ems_home_battery_surplus_priority': 3,
         'input_number.ems_battery_protect_soc': 2,
         'input_number.ems_battery_protect_soc_recovery_margin': 1,
         'input_number.ems_battery_protect_min_cell_voltage_v': 3.03,
@@ -125,7 +125,6 @@ def test_ev_larger_forecast_selects_ev_primary():
     )
 
     assert plan.active is True
-    assert plan.primary_load == 'EV_CHARGER'
     assert plan.primary_consuming_device_id == 'EV_CHARGER'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_CHARGER': 5000}
@@ -142,7 +141,6 @@ def test_battery_larger_forecast_selects_home_battery_primary():
     )
 
     assert plan.active is True
-    assert plan.primary_load == 'HOME_BATTERY'
     assert plan.primary_consuming_device_id == 'HOME_BATTERY'
     assert plan.preferred_surplus_device_id == 'EV_CHARGER'
     assert plan.device_limits_w == {'HOME_BATTERY': 3000, 'EV_CHARGER': 1500}
@@ -160,10 +158,8 @@ def test_tie_keeps_previous_primary_when_available():
         _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_CHARGER': 2.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_CHARGER': 0.0}),
         now_ts=30.0,
         previous_quarter_key='0',
-        previous_primary_load='EV_CHARGER',
+        previous_primary_consuming_device_id='EV_CHARGER',
     )
-
-    assert plan.primary_load == 'EV_CHARGER'
     assert plan.primary_consuming_device_id == 'EV_CHARGER'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
@@ -178,12 +174,10 @@ def test_tie_keeps_previous_primary_consuming_device_id_when_available():
         _fresh_haeo(device_target_kw_by_id={'HOME_BATTERY': 2.0, 'EV_CHARGER': 2.0}, device_age_s_by_id={'HOME_BATTERY': 0.0, 'EV_CHARGER': 0.0}),
         now_ts=30.0,
         previous_quarter_key='0',
-        previous_primary_load='HOME_BATTERY',
         previous_primary_consuming_device_id='EV_CHARGER',
     )
 
     assert plan.primary_consuming_device_id == 'EV_CHARGER'
-    assert plan.primary_load == 'EV_CHARGER'
     assert plan.reason == 'tie_keep_previous'
     assert plan.changed is False
 
@@ -258,7 +252,6 @@ def test_custom_selected_ev_device_id_is_used_in_haeo_plan(project_root):
 
     assert plan.active is True
     assert plan.primary_consuming_device_id == 'EV_GARAGE'
-    assert plan.primary_load == 'EV_GARAGE'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.device_limits_w == {'HOME_BATTERY': 2000, 'EV_GARAGE': 5000}
 
@@ -293,6 +286,5 @@ def test_tie_keeps_previous_custom_ev_primary_consuming_device_id(project_root):
     )
 
     assert plan.primary_consuming_device_id == 'EV_GARAGE'
-    assert plan.primary_load == 'EV_GARAGE'
     assert plan.preferred_surplus_device_id == 'HOME_BATTERY'
     assert plan.reason == 'tie_keep_previous'
